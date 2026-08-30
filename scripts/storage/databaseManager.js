@@ -1,16 +1,16 @@
 /**
  * DatabaseManager - Robust IndexedDB management with migrations and recovery
- * 
+ *
  * Purpose:
  * - Handle database versioning and migrations automatically
  * - Detect and repair data inconsistencies
  * - Provide clear upgrade paths between schema versions
  * - Recover from corruption without losing user data
- * 
+ *
  * Dependencies:
  * - Dexie.js for IndexedDB abstraction
  * - Logger for diagnostics
- * 
+ *
  * Architecture:
  * - Version-based migrations (like Rails/Django)
  * - Schema validation on read
@@ -21,9 +21,9 @@
 const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
     constructor(options = {}) {
         this.dbName = 'ConciergeCollector'; // Match DataStore database name
-        // currentVersion pode ser sobrescrito nos testes de migração
-        // (92→93) sem alterar o schema de produção
-        this.currentVersion = options.currentVersion || 92;
+        // v94: durable offline authoring indexes for atomic voice provenance
+        // and draft/session recovery. Tests may override the target version.
+        this.currentVersion = options.currentVersion ?? 94;
         // Retry de falha TRANSITÓRIA do open (iOS/Safari: o processo IDB
         // do WebKit pode ser morto pelo OS e o primeiro open rejeita com
         // erro interno truncado — 't'). Sem retry, uma falha de um segundo
@@ -37,6 +37,46 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
 
         this.initializeMigrations();
         this.initializeValidators();
+    }
+
+    /**
+     * Current production schema. Keep recording indexes aligned with the
+     * offline authoring model: sourceId identifies the immutable textual
+     * contribution; curationId/draft/session indexes make restart recovery
+     * deterministic without treating the raw Blob as durable provenance.
+     */
+    _currentSchema() {
+        return {
+            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
+            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
+            curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+            drafts: '++id, type, data, curator_id, createdAt, lastModified',
+            syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
+            settings: 'key',
+            cache: 'key, expires',
+            draftRestaurants: '++id, curatorId, sessionId, targetCurationId, targetEntityId, savedCurationId, name, timestamp, lastModified, hasAudio',
+            pendingAudio: '++id, sourceId, restaurantId, draftId, curationId, timestamp, retryCount, status',
+            _meta: 'key'
+        };
+    }
+
+    /**
+     * Schema used only to describe a pre-DatabaseManager legacy database
+     * before its upgrade transaction. Do not add modern indexes here: Dexie
+     * must first match the physical legacy schema and then upgrade it.
+     */
+    _legacySchema() {
+        return {
+            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
+            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
+            curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+            drafts: '++id, type, data, curator_id, createdAt, lastModified',
+            syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
+            settings: 'key',
+            cache: 'key, expires',
+            draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
+            pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
+        };
     }
 
     /**
@@ -71,7 +111,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
 
             for (const entity of entities) {
                 if (entity.data && entity.data.photos && !entity.data.media) {
-                    // Move photos to correct location
                     const photos = entity.data.photos;
                     delete entity.data.photos;
 
@@ -86,28 +125,21 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
 
             this.log.info(`Migration 2→3 complete: Updated ${updated} entities`);
         });
-
-        // Add more migrations here as needed
-        // Migration 3→4: ...
     }
 
     /**
      * Define validators for each entity type
      */
     initializeValidators() {
-        // Entity validator
         this.validators.set('entity', (entity) => {
             const issues = [];
 
-            // Required fields
             if (!entity.entity_id) issues.push('Missing entity_id');
             if (!entity.type) issues.push('Missing type');
             if (!entity.name) issues.push('Missing name');
             if (!entity.status) issues.push('Missing status');
 
-            // V3 structure validation
             if (entity.data) {
-                // Check for empty objects that shouldn't be there
                 if (entity.data.location && typeof entity.data.location === 'object' &&
                     Object.keys(entity.data.location).length === 0) {
                     issues.push('Empty location object (should be undefined or have data)');
@@ -123,18 +155,15 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                     issues.push('Empty attributes object');
                 }
 
-                // Check for old photo structure
                 if (entity.data.photos) {
                     issues.push('Photos in wrong location (should be data.media.photos)');
                 }
             }
 
-            // Metadata validation
             if (!entity.metadata || !Array.isArray(entity.metadata)) {
                 issues.push('Missing or invalid metadata array');
             }
 
-            // Version validation
             if (!entity.version || entity.version < 1) {
                 issues.push('Missing or invalid version');
             }
@@ -142,14 +171,13 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
             return issues;
         });
 
-        // Curation validator
         this.validators.set('curation', (curation) => {
             const issues = [];
 
             if (!curation.curation_id) issues.push('Missing curation_id');
-            if (!curation.entity_id) issues.push('Missing entity_id');
-            if (!curation.curator) issues.push('Missing curator');
-            if (!curation.categories) issues.push('Missing categories');
+            // entity_id=null is a valid orphan authoring state.
+            if (!curation.curator && !curation.curator_id) issues.push('Missing curator');
+            if (!curation.categories && !curation.category) issues.push('Missing categories');
 
             return issues;
         });
@@ -166,10 +194,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
             } catch (error) {
                 this.log.error(`Failed to initialize database (attempt ${attempt}/${attempts}):`, error);
 
-                // Falha transitória (ex.: processo IDB do WebKit morto
-                // pelo OS no iOS — rejeita com erro interno truncado):
-                // recua e tenta de novo. Backup/nuclear só entram quando
-                // os retries se esgotam.
                 if (attempt < attempts) {
                     if (this.db) {
                         try { this.db.close(); } catch (_) {}
@@ -179,7 +203,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                     continue;
                 }
 
-                // Retries esgotados: tenta a recuperação (backup → nuclear)
                 if (await this.attemptRecovery()) {
                     this._setSentinelVersion(this.currentVersion);
                     this.log.info('✅ Database recovered successfully');
@@ -192,35 +215,26 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
     }
 
     /**
-     * Uma passada do fluxo de init (rodada em loop pelo initialize —
-     * ver retryAttempts/retryDelayMs no construtor).
+     * Uma passada do fluxo de init (rodada em loop pelo initialize).
      */
     async _initializeOnce() {
         try {
             this.log.info(`Initializing database (target version: ${this.currentVersion})`);
 
-            // Auto-recovery: check localStorage sentinel for schema version mismatch
             await this._checkSchemaSentinel();
-
-            // Check if database exists and get current version
             const existingVersion = await this.getCurrentVersion();
 
             if (existingVersion === null) {
-                // Fresh install
                 this.log.info('Fresh database - creating schema');
                 await this.createFreshDatabase();
             } else if (existingVersion === 'legacy') {
-                // Old database without _meta table (pre-DatabaseManager)
                 this.log.info('Legacy database detected - adding version tracking');
 
-                // Close any existing connection before attempting upgrade
                 if (this.db) {
                     try { this.db.close(); } catch (_) {}
                     this.db = null;
                 }
 
-                // Try to open existing database and read its version.
-                // If this fails (e.g., version too high for our schema), auto-reset.
                 let actualVersion;
                 try {
                     const tempDb = new Dexie(this.dbName);
@@ -231,42 +245,20 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                     this.log.warn('Cannot open legacy database for version check, auto-resetting:', openError?.message || openError);
                     await this._autoReset();
                     this.log.info('✅ Database auto-reset after legacy open failure');
-                    // _autoReset sets the sentinel and creates fresh — we're done
                     return this.db;
                 }
 
                 this.log.info(`Legacy database is at version ${actualVersion}, adding _meta table`);
 
-                // Define schemas for upgrade
                 this.db = new Dexie(this.dbName);
+                this.db.version(actualVersion).stores(this._legacySchema());
 
-                // Preserve existing schema at current version (without _meta or v92 indexes)
-                this.db.version(actualVersion).stores({
-                    entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
-                    curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
-                    curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-                    drafts: '++id, type, data, curator_id, createdAt, lastModified',
-                    syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
-                    settings: 'key',
-                    cache: 'key, expires',
-                    draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
-                    pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
-                });
-
-                // Add new version that includes _meta + v92 indexes (lastAccessedAt, source)
-                this.db.version(actualVersion + 1).stores({
-                    entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
-                    curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
-                    curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-                    drafts: '++id, type, data, curator_id, createdAt, lastModified',
-                    syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
-                    settings: 'key',
-                    cache: 'key, expires',
-                    draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
-                    pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status',
-                    _meta: 'key'
-                }).upgrade(tx => {
-                    return tx.table('_meta').add({ key: 'version', value: this.currentVersion });
+                // Never declare an upgrade below the production target. This
+                // fixes the historical physical-v93/logical-v92 fallback and
+                // still preserves very high legacy Dexie versions (e.g. v132).
+                const upgradeVersion = Math.max(actualVersion + 1, this.currentVersion);
+                this.db.version(upgradeVersion).stores(this._currentSchema()).upgrade(tx => {
+                    return tx.table('_meta').put({ key: 'version', value: this.currentVersion });
                 });
 
                 try {
@@ -274,7 +266,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                     const missing = await this._validateTablesExist();
                     if (missing) throw new Error(`Table '${missing}' missing after legacy upgrade — database corrupted`);
                     this.log.info('✅ Legacy database upgraded with version tracking');
-                    // Run validation and repair
                     await this.validateAndRepair();
                 } catch (upgradeError) {
                     this.log.warn('Legacy upgrade failed, auto-resetting:', upgradeError?.message || upgradeError);
@@ -284,22 +275,18 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                     return this.db;
                 }
             } else if (existingVersion < this.currentVersion) {
-                // Needs migration
                 this.log.info(`Database needs migration: v${existingVersion} → v${this.currentVersion}`);
                 await this.migrateDatabase(existingVersion);
             } else if (existingVersion > this.currentVersion) {
-                // Database is newer than code (likely from a deployment rollback)
                 this.log.warn(`Database version (${existingVersion}) > code (${this.currentVersion}), auto-resetting...`);
                 await this._autoReset();
                 this.log.info('✅ Database auto-reset after version downgrade');
             } else {
-                // Same version - validate and repair if needed
                 this.log.info('Database version matches - validating data');
                 await this.openDatabase();
                 await this.validateAndRepair();
             }
 
-            // Persist schema version so future mismatches auto-recover
             this._setSentinelVersion(this.currentVersion);
 
             this.log.info('✅ Database initialized successfully');
@@ -312,30 +299,14 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
     }
 
     /**
-     * Get current database version.
-     * P0 fix (ago/2026): a implementação anterior abria com version(1) —
-     * para um DB EXISTENTE (v92) o IDB rejeita com VersionError SEMPRE,
-     * e o código então classificava o banco como 'legacy' → o branch
-     * legacy falhava (Dexie sem schema) → _autoReset apagava o banco
-     * INTEIRO em todo load. Agora abre o IDB cru (indexedDB.open sem
-     * versão = abre na versão corrente, sem VersionError) e lê o _meta.
-     *
-     * P1 fix (ago/2026): o onupgradeneeded resolvia NO MEIO do
-     * versionchange — um DB recém-criado (v0, sem stores) era
-     * classificado como 'legacy' e o branch legacy fazia version(0) →
-     * "Given version is not a positive number" em todo perfil novo
-     * (fresh install caía no wipe nuclear). Agora o success resolve
-     * APÓS a criação (v1 vazio) e um DB SEM object stores é tratado
-     * como instalação fresca, não legacy.
+     * Get current database version from logical _meta without opening Dexie at
+     * a potentially lower declared version.
      */
     async getCurrentVersion() {
         const openRaw = () => new Promise((resolve, reject) => {
             const req = indexedDB.open(this.dbName);
             req.onsuccess = () => resolve(req.result);
             req.onerror = () => reject(req.error);
-            // no-op: sem versão explícita, um DB inexistente é criado em
-            // v1 vazio e o success dispara logo depois — resolver aqui
-            // entregaria um DB no meio do versionchange (v0 sem stores)
             req.onupgradeneeded = () => {};
         });
 
@@ -346,8 +317,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
             return null;
         }
 
-        // DB recém-criado (nenhuma object store) = instalação FRESCA —
-        // legacy é um DB REAL pré-DatabaseManager, que TEM stores
         if (!raw.objectStoreNames || raw.objectStoreNames.length === 0) {
             raw.close();
             return null;
@@ -363,23 +332,13 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
             raw.close();
             return versionRecord ? versionRecord.value : null;
         } catch (e) {
-            // DB existe mas sem a store _meta (pré-DatabaseManager)
             raw.close();
             return 'legacy';
         }
     }
 
-    /**
-     * Check localStorage sentinel for schema version mismatch.
-     * P0 fix (ago/2026): o mismatch NUNCA apaga o banco — num app
-     * offline-first, um item pending pode ser a única cópia de uma
-     * curadoria. O sentinel é informativo; quem decide o caminho é o
-     * initialize() (migração no upgrade, guard de trabalho não
-     * sincronizado no downgrade).
-     */
     async _checkSchemaSentinel() {
         const SENTINEL_KEY = 'concierge_db_schema_version';
-
         const stored = localStorage.getItem(SENTINEL_KEY);
         if (stored !== null) {
             const storedVersion = parseInt(stored, 10);
@@ -392,33 +351,13 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         }
     }
 
-    /**
-     * True quando existe trabalho do usuário ainda não sincronizado com o
-     * servidor. Operações destrutivas (reset/downgrade/nuclear) são
-     * PROIBIDAS nesse estado — apagar o IndexedDB aqui é perda irreversível.
-     */
     async _hasUnsavedWork() {
-        // this.db pode estar null/fechado quando o reset é chamado dos
-        // caminhos legacy/downgrade — abre uma conexão temporária para
-        // inspecionar (declarar o schema corrente em DB MAIS NOVO que o
-        // código falha → conservador: recusa a destruição)
         let db = this.db;
         let ownsConnection = false;
         if (!db || !db.isOpen()) {
             try {
                 const tmp = new Dexie(this.dbName);
-                tmp.version(await this._resolveDeclaredVersion()).stores({
-                    entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
-                    curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
-                    curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-                    drafts: '++id, type, data, curator_id, createdAt, lastModified',
-                    syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
-                    settings: 'key',
-                    cache: 'key, expires',
-                    draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
-                    pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status',
-                    _meta: 'key'
-                });
+                tmp.version(await this._resolveDeclaredVersion()).stores(this._currentSchema());
                 await tmp.open();
                 db = tmp;
                 ownsConnection = true;
@@ -440,8 +379,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                 .where('sync.status').anyOf(['pending', 'conflict']).count();
             if (pendingCurations > 0) return true;
 
-            // áudios pendentes são blobs únicos (não serializáveis em
-            // backup) — a guarda é a única proteção deles
             const pendingAudioCount = await db.pendingAudio.count();
             if (pendingAudioCount > 0) return true;
 
@@ -450,7 +387,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
 
             return false;
         } catch (e) {
-            // não conseguir inspecionar NÃO é licença para destruir
             this.log.warn('Falha ao verificar trabalho não sincronizado — assumindo que existe:', e?.message || e);
             return true;
         } finally {
@@ -464,50 +400,77 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         try {
             localStorage.setItem('concierge_db_schema_version', String(version));
         } catch (e) {
-            // localStorage may be full or unavailable — non-critical
             this.log.warn('Failed to persist schema sentinel:', e);
         }
     }
 
     /**
-     * Versão REAL (física) do IndexedDB. Dexie abre pedindo verno×10 —
-     * um banco criado pelo layer legado em verno 133 está em 1330.
-     * O _meta pode estar DESINCRONIZADO dela (o upgrade legado gravava
-     * _meta = currentVersion num banco que acabava de virar atual+1 —
-     * ver teste "REPRO brick"), então quem declara schema precisa casar
-     * com ESTA versão, não com o _meta.
+     * Read physical IDB version and whether the v94 authoring indexes already
+     * exist. A historical profile can have raw version 1330 with logical meta
+     * 92; matching 133 exactly would avoid VersionError but cannot add indexes.
      */
-    async _getRawIdbVersion() {
+    async _getRawSchemaInfo() {
         try {
             const raw = await new Promise((resolve, reject) => {
                 const req = indexedDB.open(this.dbName);
                 req.onsuccess = () => resolve(req.result);
                 req.onerror = () => reject(req.error);
             });
+
+            let hasOfflineAuthoringIndexes = false;
+            try {
+                if (raw.objectStoreNames.contains('pendingAudio') && raw.objectStoreNames.contains('draftRestaurants')) {
+                    const tx = raw.transaction(['pendingAudio', 'draftRestaurants'], 'readonly');
+                    const pendingIndexes = tx.objectStore('pendingAudio').indexNames;
+                    const draftIndexes = tx.objectStore('draftRestaurants').indexNames;
+                    hasOfflineAuthoringIndexes =
+                        pendingIndexes.contains('sourceId') &&
+                        pendingIndexes.contains('curationId') &&
+                        draftIndexes.contains('sessionId') &&
+                        draftIndexes.contains('targetCurationId') &&
+                        draftIndexes.contains('savedCurationId');
+                }
+            } catch (_) {
+                hasOfflineAuthoringIndexes = false;
+            }
+
             const version = raw.version;
             raw.close();
-            return version;
+            return { version, hasOfflineAuthoringIndexes };
         } catch (e) {
-            return null;
+            return { version: null, hasOfflineAuthoringIndexes: false };
         }
     }
 
+    async _getRawIdbVersion() {
+        const info = await this._getRawSchemaInfo();
+        return info.version;
+    }
+
     /**
-     * Versão Dexie a DECLARAR ao abrir o banco existente. Regra: quando
-     * o IDB real é MAIS NOVO que o código (raw > currentVersion×10), a
-     * declaração casa com a versão real (raw/10) — declarar a do código
-     * num banco mais novo é VersionError "requested 920 < existing 1330"
-     * PARA SEMPRE (brick). Quando o IDB é mais antigo ou igual, usa a
-     * versão do código (caminho normal de migração/upgrade).
+     * Version Dexie should declare. For a physically newer historical DB,
+     * keep the physical version when the v94 indexes are already present;
+     * otherwise advance one physical Dexie version exactly once so the index
+     * repair can run without a destructive reset.
      */
     async _resolveDeclaredVersion() {
-        const raw = await this._getRawIdbVersion();
+        const info = await this._getRawSchemaInfo();
+        const raw = info.version;
         if (raw !== null && raw > Math.round(this.currentVersion * 10)) {
+            const physicalDexieVersion = raw / 10;
+            if (!info.hasOfflineAuthoringIndexes) {
+                const repairVersion = physicalDexieVersion + 1;
+                this.log.warn(
+                    `_meta/code target v${this.currentVersion}, IDB real v${raw} sem índices offline v94 — ` +
+                    `reparando schema em Dexie v${repairVersion}`
+                );
+                return repairVersion;
+            }
             this.log.warn(
-                `_meta diz v${this.currentVersion} mas o IDB real é v${raw} ` +
-                `— declarando schema na versão real (${raw / 10}) para não brickar`
+                `_meta/code target v${this.currentVersion} mas o IDB real é v${raw} — ` +
+                `declarando schema na versão real (${physicalDexieVersion}) para não brickar`
             );
-            return raw / 10;
+            return physicalDexieVersion;
         }
         return this.currentVersion;
     }
@@ -517,12 +480,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         return stored !== null ? parseInt(stored, 10) : null;
     }
 
-    /**
-     * Verify that expected tables actually have backing IndexedDB object stores.
-     * Uses the native IDBDatabase API because Dexie's table.schema can be
-     * non-null even when the backing store was lost (e.g. upgrade interrupted).
-     * @returns {string|null} Missing table name, or null if all OK.
-     */
     async _validateTablesExist() {
         if (!this.db) return 'no database instance';
         try {
@@ -534,7 +491,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
             return null;
         } catch (e) {
             this.log.warn('Native objectStore check failed:', e?.message || e);
-            // Fallback: Dexie schema check (less reliable but better than nothing)
             const required = ['entities', 'curations', 'curators', 'syncQueue', 'settings', 'drafts'];
             for (const name of required) {
                 const table = this.db[name];
@@ -544,17 +500,7 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         }
     }
 
-    /**
-     * Nuclear reset: delete IndexedDB and recreate from scratch.
-     * Used when version downgrade is detected or recovery is needed.
-     * P0 fix (ago/2026): RECUSA apagar quando existe trabalho não
-     * sincronizado (pending/conflict/syncQueue/pendingAudio/drafts) —
-     * perder a única cópia offline é pior que ficar degradado.
-     */
     async _autoReset() {
-        // Inspeciona ANTES de fechar a conexão (o método abre uma conexão
-        // temporária quando this.db é null — downgrade/legacy passam por
-        // aqui SEM conexão e a guarda precisa valer do mesmo jeito)
         if (await this._hasUnsavedWork()) {
             throw new Error(
                 'Auto-reset recusado: existe trabalho não sincronizado no IndexedDB ' +
@@ -563,7 +509,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         }
 
         try {
-            // Close any existing connection
             if (this.db) {
                 try { this.db.close(); } catch (_) {}
                 this.db = null;
@@ -578,68 +523,27 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
     }
 
     /**
-     * Create fresh database with current schema (version 92)
+     * Create fresh database with current production schema (v94).
      */
     async createFreshDatabase() {
         this.db = new Dexie(this.dbName);
-
-        // Define schema matching DataStore version 92
-        this.db.version(this.currentVersion).stores({
-            // Core V3 Tables with sync.status indexed + v92 cache indexes
-            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
-            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
-            curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-
-            // System Tables
-            drafts: '++id, type, data, curator_id, createdAt, lastModified',
-            syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
-            settings: 'key',
-            cache: 'key, expires',
-
-            // Recording Module Legacy Tables
-            draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
-            pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status',
-
-            // Metadata table for version tracking
-            _meta: 'key'
-        });
+        this.db.version(this.currentVersion).stores(this._currentSchema());
 
         await this.db.open();
 
         const missing = await this._validateTablesExist();
         if (missing) throw new Error(`Table '${missing}' missing after fresh create — IndexedDB may be corrupted`);
 
-        // Store version
         await this.db._meta.put({ key: 'version', value: this.currentVersion });
-
         this.log.info(`Created fresh database at version ${this.currentVersion}`);
     }
 
     /**
-     * Open existing database (version 91 schema)
+     * Open existing database at a safe physical version and current schema.
      */
     async openDatabase() {
         this.db = new Dexie(this.dbName);
-
-        this.db.version(await this._resolveDeclaredVersion()).stores({
-            // Core V3 Tables with sync.status indexed + v92 cache indexes
-            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
-            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
-            curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-
-            // System Tables
-            drafts: '++id, type, data, curator_id, createdAt, lastModified',
-            syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
-            settings: 'key',
-            cache: 'key, expires',
-
-            // Recording Module Legacy Tables
-            draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
-            pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status',
-
-            // Metadata table for version tracking
-            _meta: 'key'
-        });
+        this.db.version(await this._resolveDeclaredVersion()).stores(this._currentSchema());
 
         await this.db.open();
 
@@ -653,16 +557,10 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
     async migrateDatabase(fromVersion) {
         this.log.info(`Starting migration from v${fromVersion} to v${this.currentVersion}`);
 
-        // P0 fix (ago/2026): o backup era criado ANTES do openDatabase
-        // (this.db null → TypeError engolido → backup nunca existia).
-        // Ordem correta: abrir → backup (THROWS em falha → aborta a
-        // migração SEM tocar nos dados) → migrar.
         await this.openDatabase();
-
         await this.createBackup();
 
         try {
-            // Run migrations sequentially
             for (let v = fromVersion; v < this.currentVersion; v++) {
                 const migration = this.migrations.get(v);
                 if (migration) {
@@ -673,31 +571,22 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                 }
             }
 
-            // Update version
             await this.db._meta.put({ key: 'version', value: this.currentVersion });
-
             this.log.info(`✅ Migration complete: v${fromVersion} → v${this.currentVersion}`);
 
         } catch (error) {
             this.log.error('Migration failed:', error);
-
-            // Restore from backup
             await this.restoreBackup();
-
             throw error;
         }
     }
 
-    /**
-     * Validate all data and repair issues
-     */
     async validateAndRepair() {
         this.log.info('Validating database integrity...');
 
         let totalIssues = 0;
         let totalRepaired = 0;
 
-        // Validate entities
         const entities = await this.db.entities.toArray();
         for (const entity of entities) {
             const issues = this.validators.get('entity')(entity);
@@ -706,13 +595,11 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                 totalIssues += issues.length;
                 this.log.warn(`Entity ${entity.entity_id} has issues:`, issues);
 
-                // Attempt repair
                 const repaired = await this.repairEntity(entity, issues);
                 if (repaired) totalRepaired++;
             }
         }
 
-        // Validate curations
         const curations = await this.db.curations.toArray();
         for (const curation of curations) {
             const issues = this.validators.get('curation')(curation);
@@ -726,15 +613,12 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
             }
         }
 
-        // Check for orphaned curations (entity doesn't exist)
         const orphans = await this.findOrphanedCurations();
         if (orphans.length > 0) {
             this.log.warn(`⚠️ Found ${orphans.length} orphaned curations`);
             totalIssues += orphans.length;
-            // We don't auto-delete orphans yet as they might be intentional "unmatched" reviews
         }
 
-        // Check for duplicates (Entities and Curations)
         const duplicates = await this.findDuplicates();
         if (duplicates.length > 0) {
             this.log.warn(`👯 Found ${duplicates.length} duplicate items across tables`);
@@ -752,9 +636,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         };
     }
 
-    /**
-     * Repair entity issues
-     */
     async repairEntity(entity, issues) {
         let repaired = false;
         const updates = {};
@@ -800,9 +681,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         }
 
         if (repaired) {
-            // PK da store é ++id — update(entity_id) era NO-OP silencioso
-            // (resolvia 0 sem lançar e logava sucesso falso). modify() pelo
-            // índice secundário é o padrão correto (usado em :756 e dataStore).
             const modified = await this.db.entities
                 .where('entity_id').equals(entity.entity_id)
                 .modify(updates);
@@ -816,30 +694,18 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         return repaired;
     }
 
-    /**
-     * Repair curation issues
-     */
     async repairCuration(curation, issues) {
-        // Most curation issues can't be auto-repaired
-        // They need manual review
         return false;
     }
 
-    /**
-     * Find orphaned curations (entity doesn't exist)
-     */
     async findOrphanedCurations() {
         const curations = await this.db.curations.toArray();
         const orphans = [];
 
         for (const curation of curations) {
-            // Skip if status is already deleted
             if (curation.status === 'deleted') continue;
-
-            // Skip if entity_id is null/undefined (valid state for unlinked curations)
-            if (!curation.entity_id) {
-                continue;
-            }
+            // entity_id=null is intentionally authorable and is not an integrity issue.
+            if (!curation.entity_id) continue;
 
             const entity = await this.db.entities.where('entity_id').equals(curation.entity_id).first();
             if (!entity) {
@@ -851,20 +717,11 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         return orphans;
     }
 
-    /**
-     * Find duplicate items (Entities and Curations)
-     *
-     * Ordena por updatedAt desc ANTES do dedupe: o primeiro visto de cada
-     * chave é o MAIS RECENTE (keeper) — antes a ordem era a de inserção
-     * (PK ++id), então a cópia VELHA era mantida e a nova entrava na lista
-     * de duplicatas a remover.
-     */
     async findDuplicates() {
         const results = [];
         const byRecency = (a, b) =>
             (b.updatedAt || b.createdAt || 0) > (a.updatedAt || a.createdAt || 0) ? 1 : -1;
 
-        // Check entities
         const entities = await this.db.entities.toArray();
         entities.sort(byRecency);
         const seenEntities = new Map();
@@ -876,7 +733,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
             }
         }
 
-        // Check curations
         const curations = await this.db.curations.toArray();
         curations.sort(byRecency);
         const seenCurations = new Map();
@@ -891,12 +747,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         return results;
     }
 
-    /**
-     * Remove duplicate entries (keep most recent)
-     *
-     * Nunca apaga uma cópia com sync.status pending/conflict: pode ser a
-     * única cópia de trabalho não sincronizado (offline-first).
-     */
     async removeDuplicates(duplicates) {
         let removedCount = 0;
         for (const dup of duplicates) {
@@ -911,10 +761,8 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                 continue;
             }
 
-            // Safety check: ensure we still have another record with same ID before deleting
             const count = await this.db[table].where(idField).equals(value).count();
             if (count > 1) {
-                // Delete this specific instance (using primary key id)
                 await this.db[table].delete(item.id);
                 this.log.info(`🗑️ Removed duplicate ${table === 'entities' ? 'entity' : 'curation'}: ${value} (pk: ${item.id})`);
                 removedCount++;
@@ -923,17 +771,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         return removedCount;
     }
 
-    /**
-     * Create backup of current database.
-     * P0 fix (ago/2026): usava sync_queue/sync_metadata — stores que NÃO
-     * existem no schema (o real é syncQueue), então o backup SEMPRE falhava
-     * e o erro era engolido (o fluxo destrutivo continuava). Agora:
-     * - nomes reais das stores
-     * - inclui drafts/draftRestaurants (trabalho do usuário)
-     * - THROWS em falha — quem chama precisa abortar, não prosseguir
-     * (pendingAudio fica de fora: blobs não serializam em JSON; a guarda
-     * _hasUnsavedWork protege esses)
-     */
     async createBackup() {
         const backup = {
             version: this.currentVersion,
@@ -949,9 +786,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         this.log.info('✅ Backup created');
     }
 
-    /**
-     * Restore from backup
-     */
     async restoreBackup() {
         try {
             const backupStr = localStorage.getItem('concierge_db_backup');
@@ -961,14 +795,12 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
 
             const backup = JSON.parse(backupStr);
 
-            // Clear current database (nomes reais das stores)
             await this.db.entities.clear();
             await this.db.curations.clear();
             await this.db.syncQueue.clear();
             await this.db.drafts.clear();
             await this.db.draftRestaurants.clear();
 
-            // Restore data
             await this.db.entities.bulkAdd(backup.entities);
             await this.db.curations.bulkAdd(backup.curations);
             await this.db.syncQueue.bulkAdd(backup.syncQueue || []);
@@ -982,28 +814,21 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         }
     }
 
-    /**
-     * Attempt to recover from corrupted database
-     */
     async attemptRecovery() {
         this.log.warn('Attempting database recovery...');
 
-        // Close any lingering connections before attempting recovery
         if (this.db) {
             try { this.db.close(); } catch (_) {}
             this.db = null;
         }
 
         try {
-            // Try to restore from backup
             await this.restoreBackup();
             this._setSentinelVersion(this.currentVersion);
             return true;
         } catch (error) {
             this.log.error('Backup restore failed, trying nuclear option');
 
-            // Nuclear option: delete and recreate — RECUSADO se houver
-            // trabalho não sincronizado (mesma guarda do _autoReset)
             try {
                 if (await this._hasUnsavedWork()) {
                     this.log.error(
@@ -1024,9 +849,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         }
     }
 
-    /**
-     * Get database instance (after initialization)
-     */
     getDatabase() {
         if (!this.db) {
             throw new Error('Database not initialized. Call initialize() first.');
@@ -1034,12 +856,7 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         return this.db;
     }
 
-    /**
-     * Export database for debugging
-     */
     async exportForDebug() {
-        // sync_metadata NÃO é uma store — vive em settings (key 'sync_metadata',
-        // syncManagerV3). A store inexistente fazia o export SEMPRE falhar.
         const data = {
             version: this.currentVersion,
             timestamp: new Date().toISOString(),
@@ -1060,7 +877,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
     }
 });
 
-// Auto-attach to window
 if (typeof window !== 'undefined') {
     window.DatabaseManager = DatabaseManager;
 }
