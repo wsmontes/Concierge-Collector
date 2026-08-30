@@ -1,20 +1,9 @@
 /*
  * OfflineDurabilityModule
  *
- * Cross-cutting durability boundary for Collector authoring. The legacy
- * editor still owns form construction and persistence, so this module wraps
- * those boundaries without changing the server contract:
- *
- * - raw capture material is never consumed by a normal Save;
- * - the exact local Curation written by Save is captured and used to
- *   associate pending sources;
- * - only explicit audio provenance can make a raw recording disposable;
- * - photo-bearing drafts survive Save until photos have another durable home;
- * - lifecycle events flush pending draft writes;
- * - direct IndexedDB destruction is blocked outside guarded recovery/reset.
- *
- * Local durability is authoritative; synchronization remains SyncManagerV3's
- * responsibility.
+ * Cross-cutting durability boundary for Collector authoring while the legacy
+ * editor is progressively migrated. Local durable state is authoritative
+ * until processing/synchronization succeeds.
  */
 (function bootstrapOfflineDurability(global) {
     'use strict';
@@ -28,6 +17,10 @@
             this._lifecycleInstalled = false;
             this._dbDestructionGuardInstalled = false;
             this._explicitResetInstalled = false;
+            this._draftAutosaveInstalled = false;
+            this._editRestoreInstalled = false;
+            this._newSessionBoundaryInstalled = false;
+            this._draftResolvePromise = null;
             this._pollTimer = null;
         }
 
@@ -46,12 +39,14 @@
             this.installExplicitResetAuthorization();
             const uiManager = global.uiManager || null;
             const conceptModule = uiManager?.conceptModule || null;
-
             const workspacePresent = Boolean(global.curationWorkspace);
             const workspaceReady = !workspacePresent ||
                 conceptModule?.__curationWorkspaceSaveCompatibilityInstalled === true;
 
             if (conceptModule?.saveRestaurant && workspaceReady) {
+                this.installDurableDraftAutosave(uiManager);
+                this.installEditDraftRestore(uiManager);
+                this.installNewCurationSessionBoundary(uiManager);
                 this.installSaveDurability(uiManager);
                 this.installSafeBulkAudioCleanup();
                 this.installExplicitResetAuthorization();
@@ -59,7 +54,7 @@
             }
 
             if (attempt >= 300) {
-                this.log.warn('Authoring runtime did not become ready; durability save wrapper not installed');
+                this.log.warn('Authoring runtime did not become ready; durability wrappers not installed');
                 return;
             }
 
@@ -67,11 +62,53 @@
             this._pollTimer = setTimeout(() => this._pollForAuthoringRuntime(attempt + 1), 100);
         }
 
+        _newSessionId() {
+            try {
+                if (global.crypto?.randomUUID) return global.crypto.randomUUID();
+            } catch (_) {}
+            return `authoring_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        }
+
+        _currentCuratorId(uiManager = global.uiManager) {
+            const conceptModule = uiManager?.conceptModule;
+            const resolved = conceptModule?.resolveCuratorId?.();
+            if (resolved) return resolved;
+            const profile = global.CuratorProfile?.getCurrentCurator?.();
+            return profile?.curator_id || uiManager?.currentCurator?.id || null;
+        }
+
+        async _getNewAuthoringSession(curatorId, uiManager) {
+            if (uiManager?.__offlineAuthoringSessionId) {
+                return uiManager.__offlineAuthoringSessionId;
+            }
+
+            const key = `offline_authoring_session:${curatorId}`;
+            let sessionId = null;
+            try {
+                sessionId = await global.DataStore?.getSetting?.(key, null);
+            } catch (_) {}
+            if (!sessionId) {
+                sessionId = this._newSessionId();
+                try {
+                    await global.DataStore?.setSetting?.(key, sessionId);
+                } catch (_) {}
+            }
+            if (uiManager) uiManager.__offlineAuthoringSessionId = sessionId;
+            return sessionId;
+        }
+
+        async _clearNewAuthoringSession(curatorId, uiManager) {
+            if (uiManager) uiManager.__offlineAuthoringSessionId = null;
+            if (!curatorId) return;
+            try {
+                await global.DataStore?.setSetting?.(`offline_authoring_session:${curatorId}`, null);
+            } catch (_) {}
+        }
+
         /**
-         * There were two independent destructive authorities: DatabaseManager
-         * (which checks _hasUnsavedWork) and legacy main.js helpers (which did
-         * not). Put a hard boundary at IDBFactory.deleteDatabase so a direct
-         * call can no longer bypass the guarded recovery path.
+         * There were two destructive authorities: DatabaseManager (guarded)
+         * and legacy main.js helpers (unguarded). Put a hard boundary at
+         * IDBFactory.deleteDatabase so direct calls cannot bypass preservation.
          */
         installDatabaseDestructionGuard() {
             if (this._dbDestructionGuardInstalled || !global.indexedDB?.deleteDatabase) return;
@@ -119,19 +156,11 @@
                 prototype[methodName] = wrapped;
             };
 
-            // Both methods already consult DatabaseManager._hasUnsavedWork
-            // before their nuclear delete. Authorization only removes the
-            // second, accidental legacy authority; it does not weaken guards.
             for (const methodName of ['_autoReset', 'attemptRecovery']) {
                 wrapAuthorizedDelete(methodName);
             }
         }
 
-        /**
-         * Data Management exposes an intentional reset action. It is separate
-         * from automatic recovery and is allowed only for the duration of the
-         * explicit resetDatabase call rather than reopening global deletion.
-         */
         installExplicitResetAuthorization() {
             const store = global.DataStore || global.dataStore;
             if (!store || this._explicitResetInstalled || store.__offlineDurabilityResetInstalled) return;
@@ -155,9 +184,7 @@
 
         installSafeBulkAudioCleanup() {
             const manager = global.PendingAudioManager;
-            if (!manager || this._audioCleanupInstalled || manager.__offlineDurabilityBulkCleanupInstalled) {
-                return;
-            }
+            if (!manager || this._audioCleanupInstalled || manager.__offlineDurabilityBulkCleanupInstalled) return;
 
             const originalDeleteAudios = manager.deleteAudios?.bind(manager);
             if (!originalDeleteAudios || typeof manager.getAudios !== 'function') return;
@@ -171,9 +198,7 @@
                 const safeFilter = { ...(filter || {}) };
                 delete safeFilter.force;
 
-                if (force) {
-                    return originalDeleteAudios(safeFilter);
-                }
+                if (force) return originalDeleteAudios(safeFilter);
 
                 const audios = await manager.getAudios(safeFilter);
                 const deletable = audios.filter((audio) => manager.canDeleteAudio?.(audio) === true);
@@ -190,11 +215,185 @@
             };
         }
 
-        installSaveDurability(uiManager) {
+        /**
+         * Replace the legacy create-only autosave. Existing Curation edits,
+         * notes, photos and field-clears are first-class draft state too.
+         */
+        installDurableDraftAutosave(uiManager) {
             const conceptModule = uiManager?.conceptModule;
-            if (!conceptModule?.saveRestaurant || this._saveInstalled || conceptModule.__offlineDurabilitySaveInstalled) {
+            if (!conceptModule || this._draftAutosaveInstalled || conceptModule.__offlineDurabilityDraftAutosaveInstalled) {
                 return;
             }
+
+            conceptModule.__offlineDurabilityOriginalAutoSaveDraft = conceptModule.autoSaveDraft?.bind(conceptModule) || null;
+            conceptModule.__offlineDurabilityDraftAutosaveInstalled = true;
+            this._draftAutosaveInstalled = true;
+
+            conceptModule.autoSaveDraft = async () => {
+                try {
+                    const draftManager = global.DraftRestaurantManager;
+                    if (!draftManager?.dataStorage?.db || !uiManager) return;
+
+                    const curatorId = this._currentCuratorId(uiManager);
+                    if (!curatorId) return;
+
+                    const currentCuration = uiManager.restaurantModule?.currentCuration || null;
+                    const targetCurationId = currentCuration?.curation_id || null;
+                    const targetEntityId = currentCuration?.entity_id ||
+                        uiManager.importedEntityId ||
+                        uiManager.editingRestaurantId ||
+                        null;
+                    const sessionId = targetCurationId
+                        ? `curation:${targetCurationId}`
+                        : await this._getNewAuthoringSession(curatorId, uiManager);
+
+                    const draftData = {
+                        sessionId,
+                        targetCurationId,
+                        targetEntityId,
+                        name: document.getElementById('restaurant-name')?.value?.trim() || '',
+                        transcription: document.getElementById('restaurant-transcription')?.value || '',
+                        description: document.getElementById('restaurant-description')?.value || '',
+                        concepts: Array.isArray(uiManager.currentConcepts) ? uiManager.currentConcepts : [],
+                        location: uiManager.currentLocation || null,
+                        photos: Array.isArray(uiManager.currentPhotos) ? uiManager.currentPhotos : [],
+                        notes: {
+                            public: document.getElementById('curation-notes-public')?.value || '',
+                            private: document.getElementById('curation-notes-private')?.value || ''
+                        },
+                        hasAudio: Boolean(uiManager.recordingModule?.currentAudioId)
+                    };
+
+                    const meaningful = Boolean(
+                        targetCurationId ||
+                        draftData.name ||
+                        draftData.transcription ||
+                        draftData.description ||
+                        draftData.notes.public ||
+                        draftData.notes.private ||
+                        draftData.concepts.length ||
+                        draftData.location ||
+                        draftData.photos.length ||
+                        draftData.hasAudio
+                    );
+                    if (!meaningful) return;
+
+                    // Serialize draft resolution: two input events before the
+                    // first IndexedDB add resolves must not create two sessions.
+                    const resolveDraft = async () => draftManager.getOrCreateCurrentDraft(curatorId, {
+                        sessionId,
+                        targetCurationId,
+                        targetEntityId
+                    });
+                    this._draftResolvePromise = (this._draftResolvePromise || Promise.resolve())
+                        .then(resolveDraft, resolveDraft);
+                    const draftId = await this._draftResolvePromise;
+                    await draftManager.autoSaveDraft(draftId, draftData);
+                } catch (error) {
+                    this.log.warn('Durable draft autosave failed:', error);
+                }
+            };
+
+            for (const id of ['curation-notes-public', 'curation-notes-private']) {
+                const field = document.getElementById(id);
+                if (!field || field.__offlineDurabilityAutosaveBound) continue;
+                field.__offlineDurabilityAutosaveBound = true;
+                field.addEventListener('input', () => conceptModule.autoSaveDraft());
+            }
+        }
+
+        /**
+         * Existing-Curation drafts are deterministic (`curation:<id>`), so a
+         * reload can recover unsaved edits without guessing from curator recency.
+         */
+        installEditDraftRestore(uiManager) {
+            if (!uiManager?.editCuration || this._editRestoreInstalled || uiManager.__offlineDurabilityEditRestoreInstalled) {
+                return;
+            }
+
+            const originalEdit = uiManager.editCuration.bind(uiManager);
+            uiManager.__offlineDurabilityEditRestoreInstalled = true;
+            uiManager.__offlineDurabilityOriginalEditCuration = originalEdit;
+            this._editRestoreInstalled = true;
+
+            uiManager.editCuration = async (curation, ...args) => {
+                const result = await originalEdit(curation, ...args);
+                await this.restoreDraftForTarget(curation, uiManager);
+                return result;
+            };
+        }
+
+        async restoreDraftForTarget(curation, uiManager = global.uiManager) {
+            const targetCurationId = curation?.curation_id || null;
+            if (!targetCurationId) return false;
+            const curatorId = this._currentCuratorId(uiManager);
+            const draftManager = global.DraftRestaurantManager;
+            if (!curatorId || !draftManager?.getDrafts) return false;
+
+            const sessionId = `curation:${targetCurationId}`;
+            const drafts = await draftManager.getDrafts(curatorId);
+            const draft = drafts
+                .filter((candidate) =>
+                    !candidate.savedCurationId &&
+                    (candidate.sessionId === sessionId || candidate.targetCurationId === targetCurationId)
+                )
+                .sort((a, b) => new Date(b.lastModified || 0) - new Date(a.lastModified || 0))[0] || null;
+
+            if (!draft || !draftManager.hasData?.(draft)) return false;
+
+            draftManager.currentDraftId = draft.id;
+            draftManager.currentSessionId = draft.sessionId || sessionId;
+
+            const setValue = (id, value) => {
+                const field = document.getElementById(id);
+                if (field && value !== undefined && value !== null) field.value = value;
+            };
+            setValue('restaurant-name', draft.name || '');
+            setValue('restaurant-transcription', draft.transcription || '');
+            setValue('restaurant-description', draft.description || '');
+            setValue('curation-notes-public', draft.notes?.public || '');
+            setValue('curation-notes-private', draft.notes?.private || '');
+            uiManager.currentConcepts = draft.concepts || [];
+            uiManager.currentLocation = draft.location || null;
+            uiManager.currentPhotos = draft.photos || [];
+            uiManager.formIsDirty = true;
+
+            try {
+                await uiManager.conceptModule?.renderConcepts?.();
+                uiManager.conceptModule?.updateDescriptionWordCount?.();
+            } catch (error) {
+                this.log.warn('Draft restored but editor rerender failed:', error);
+            }
+            global.uiUtils?.showNotification?.('Unsaved offline edits restored', 'info');
+            return true;
+        }
+
+        /**
+         * Starting an explicit new Curation creates a new session without
+         * destroying the previous unfinished draft.
+         */
+        installNewCurationSessionBoundary(uiManager) {
+            const workspace = global.curationWorkspace;
+            if (!workspace?.prepareNewCurationState || this._newSessionBoundaryInstalled || workspace.__offlineDurabilitySessionBoundaryInstalled) {
+                return;
+            }
+            const originalPrepare = workspace.prepareNewCurationState.bind(workspace);
+            workspace.__offlineDurabilitySessionBoundaryInstalled = true;
+            workspace.__offlineDurabilityOriginalPrepareNewCurationState = originalPrepare;
+            this._newSessionBoundaryInstalled = true;
+
+            workspace.prepareNewCurationState = (...args) => {
+                const curatorId = this._currentCuratorId(uiManager);
+                global.DraftRestaurantManager?.flushPendingSave?.().catch?.(() => {});
+                global.DraftRestaurantManager?.clearCurrentDraft?.();
+                this._clearNewAuthoringSession(curatorId, uiManager).catch(() => {});
+                return originalPrepare(...args);
+            };
+        }
+
+        installSaveDurability(uiManager) {
+            const conceptModule = uiManager?.conceptModule;
+            if (!conceptModule?.saveRestaurant || this._saveInstalled || conceptModule.__offlineDurabilitySaveInstalled) return;
 
             const originalSave = conceptModule.saveRestaurant.bind(conceptModule);
             conceptModule.__offlineDurabilitySaveInstalled = true;
@@ -206,6 +405,8 @@
                 const pendingAudio = global.PendingAudioManager || null;
                 const draftId = draftManager?.currentDraftId || null;
                 const audioSourceId = uiManager?.recordingModule?.currentAudioId || null;
+                const targetBeforeSave = uiManager.restaurantModule?.currentCuration?.curation_id || null;
+                const curatorId = this._currentCuratorId(uiManager);
 
                 try {
                     await draftManager?.flushPendingSave?.();
@@ -240,7 +441,6 @@
                                 isImport: false
                             });
                         }
-
                         capturedCuration = curation;
                         return originalPut.call(curationTable, curation, ...putArgs);
                     };
@@ -259,12 +459,9 @@
 
                 try {
                     const saved = await originalSave(...args);
-                    if (saved !== true || !capturedCuration?.curation_id) {
-                        return saved;
-                    }
+                    if (saved !== true || !capturedCuration?.curation_id) return saved;
 
                     const curationId = capturedCuration.curation_id;
-
                     if (pendingAudio && draftId) {
                         await pendingAudio.associateWithCuration?.({ draftId }, curationId);
                     }
@@ -279,7 +476,6 @@
                             String(source?.source_id ?? '') === String(audioSourceId)
                         )
                     );
-
                     if (exactAudioPersisted && pendingAudio?.markTranscriptPersisted) {
                         await pendingAudio.markTranscriptPersisted(audioSourceId, { curationId });
                     }
@@ -288,24 +484,25 @@
                         await this.preserveDraftAfterSave(draftId, curationId, draftSnapshot);
                     }
 
+                    // A new saved item must not make the next New Curation
+                    // reuse its old authoring session. A photo-preserved draft
+                    // remains addressable by id but is no longer current.
+                    if (!targetBeforeSave) {
+                        await this._clearNewAuthoringSession(curatorId, uiManager);
+                    }
+                    draftManager?.clearCurrentDraft?.();
                     await pendingAudio?.prune?.();
                     return saved;
                 } finally {
-                    if (curationTable && typeof originalPut === 'function') {
-                        curationTable.put = originalPut;
-                    }
-                    if (originalDeleteDraft && hasDraftPhotos) {
-                        draftManager.deleteDraft = originalDeleteDraft;
-                    }
+                    if (curationTable && typeof originalPut === 'function') curationTable.put = originalPut;
+                    if (originalDeleteDraft && hasDraftPhotos) draftManager.deleteDraft = originalDeleteDraft;
                 }
             };
         }
 
         async preserveDraftAfterSave(draftId, curationId, draftSnapshot) {
-            const table = global.DataStore?.db?.draftRestaurants ||
-                global.dataStore?.db?.draftRestaurants || null;
+            const table = global.DataStore?.db?.draftRestaurants || global.dataStore?.db?.draftRestaurants || null;
             if (!table?.update || !draftId) return false;
-
             await table.update(draftId, {
                 savedCurationId: curationId,
                 preservedForMedia: true,
@@ -322,9 +519,7 @@
             const flush = () => {
                 try {
                     const pending = global.DraftRestaurantManager?.flushPendingSave?.();
-                    if (pending?.catch) {
-                        pending.catch((error) => this.log.warn('Lifecycle draft flush failed:', error));
-                    }
+                    if (pending?.catch) pending.catch((error) => this.log.warn('Lifecycle draft flush failed:', error));
                 } catch (error) {
                     this.log.warn('Lifecycle draft flush failed:', error);
                 }
@@ -338,8 +533,6 @@
     }
 
     global.OfflineDurabilityModule = OfflineDurabilityModule;
-    if (!global.offlineDurability) {
-        global.offlineDurability = new OfflineDurabilityModule();
-    }
+    if (!global.offlineDurability) global.offlineDurability = new OfflineDurabilityModule();
     global.offlineDurability.start();
 })(window);
