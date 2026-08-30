@@ -105,6 +105,11 @@
             // slow connection and makes cached Entities the first-class path.
             this.renderResults(modal, { local: localEntities, remote: [] }, false, { loadingRemote: true });
 
+            // Never let a failed lookup reuse places from a previous search.
+            // FindEntityModal catches its own request errors, so without this
+            // reset currentResults could remain stale and be merged as if the
+            // new request had succeeded.
+            modal.currentResults = [];
             try {
                 await originalPerformSearch.apply(modal, args);
             } catch (error) {
