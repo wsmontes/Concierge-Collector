@@ -31,12 +31,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/capture", tags=["Capture"])
 
 
-# ── Pydantic models ─────────────────────────────────────────────────────────
-
-
 class CaptureRequest(BaseModel):
-    # max_length: 25 MiB de áudio ≈ 35M chars de base64 — acima disso é
-    # rejeitado pelo schema (sem tentar decodificar/transcrever payload gigante)
     audio: str = Field(
         ...,
         max_length=35_000_000,
@@ -75,9 +70,6 @@ class CaptureConfirmResponse(BaseModel):
     status: str = "created"
 
 
-# ── In-memory idempotency cache (bounded LRU via dict, ~1000 entries) ───────
-
-
 class _LRUDict:
     """Simple LRU dict for idempotency cache — bounded at maxsize."""
 
@@ -90,7 +82,6 @@ class _LRUDict:
 
     def set(self, key: str, value: Any):
         if len(self._data) >= self._maxsize:
-            # Evict oldest (first inserted)
             oldest = next(iter(self._data))
             del self._data[oldest]
         self._data[key] = value
@@ -98,15 +89,10 @@ class _LRUDict:
 
 _idempotency_cache = _LRUDict(maxsize=2000)
 
-# ── Capture state store (MongoDB) ────────────────────────────────────────────
-
 
 def _capture_collection(db: Database):
     """Get the capture_sessions collection."""
     return db["capture_sessions"]
-
-
-# ── AI helpers ───────────────────────────────────────────────────────────────
 
 
 def _transcribe(audio_base64: str, language: str = "pt-BR") -> str:
@@ -118,8 +104,6 @@ def _transcribe(audio_base64: str, language: str = "pt-BR") -> str:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
 
     client = openai.OpenAI(api_key=api_key)
-
-    # Write base64 to temp file
     audio_bytes = base64.b64decode(audio_base64)
     with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
         f.write(audio_bytes)
@@ -146,7 +130,7 @@ def _extract_restaurant_name(text: str) -> Optional[str]:
 
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        return None  # non-critical, fall through
+        return None
 
     client = openai.OpenAI(api_key=api_key, timeout=15)
 
@@ -179,7 +163,6 @@ def _match_entities(db: Database, restaurant_name: Optional[str]) -> List[Dict[s
 
     if restaurant_name:
         escaped_name = re.escape(restaurant_name)
-        # 1. Exact match
         exact = list(
             db.entities.find(
                 {"name": {"$regex": f"^{escaped_name}$", "$options": "i"}},
@@ -189,8 +172,6 @@ def _match_entities(db: Database, restaurant_name: Optional[str]) -> List[Dict[s
         entities.extend(exact)
 
     if not entities and restaurant_name:
-        # escaped_name already computed above
-        # 2. Partial match
         partial = list(
             db.entities.find(
                 {"name": {"$regex": escaped_name, "$options": "i"}},
@@ -199,7 +180,6 @@ def _match_entities(db: Database, restaurant_name: Optional[str]) -> List[Dict[s
         )
         entities.extend(partial)
 
-    # 3. If no matches found, try Google Places (only if name was extracted)
     if not entities and restaurant_name and os.getenv("GOOGLE_PLACES_API_KEY"):
         logger.info(f"No entities found for '{restaurant_name}', searching Google Places...")
         try:
@@ -231,7 +211,6 @@ def _match_entities(db: Database, restaurant_name: Optional[str]) -> List[Dict[s
         except Exception as e:
             logger.warning(f"Google Places search failed: {e}")
 
-    # Format results
     results = []
     for i, ent in enumerate(entities):
         score = 0.97 - (i * 0.1) if ent.get("source") != "google_places" else (ent.get("score", 0.7) - (i * 0.1))
@@ -297,7 +276,6 @@ def _extract_concepts(text: str, restaurant_name: Optional[str]) -> Dict[str, An
             max_tokens=300,
         )
         raw = resp.choices[0].message.content.strip()
-        # Strip markdown fences if present
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[-1]
             if raw.endswith("```"):
@@ -330,47 +308,28 @@ def _extract_city(place: Dict[str, Any]) -> str:
     return ""
 
 
-# ── Endpoints ────────────────────────────────────────────────────────────────
-
-
 @router.post("", response_model=CaptureResponse)
 async def capture(
     request: CaptureRequest,
     db: Database = Depends(get_database),
     auth: dict = Depends(verify_auth),
 ):
-    """
-    Upload audio to start a capture session.
-
-    Transcribes the audio, extracts the restaurant name, matches against
-    known entities (or searches Google Places), and extracts curation concepts.
-    Returns everything needed for the curator to confirm the match.
-
-    Idempotent: re-sending the same idempotency_key returns the cached result.
-    Does NOT create a curation — that happens on /capture/{capture_id}/confirm.
-    """
+    """Upload audio to start a capture session."""
     t0 = time.time()
 
-    # ── IDOR: o curator_id do corpo vira o dono da curadoria criada no
-    # confirm — só o próprio usuário autenticado (ou admin via API key/role)
-    # pode capturar em seu nome.
     if not is_admin_auth(auth) and request.curator_id != auth.get("user"):
         raise HTTPException(
             status_code=403,
             detail="curator_id must match the authenticated user",
         )
 
-    # ── Idempotency check ──
     cached = _idempotency_cache.get(request.idempotency_key)
     if cached:
         logger.info(f"Capture idempotency hit: {request.idempotency_key}")
         return cached
 
-    # ── 1. Transcribe ──
     logger.info(f"Transcribing audio ({len(request.audio)} chars base64)...")
     try:
-        # _transcribe é síncrono (SDK OpenAI bloqueante) — thread para não
-        # travar o event loop (1 worker no Render atende todos os requests).
         transcription = await asyncio.to_thread(_transcribe, request.audio, request.language)
         if not transcription:
             raise HTTPException(status_code=422, detail="Could not transcribe audio")
@@ -381,22 +340,13 @@ async def capture(
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
     logger.info(f"Transcription: {transcription[:200]}...")
-
-    # ── 2. Extract restaurant name (OpenAI síncrono → thread) ──
     restaurant_name = await asyncio.to_thread(_extract_restaurant_name, transcription)
     logger.info(f"Extracted name: {restaurant_name}")
-
-    # ── 3. Match entities ──
     entities = _match_entities(db, restaurant_name)
     logger.info(f"Found {len(entities)} entity matches")
-
-    # ── 4. Extract concepts (OpenAI síncrono → thread) ──
     concepts = await asyncio.to_thread(_extract_concepts, transcription, restaurant_name)
     logger.info(f"Extracted concepts: {list(concepts.keys())}")
 
-    # ── 5. Store capture session ──
-    # Persist to MongoDB FIRST, then cache on success.
-    # If MongoDB is down, we return 503 without polluting the cache.
     col = _capture_collection(db)
     session_doc = {
         "_id": request.idempotency_key,
@@ -425,9 +375,6 @@ async def capture(
         entities=entities,
         concepts=concepts,
     )
-
-    # Now that MongoDB succeeded, populate the idempotency cache
-    # Include curator_id so cache fallback in confirm preserves provenance
     cache_entry = result.model_dump()
     cache_entry["curator_id"] = request.curator_id
     _idempotency_cache.set(request.idempotency_key, cache_entry)
@@ -444,20 +391,12 @@ async def confirm_capture(
     db: Database = Depends(get_database),
     auth: dict = Depends(verify_auth),
 ):
-    """
-    Confirm a capture session and create the curation.
-
-    Retrieves the stored capture state (transcription + concepts), resolves the
-    chosen entity (creates if from Google Places), creates the curation, and
-    returns the curation ID.
-    """
-    # ── Idempotency check ──
+    """Confirm a capture session and create the curation."""
     confirm_key = f"confirm:{request.idempotency_key}"
     cached_confirm = _idempotency_cache.get(confirm_key)
     if cached_confirm:
         return cached_confirm
 
-    # ── Retrieve capture session ──
     col = _capture_collection(db)
     try:
         session = col.find_one({"_id": capture_id})
@@ -465,15 +404,12 @@ async def confirm_capture(
         logger.warning(f"MongoDB unavailable during confirm, trying cache: {e}")
         session = None
     if not session:
-        # Try cache fallback
         cached = _idempotency_cache.get(capture_id)
         if cached:
             session = cached
         else:
             raise HTTPException(status_code=404, detail="Capture session not found")
 
-    # ── IDOR (auditoria ago/2026): só o dono da sessão (ou admin) confirma.
-    # A criação já valida curator_id == auth.user; o confirm NÃO fazia.
     if not is_admin_auth(auth):
         from app.services.curation_service import _is_placeholder_identity
 
@@ -486,7 +422,6 @@ async def confirm_capture(
     concepts = session.get("concepts", {})
     curator_id = session.get("curator_id", "unknown")
 
-    # ── Resolve entity ──
     matched_entity = None
     for e in entities:
         if e.get("entity_id") == request.entity_id:
@@ -496,12 +431,9 @@ async def confirm_capture(
     if not matched_entity:
         raise HTTPException(status_code=422, detail="Entity not in capture matches")
 
-    # Ensure entity exists in the entities collection
     entity_doc = db.entities.find_one({"_id": request.entity_id})
     if not entity_doc:
-        # Create from Google Places match
         if matched_entity.get("source") == "google_places" and matched_entity.get("place_id"):
-            # Fetch full place details from Google
             new_entity = _create_entity_from_place(matched_entity, db)
             if new_entity:
                 entity_doc = new_entity
@@ -513,7 +445,6 @@ async def confirm_capture(
                 )
 
         if not entity_doc:
-            # Last resort: create a minimal entity
             entity_doc = {
                 "_id": request.entity_id,
                 "entity_id": request.entity_id,
@@ -528,11 +459,9 @@ async def confirm_capture(
             try:
                 db.entities.insert_one(entity_doc)
             except DuplicateKeyError:
-                # Another parallel confirm already created this entity
                 entity_doc = db.entities.find_one({"_id": request.entity_id})
                 logger.info(f"Entity {request.entity_id} already exists (race), reusing")
 
-    # ── Create curation ──
     now = datetime.now(timezone.utc)
     curation_id = f"cur_{capture_id[:16]}"
 
@@ -542,12 +471,15 @@ async def confirm_capture(
         "entity_id": request.entity_id,
         "curator_id": curator_id,
         "curator": {"id": curator_id, "name": curator_id},
-        "status": "linked",
+        "curator_type": "human",
+        # Linkage lives only in entity_id. Workflow starts as draft.
+        "status": "draft",
         "restaurant_name": matched_entity.get("name") or session.get("restaurant_name"),
         "categories": concepts if isinstance(concepts, dict) else {},
         "notes": {"public": transcription},
         "transcript": transcription,
-        "sources": {"audio": [{"created_at": now.isoformat()}]},
+        # capture_id is the persisted evidence that this text came from audio.
+        "sources": {"audio": [{"source_id": capture_id, "created_at": now.isoformat()}]},
         "createdBy": curator_id,
         "updatedBy": curator_id,
         "createdAt": now,
@@ -555,7 +487,6 @@ async def confirm_capture(
         "version": 1,
     }
 
-    # Denormalize city/type
     denorm = denormalize_curation_location(entity_doc)
     curation_doc.update(denorm)
     ensure_catalog_sequence(db, curation_doc)
@@ -563,11 +494,6 @@ async def confirm_capture(
     try:
         db.curations.insert_one(curation_doc)
     except DuplicateKeyError:
-        # A curadoria JÁ EXISTE — pode ser retry de um confirm que sucedeu
-        # (cache de idempotência é em memória e evicta em restart): NÃO
-        # sobrescrever com o snapshot cru. Um $set aqui clobberaria edições
-        # do curator feitas desde o confirm original e resetaria version=1
-        # (409 em cascata para outros devices).
         existing = db.curations.find_one({"_id": curation_id})
         if existing and existing.get("version", 1) > 1:
             logger.warning(
@@ -575,17 +501,14 @@ async def confirm_capture(
                 f"{existing['version']} (retry de confirm) — preservando edições"
             )
         elif existing is None:
-            # corrida real: outro confirm inseriu entre o check e o insert
             db.curations.update_one(
                 {"_id": curation_id},
                 {"$set": {k: v for k, v in curation_doc.items() if k not in ("_id", "createdAt")}},
             )
 
-    # ── Mark session as done ──
     try:
         col.update_one({"_id": capture_id}, {"$set": {"status": "confirmed"}})
     except Exception as e:
-        # Curation already created — don't fail the request over status update
         logger.warning(f"Failed to update session status to confirmed: {e}")
 
     result = CaptureConfirmResponse(
