@@ -5,7 +5,6 @@ import { describe, test, expect } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const conceptSource = readFileSync(path.resolve(__dirname, '../scripts/modules/conceptModule.js'), 'utf8');
-const audioSource = readFileSync(path.resolve(__dirname, '../scripts/modules/pendingAudioManager.js'), 'utf8');
 const durabilityPath = path.resolve(__dirname, '../scripts/modules/offlineDurabilityModule.js');
 const durabilitySource = existsSync(durabilityPath) ? readFileSync(durabilityPath, 'utf8') : '';
 
@@ -15,9 +14,10 @@ describe('Curation Save — offline media durability contract', () => {
     expect(durabilitySource).toContain('installSaveDurability');
   });
 
-  test('treats legacy bulk cleanup calls as safe cleanup, not authority to delete required audio', () => {
-    expect(audioSource).toContain('canDeleteAudio');
-    expect(audioSource).toMatch(/deleteAudios\([\s\S]*canDeleteAudio/);
+  test('turns legacy bulk cleanup calls into safe cleanup, not authority to delete required audio', () => {
+    expect(durabilitySource).toContain('installSafeBulkAudioCleanup');
+    expect(durabilitySource).toContain('canDeleteAudio');
+    expect(durabilitySource).toContain('deleteAudios');
   });
 
   test('associates pending raw audio with the exact Curation captured by the local put', () => {
@@ -34,9 +34,6 @@ describe('Curation Save — offline media durability contract', () => {
 
   test('does not rely on transcript text as proof of new audio provenance', () => {
     expect(durabilitySource).not.toMatch(/audioSourceId\s*=\s*.*transcript/i);
-    // Legacy code still contains this inference; the durability wrapper must
-    // pass explicit `audioSourceId` into SourceUtils so it cannot create a new
-    // source from transcript text alone.
     expect(durabilitySource).toContain('audioSourceId');
     expect(conceptSource).toContain('SourceUtils.buildSourcesPayloadFromContext');
   });
