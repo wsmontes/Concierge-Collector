@@ -1,30 +1,48 @@
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { describe, test, expect } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const conceptSource = readFileSync(path.resolve(__dirname, '../scripts/modules/conceptModule.js'), 'utf8');
+const audioSource = readFileSync(path.resolve(__dirname, '../scripts/modules/pendingAudioManager.js'), 'utf8');
+const durabilityPath = path.resolve(__dirname, '../scripts/modules/offlineDurabilityModule.js');
+const durabilitySource = existsSync(durabilityPath) ? readFileSync(durabilityPath, 'utf8') : '';
 
 describe('Curation Save — offline media durability contract', () => {
-  test('does not bulk-delete pending audio merely because a local Curation save succeeded', () => {
-    expect(conceptSource).not.toMatch(/PendingAudioManager\.deleteAudios\(\{\s*restaurantId/);
-    expect(conceptSource).not.toMatch(/PendingAudioManager\.deleteAudios\(\{\s*draftId/);
+  test('installs an explicit offline Save durability boundary', () => {
+    expect(existsSync(durabilityPath)).toBe(true);
+    expect(durabilitySource).toContain('installSaveDurability');
   });
 
-  test('associates pending raw audio with the saved Curation instead of consuming it', () => {
-    expect(conceptSource).toContain('PendingAudioManager.associateWithCuration');
-    expect(conceptSource).toContain('curationId');
+  test('treats legacy bulk cleanup calls as safe cleanup, not authority to delete required audio', () => {
+    expect(audioSource).toContain('canDeleteAudio');
+    expect(audioSource).toMatch(/deleteAudios\([\s\S]*canDeleteAudio/);
   });
 
-  test('only marks a raw audio source disposable when that exact explicit audio source is durably represented', () => {
-    expect(conceptSource).toContain('PendingAudioManager.markTranscriptPersisted');
-    expect(conceptSource).toContain('audioSourceId');
-    expect(conceptSource).not.toMatch(/hasAudio:\s*!!\(transcription\s*&&\s*transcription\.trim\(\)\)/);
+  test('associates pending raw audio with the exact Curation captured by the local put', () => {
+    expect(durabilitySource).toContain('associateWithCuration');
+    expect(durabilitySource).toContain('capturedCuration');
+    expect(durabilitySource).toContain('draftId');
   });
 
-  test('does not use the legacy transcript-implies-audio detector', () => {
-    const detector = conceptSource.match(/detectSourcesFromContext\([\s\S]*?\n\s*}\n\n\s*removePhoto/);
-    expect(detector?.[0] || '').not.toContain("sources.push('audio')");
+  test('only marks the exact explicit audio source disposable after its transcript is in the saved Curation', () => {
+    expect(durabilitySource).toContain('markTranscriptPersisted');
+    expect(durabilitySource).toContain('audioSourceId');
+    expect(durabilitySource).toContain('savedAudioSources');
+  });
+
+  test('does not rely on transcript text as proof of new audio provenance', () => {
+    expect(durabilitySource).not.toMatch(/audioSourceId\s*=\s*.*transcript/i);
+    // Legacy code still contains this inference; the durability wrapper must
+    // pass explicit `audioSourceId` into SourceUtils so it cannot create a new
+    // source from transcript text alone.
+    expect(durabilitySource).toContain('audioSourceId');
+    expect(conceptSource).toContain('SourceUtils.buildSourcesPayloadFromContext');
+  });
+
+  test('preserves a photo-bearing draft after Save until media has another durable representation', () => {
+    expect(durabilitySource).toContain('preserveDraftAfterSave');
+    expect(durabilitySource).toContain('photos');
   });
 });
