@@ -5,6 +5,7 @@ import { describe, test, expect } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const policyPath = path.resolve(__dirname, '../scripts/services/syncSemanticPolicy.js');
+const bootstrapPath = path.resolve(__dirname, '../scripts/modules/offlinePart2Bootstrap.js');
 
 function loadPolicy() {
   const src = readFileSync(policyPath, 'utf8');
@@ -40,7 +41,10 @@ describe('SyncSemanticPolicy', () => {
 
   test('explicit structured audio provenance is preserved verbatim', () => {
     const Policy = loadPolicy();
-    const explicit = { audio: [{ source_id: 'src-1', transcript: 'spoken' }], web_research: ['https://example.com'] };
+    const explicit = {
+      audio: [{ source_id: 'src-1', transcript: 'spoken' }],
+      web_research: ['https://example.com']
+    };
     expect(Policy.normalizeSources({ sources: explicit })).toEqual(explicit);
   });
 
@@ -68,5 +72,13 @@ describe('SyncManager patch integration', () => {
     expect(src).toContain('cleanCurationForSync');
     expect(src).toContain('sanitizeCurationPatchPayload');
     expect(src).toContain('extractChangedFields');
+  });
+
+  test('is loaded by the Part 2 bootstrap and retries installation for late SyncManager class order', () => {
+    const policySrc = readFileSync(policyPath, 'utf8');
+    const bootstrapSrc = readFileSync(bootstrapPath, 'utf8');
+    expect(bootstrapSrc).toContain('SyncSemanticPolicy');
+    expect(policySrc).toContain('startInstall');
+    expect(policySrc).toContain('installSyncManagerGuards(runtime)');
   });
 });
