@@ -1,5 +1,5 @@
 /* Concierge Collector offline authoring shell */
-const CACHE_NAME = 'concierge-collector-shell-v1';
+const CACHE_NAME = 'concierge-collector-shell-v2';
 const MANIFEST_URL = './.manifest.json';
 const INDEX_URL = './index.html';
 
@@ -116,7 +116,16 @@ async function navigationResponse(request) {
 
 async function cacheFirst(request) {
   const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(request, { ignoreSearch: false });
+  const url = new URL(request.url);
+
+  // Prefer the exact URL first. The build manifest stores local assets without
+  // cache-busting query strings, while index.html may request ?v=... variants.
+  // For SAME-ORIGIN shell assets only, fall back to the bare cached resource.
+  // Never ignore query strings for remote dependencies or API traffic.
+  let cached = await cache.match(request, { ignoreSearch: false });
+  if (!cached && url.origin === self.location.origin) {
+    cached = await cache.match(request, { ignoreSearch: true });
+  }
   if (cached) return cached;
 
   try {
