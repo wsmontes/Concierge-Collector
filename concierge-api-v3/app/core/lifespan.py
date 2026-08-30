@@ -29,11 +29,14 @@ async def lifespan(app: FastAPI):
 
     db = get_database()
 
-    # Consumer distribution has its own least-privilege client. In production
-    # absence/unavailability is a boot failure rather than a fallback to the
-    # operational Mongo credential. Development tests override the dependency
-    # and therefore need no second Mongo server.
-    if settings.environment == "production" or settings.cms_mongodb_read_url:
+    # Consumer distribution has its own least-privilege client. CONEXÃO
+    # CONDICIONAL (decisão 2026-08-29): o CMS ainda não é deployado em
+    # produção — o startup da API não pode depender dele. Sem
+    # CMS_MONGODB_READ_URL o boot segue sem o client e os endpoints de
+    # distribution continuam fail-closed (get_cms_read_database levanta
+    # "CMS MongoDB not connected" quando usados). Development tests
+    # sobrescrevem a dependência e não precisam de segundo Mongo.
+    if settings.cms_mongodb_read_url:
         try:
             connect_cms_mongo()
         except Exception:
