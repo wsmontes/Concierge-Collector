@@ -4,7 +4,8 @@ import { fileURLToPath } from 'url';
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const src = readFileSync(path.resolve(__dirname, '../scripts/modules/conceptModule.js'), 'utf8');
+const conceptSrc = readFileSync(path.resolve(__dirname, '../scripts/modules/conceptModule.js'), 'utf8');
+const workspaceSrc = readFileSync(path.resolve(__dirname, '../scripts/modules/curationWorkspaceModule.js'), 'utf8');
 
 const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 const Logger = { module: () => logger };
@@ -18,9 +19,19 @@ function loadConceptModule() {
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     'window', 'document', 'Logger', 'SafetyUtils',
-    `${src}\nreturn ConceptModule;`
+    `${conceptSrc}\nreturn ConceptModule;`
   );
   return factory(window, document, Logger, SafetyUtils);
+}
+
+function loadWorkspaceModule() {
+  window.__CURATION_WORKSPACE_AUTO_INIT__ = false;
+  // eslint-disable-next-line no-new-func
+  const factory = new Function(
+    'window', 'document', 'MutationObserver',
+    `${workspaceSrc}\nreturn window.CurationWorkspaceModule;`
+  );
+  return factory(window, document, MutationObserver);
 }
 
 function editorDom({ name = 'Working place', transcript = 'A human review with enough useful material.' } = {}) {
@@ -61,6 +72,14 @@ function buildUiManager(overrides = {}) {
   };
 }
 
+function installWorkspaceSavePolicy(uiManager, conceptModule) {
+  const Workspace = loadWorkspaceModule();
+  uiManager.conceptModule = conceptModule;
+  const workspace = new Workspace(uiManager);
+  workspace.installSaveCompatibility();
+  return workspace;
+}
+
 beforeEach(() => {
   editorDom();
   SafetyUtils.showNotification.mockClear();
@@ -95,7 +114,8 @@ afterEach(() => {
   for (const key of [
     'AuthService', 'CuratorProfile', 'SourceUtils', 'DataStore', 'dataStore',
     'SyncManager', 'PendingAudioManager', 'DraftRestaurantManager',
-    'entityModule', 'navigationManager'
+    'entityModule', 'navigationManager', '__CURATION_WORKSPACE_AUTO_INIT__',
+    'CurationWorkspaceModule'
   ]) delete window[key];
 });
 
@@ -104,6 +124,7 @@ describe('Curation save contract — source first', () => {
     const ConceptModule = loadConceptModule();
     const uiManager = buildUiManager({ currentConcepts: [] });
     const module = new ConceptModule(uiManager);
+    installWorkspaceSavePolicy(uiManager, module);
 
     const saved = await module.saveRestaurant();
 
@@ -126,6 +147,7 @@ describe('Curation save contract — source first', () => {
       currentConcepts: [{ category: 'Cuisine', value: 'Italian' }]
     });
     const module = new ConceptModule(uiManager);
+    installWorkspaceSavePolicy(uiManager, module);
 
     const saved = await module.saveRestaurant();
 
