@@ -1,11 +1,11 @@
 import { cp, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join, relative, resolve } from 'node:path'
+import { basename, join, relative, resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '..')
 const outputDir = join(root, 'dist', 'collector')
-const inputs = ['index.html', 'images', 'scripts', 'styles']
+const inputs = ['index.html', 'service-worker.js', 'images', 'scripts', 'styles']
 const externalHosts = new Set(['fonts.googleapis.com', 'fonts.gstatic.com', 'cdn.jsdelivr.net'])
 
 async function fileManifest(directory) {
@@ -37,8 +37,6 @@ function localReference(reference) {
 }
 
 async function validateHtml(directory) {
-  // A legacy, intentionally disabled module appears inside an HTML comment;
-  // it is not a browser dependency and must not make the release fail.
   const html = (await readFile(join(directory, 'index.html'), 'utf8')).replace(/<!--[\s\S]*?-->/g, '')
   const references = [...html.matchAll(/(?:src|href)=["']([^"']+)["']/gi)].map((match) => localReference(match[1]))
   for (const reference of references.filter(Boolean)) {
