@@ -2,6 +2,7 @@ import { cp, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
+import { stampLocalAssetVersions } from './build/cacheBustLocalAssets.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const outputDir = join(root, 'dist', 'collector')
@@ -51,7 +52,13 @@ async function build(destination) {
   await rm(destination, { force: true, recursive: true })
   await mkdir(destination, { recursive: true })
   for (const input of inputs) await cp(join(root, input), join(destination, basename(input)), { recursive: true })
+
+  // Production cache-busting is content-addressed. The source index may keep
+  // legacy/manual ?v values for development, but dist always ships hashes of
+  // the exact local asset bytes copied above.
+  await stampLocalAssetVersions(destination)
   await validateHtml(destination)
+
   const manifest = await fileManifest(destination)
   await writeFile(join(destination, '.manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   return manifest
