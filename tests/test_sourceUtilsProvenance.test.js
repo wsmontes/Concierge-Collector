@@ -16,10 +16,12 @@ function loadSourceUtils() {
 
 beforeEach(() => {
   delete window.SourceUtils;
+  delete window.uiManager;
 });
 
 afterEach(() => {
   delete window.SourceUtils;
+  delete window.uiManager;
 });
 
 describe('SourceUtils — provenance-aware source detection', () => {
@@ -59,7 +61,7 @@ describe('SourceUtils — provenance-aware source detection', () => {
 });
 
 describe('SourceUtils — source persistence', () => {
-  test('does not invent audio for transcript text when no real recording was captured', () => {
+  test('does not invent audio for transcript text even if a legacy caller passes hasAudio=true', () => {
     const SourceUtils = loadSourceUtils();
     const existingSources = {
       web_research: ['https://example.com/review']
@@ -67,12 +69,26 @@ describe('SourceUtils — source persistence', () => {
 
     const sources = SourceUtils.buildSourcesPayloadFromContext({
       existingSources,
-      hasAudio: false,
+      hasAudio: true,
       transcript: 'Research text that happens to live in transcript.'
     });
 
     expect(sources.web_research).toEqual(existingSources.web_research);
     expect(sources.audio).toBeUndefined();
+  });
+
+  test('uses the persisted RecordingModule audio id as explicit evidence for a new voice source', () => {
+    window.uiManager = { recordingModule: { currentAudioId: 77 } };
+    const SourceUtils = loadSourceUtils();
+
+    const sources = SourceUtils.buildSourcesPayloadFromContext({
+      existingSources: {},
+      hasAudio: true,
+      transcript: 'Real spoken review'
+    });
+
+    expect(sources.audio).toHaveLength(1);
+    expect(sources.audio[0]).toMatchObject({ source_id: 77, transcript: 'Real spoken review' });
   });
 
   test('appends a newly captured recording without replacing previous audio history', () => {
