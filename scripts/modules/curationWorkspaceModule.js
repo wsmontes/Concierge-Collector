@@ -16,6 +16,7 @@ class CurationWorkspaceModule {
         this.sections = {};
         this._conceptObserver = null;
         this._visibilityObserver = null;
+        this._legacyIndicatorObserver = null;
         this._installed = false;
     }
 
@@ -308,6 +309,32 @@ class CurationWorkspaceModule {
         const saveLabel = save?.querySelector('span:last-child');
         if (saveLabel) saveLabel.textContent = isEntityEdit ? 'Save Entity' : 'Save Curation';
         if (save) save.setAttribute('aria-label', isEntityEdit ? 'Save entity' : 'Save curation');
+    }
+
+    suppressLegacyLinkedIndicator() {
+        const legacyIndicator = document.getElementById('linked-entity-indicator');
+        if (!legacyIndicator || this.uiManager?.isEditingEntity) return;
+        legacyIndicator.classList.add('hidden');
+    }
+
+    observeLegacyLinkedIndicator(host) {
+        this._legacyIndicatorObserver?.disconnect();
+        if (!host || typeof MutationObserver === 'undefined') return;
+
+        this._legacyIndicatorObserver = new MutationObserver(() => {
+            if (this.uiManager?.isEditingEntity) return;
+            const legacyIndicator = document.getElementById('linked-entity-indicator');
+            if (legacyIndicator && !legacyIndicator.classList.contains('hidden')) {
+                legacyIndicator.classList.add('hidden');
+            }
+        });
+        this._legacyIndicatorObserver.observe(host, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['class']
+        });
+        this.suppressLegacyLinkedIndicator();
     }
 
     async resolveEntity(entityId, suppliedEntity = null) {
@@ -666,6 +693,7 @@ class CurationWorkspaceModule {
 
         this.renderMode();
         this.renderAbout();
+        this.suppressLegacyLinkedIndicator();
         if (!this.uiManager?.isEditingEntity) {
             this.renderCaptureState();
             this.syncRecorderIntoCapture();
@@ -694,6 +722,7 @@ class CurationWorkspaceModule {
         this.installSaveCompatibility();
 
         const host = document.getElementById('concepts-section');
+        this.observeLegacyLinkedIndicator(host);
         if (host && typeof MutationObserver !== 'undefined') {
             this._visibilityObserver = new MutationObserver(() => {
                 if (!host.classList.contains('hidden')) {
