@@ -1,12 +1,11 @@
 /**
- * SourceUtils - Standardized logic for Curation Sources
- * 
- * Centralizes the definition, detection, and UI mapping of data sources.
- * Prevents ad-hoc string usage and ensures consistent UI representation.
+ * SourceUtils - Standardized logic for Curation Sources and semantic truth.
+ *
+ * Provenance, linkage and authorship must come from explicit domain fields.
+ * Content and display context are never allowed to reconstruct those facts.
  */
 
 const SourceUtils = (() => {
-    // 1. Define Standard Source Constants (Backend Contract)
     const SCOPES = {
         AUDIO: 'audio',
         IMAGE: 'image',
@@ -17,7 +16,6 @@ const SourceUtils = (() => {
         MANUAL: 'manual'
     };
 
-    // 2. Define UI Mappings (Frontend Representation)
     const UI_CONFIG = {
         [SCOPES.AUDIO]: {
             label: 'Voice Note',
@@ -56,15 +54,41 @@ const SourceUtils = (() => {
         }
     };
 
+    function hasMeaningfulId(value) {
+        return value !== null && value !== undefined && String(value).trim() !== '';
+    }
+
+    /** Linkage truth: persisted Curation.entity_id only. */
+    function isLinkedCuration(curation) {
+        return hasMeaningfulId(curation?.entity_id);
+    }
+
+    /** Authorship truth: explicit curator_type; legacy absence defaults human. */
+    function getCuratorType(curation) {
+        return curation?.curator_type === 'synthetic' ? 'synthetic' : 'human';
+    }
+
+    function getCuratorIcon(curation) {
+        return getCuratorType(curation) === 'synthetic' ? 'smart_toy' : 'person';
+    }
+
+    /** Entity provenance truth with shape-compatible Google Places ids. */
+    function getEntitySource(entity) {
+        const explicit = entity?.data?.source || entity?.source;
+        if (explicit && String(explicit).trim()) return String(explicit).trim();
+        if (
+            hasMeaningfulId(entity?.data?.place_id) ||
+            hasMeaningfulId(entity?.data?.google_place_id) ||
+            hasMeaningfulId(entity?.place_id)
+        ) {
+            return SCOPES.GOOGLE;
+        }
+        return SCOPES.MANUAL;
+    }
+
     /**
-     * Detects the primary source of a curation based on its provenance.
+     * Detects the primary source of a curation based on provenance.
      * Explicit source metadata always wins over content heuristics.
-     * Priority: Audio > Image > Text > Google > Import > Web Research > Manual.
-     *
-     * A transcript is not proof of audio: synthetic web research also stores
-     * research material in the transcript field. Transcript-as-audio therefore
-     * exists only as a compatibility fallback for legacy records that have no
-     * explicit source provenance at all.
      */
     function detectSource(curation, entity) {
         const sources = curation.sources || [];
@@ -89,6 +113,7 @@ const SourceUtils = (() => {
             if (Array.isArray(sources.web_research) && sources.web_research.length > 0) return UI_CONFIG[SCOPES.WEB_RESEARCH];
             if (Array.isArray(sources.manual) && sources.manual.length > 0) return UI_CONFIG[SCOPES.MANUAL];
 
+            // Unknown-but-explicit provenance must never be reinterpreted as audio.
             if (Object.keys(sources).length > 0) return UI_CONFIG[SCOPES.MANUAL];
         }
 
@@ -101,7 +126,7 @@ const SourceUtils = (() => {
             return UI_CONFIG[SCOPES.IMAGE];
         }
 
-        if (entity?.data?.place_id || entity?.data?.google_place_id || entity?.place_id || curation.googlePlaceId) {
+        if (getEntitySource(entity) === SCOPES.GOOGLE || curation.googlePlaceId) {
             return UI_CONFIG[SCOPES.GOOGLE];
         }
 
@@ -131,7 +156,6 @@ const SourceUtils = (() => {
     }
 
     /**
-     * Build structured source payload for curation persistence.
      * Existing provenance is immutable history: new capture events append;
      * saving text never reconstructs provenance from the transcript body.
      */
@@ -145,10 +169,6 @@ const SourceUtils = (() => {
 
         if (context.hasAudio) {
             const sourceId = resolveAudioSourceId(context);
-            // `hasAudio` is still passed by some legacy callers based on the
-            // presence of transcript text. A source id is the minimum proof
-            // that an actual recording was persisted. Without it, preserve
-            // existing provenance and do not invent sources.audio.
             if (sourceId !== null) {
                 const currentAudio = Array.isArray(sources.audio) ? [...sources.audio] : [];
                 const alreadyRecorded = currentAudio.some((entry) => {
@@ -195,12 +215,101 @@ const SourceUtils = (() => {
         return sources;
     }
 
+    function patchCardFactory() {
+        const factory = window.CardFactory;
+        if (!factory || factory.__semanticTruthGuardsInstalled) return;
+        factory.__semanticTruthGuardsInstalled = true;
+
+        if (typeof factory.createEntityCard === 'function') {
+            const originalCreateEntityCard = factory.createEntityCard.bind(factory);
+            factory.createEntityCard = (entity, options = {}) => {
+                const card = originalCreateEntityCard(entity, options);
+                const source = getEntitySource(entity);
+                const label = card?.querySelector?.('.collection-source-badge__label');
+                if (label) label.textContent = source.replace(/_/g, ' ');
+                const icon = card?.querySelector?.('.collection-source-badge .material-icons');
+                if (icon && source === SCOPES.GOOGLE) icon.textContent = 'place';
+                return card;
+            };
+        }
+
+        if (typeof factory.createCurationCard === 'function') {
+            const originalCreateCurationCard = factory.createCurationCard.bind(factory);
+            factory.createCurationCard = (entity, curation, options = {}) => {
+                const card = originalCreateCurationCard(entity, curation, options);
+                const curatorIcon = card?.querySelector?.('.collection-card__subtitle .material-icons');
+                if (curatorIcon) curatorIcon.textContent = getCuratorIcon(curation);
+                if (getCuratorType(curation) === 'synthetic') {
+                    card?.classList?.add('collection-card--synthetic-curator');
+                }
+                return card;
+            };
+        }
+    }
+
+    function patchWorkspaceState() {
+        const Workspace = window.CurationWorkspaceModule;
+        if (!Workspace || Workspace.__semanticTruthStateInstalled) return;
+        Workspace.__semanticTruthStateInstalled = true;
+
+        Workspace.deriveState = (curation = null, entity = null) => {
+            // A supplied Entity is context, not linkage. The only exception is
+            // a brand-new Curation explicitly started from an Entity, where the
+            // UIManager carries importedEntityId as provisional linkage intent.
+            const provisionalEntityId = !curation && window.uiManager?.importedEntityId
+                ? window.uiManager.importedEntityId
+                : null;
+            const entityId = isLinkedCuration(curation)
+                ? curation.entity_id
+                : provisionalEntityId;
+            const linked = hasMeaningfulId(entityId);
+            const synthetic = getCuratorType(curation) === 'synthetic';
+            const linkage = linked ? 'linked' : 'orphan';
+            const authorship = synthetic ? 'synthetic' : 'human';
+            const workingName = curation?.restaurant_name || curation?.name || '';
+            const canonicalName = linked ? (entity?.name || entity?.restaurant_name || '') : '';
+            const displayName = linked ? (canonicalName || workingName) : workingName;
+
+            return {
+                linkage,
+                authorship,
+                key: `${linkage}-${authorship}`,
+                displayName,
+                workingName,
+                canonicalName,
+                entityId: linked ? entityId : null,
+                isLinked: linked,
+                isSynthetic: synthetic
+            };
+        };
+    }
+
+    function installSemanticTruthGuards() {
+        patchCardFactory();
+        patchWorkspaceState();
+    }
+
     return {
         SCOPES,
         detectSource,
         determineSourcesFromContext,
-        buildSourcesPayloadFromContext
+        buildSourcesPayloadFromContext,
+        isLinkedCuration,
+        getCuratorType,
+        getCuratorIcon,
+        getEntitySource,
+        installSemanticTruthGuards
     };
 })();
 
 window.SourceUtils = SourceUtils;
+
+// CardFactory is already loaded when SourceUtils executes. Workspace loads
+// later; registering now means this listener runs before Workspace.bootstrap's
+// later DOMContentLoaded listener, so the state contract is patched first.
+SourceUtils.installSemanticTruthGuards();
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => SourceUtils.installSemanticTruthGuards(), { once: true });
+} else {
+    SourceUtils.installSemanticTruthGuards();
+}
