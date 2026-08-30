@@ -63,12 +63,61 @@
             return Array.isArray(candidates) ? candidates : [];
         }
 
+        extractTranscriptionMetadata(result, audio = {}) {
+            const transcription = result?.results?.transcription || result?.transcription || {};
+            return {
+                language: transcription?.language || result?.language || audio.language || null,
+                durationSeconds:
+                    transcription?.duration_seconds ??
+                    transcription?.duration ??
+                    result?.duration_seconds ??
+                    result?.duration ??
+                    audio.durationSeconds ??
+                    null,
+                transcriptionModel:
+                    transcription?.transcription_model ||
+                    transcription?.model ||
+                    result?.transcription_model ||
+                    result?.model ||
+                    audio.transcriptionModel ||
+                    audio.model ||
+                    null
+            };
+        }
+
+        _toIso(value) {
+            const fallback = new Date().toISOString();
+            if (!value) return fallback;
+            try {
+                const date = value instanceof Date ? value : new Date(value);
+                return Number.isNaN(date.getTime()) ? fallback : date.toISOString();
+            } catch (_) {
+                return fallback;
+            }
+        }
+
+        /**
+         * `sources.audio[]` remains the compatibility bucket name, but each
+         * entry is durable voice-originated TEXTUAL evidence. It intentionally
+         * contains no raw-audio locator/url/storage reference.
+         */
         sourceEntry(audio, transcript) {
+            const text = String(transcript || '').trim();
+            const capturedAt = this._toIso(audio.capturedAt || audio.timestamp);
+            const model = audio.transcriptionModel || audio.model || null;
             return {
                 source_id: audio.sourceId,
+                type: 'voice_transcript',
                 capture_type: 'voice',
-                transcript,
-                created_at: audio.timestamp ? new Date(audio.timestamp).toISOString() : new Date().toISOString()
+                text,
+                transcript: text,
+                curator_id: audio.curatorId || null,
+                captured_at: capturedAt,
+                created_at: capturedAt,
+                language: audio.language || null,
+                duration_seconds: audio.durationSeconds ?? null,
+                transcription_model: model,
+                model
             };
         }
 
@@ -187,16 +236,34 @@
             try {
                 let transcript = String(claimed.transcriptText || '').trim();
                 let result = null;
+                let metadata = this.extractTranscriptionMetadata(null, claimed);
                 if (!transcript) {
-                    result = await this.runtime.ApiService.transcribeAudio(claimed.audioBlob, 'en');
+                    // Never force English on reconnect. A known capture language
+                    // is reused; otherwise undefined lets ApiService apply its
+                    // configured/default transcription language.
+                    result = await this.runtime.ApiService.transcribeAudio(
+                        claimed.audioBlob,
+                        claimed.language || undefined
+                    );
                     transcript = this.extractTranscript(result);
                     if (!transcript) throw new Error('Transcription returned no text');
-                    await manager.storeTranscript?.(claimed.id ?? claimed.sourceId, transcript);
+                    metadata = this.extractTranscriptionMetadata(result, claimed);
+                    await manager.storeTranscript?.(
+                        claimed.id ?? claimed.sourceId,
+                        transcript,
+                        metadata
+                    );
                 }
 
+                const materializedAudio = {
+                    ...claimed,
+                    ...metadata,
+                    transcriptText: transcript
+                };
+
                 let persisted = false;
-                if (claimed.curationId) persisted = await this.materializeIntoCuration(claimed, transcript, result);
-                if (!persisted && claimed.draftId) persisted = await this.materializeIntoDraft(claimed, transcript, result);
+                if (claimed.curationId) persisted = await this.materializeIntoCuration(materializedAudio, transcript, result);
+                if (!persisted && claimed.draftId) persisted = await this.materializeIntoDraft(materializedAudio, transcript, result);
                 if (!persisted) throw new Error('Capture has no durable Curation or draft target');
 
                 await manager.markTranscriptPersisted(claimed.sourceId || claimed.id, {
@@ -246,7 +313,8 @@
                     const audio = await manager.getAudio(localId).catch(() => null);
                     if (audio) {
                         recording.currentAudioSourceId = audio.sourceId || null;
-                        await manager.storeTranscript?.(localId, text).catch((error) => {
+                        const metadata = this.extractTranscriptionMetadata(result, audio);
+                        await manager.storeTranscript?.(localId, text, metadata).catch((error) => {
                             this.log.warn('Could not persist source-local transcript before UI apply:', error);
                         });
                     }
@@ -308,7 +376,7 @@
                     .map((row) => this.sourceEntry(row, String(row.transcriptText).trim()))
             ];
             for (const candidate of candidates) {
-                if (!candidate?.source_id || !String(candidate.transcript || '').trim()) continue;
+                if (!candidate?.source_id || !String(candidate.transcript || candidate.text || '').trim()) continue;
                 const index = audio.findIndex((source) => String(source?.source_id || '') === String(candidate.source_id));
                 if (index >= 0) audio[index] = { ...audio[index], ...candidate };
                 else audio.push(candidate);
