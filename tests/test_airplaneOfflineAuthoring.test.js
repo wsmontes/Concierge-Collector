@@ -1,116 +1,387 @@
+import 'fake-indexeddb/auto';
+import Dexie from 'dexie';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { describe, test, expect } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
-const pendingSrc = readFileSync(path.join(root, 'scripts/modules/pendingAudioManager.js'), 'utf8');
-const draftSrc = readFileSync(path.join(root, 'scripts/modules/draftRestaurantManager.js'), 'utf8');
-const processorSrc = readFileSync(path.join(root, 'scripts/services/offlineCaptureProcessor.js'), 'utf8');
-const storageSrc = readFileSync(path.join(root, 'scripts/storage/storageDurability.js'), 'utf8');
+const pendingPath = path.join(root, 'scripts/modules/pendingAudioManager.js');
+const draftPath = path.join(root, 'scripts/modules/draftRestaurantManager.js');
+const processorPath = path.join(root, 'scripts/services/offlineCaptureProcessor.js');
+const storagePath = path.join(root, 'scripts/storage/storageDurability.js');
 
-function makeTable({ key = 'id', autoIncrement = false } = {}) {
-  const rows = new Map(); let nextId = 1; const values = () => [...rows.values()];
+const dbNames = new Set();
+const dbInstances = new Set();
+
+function uniqueDbName(label) {
+  const name = `collector-airplane-${label}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  dbNames.add(name);
+  return name;
+}
+
+function createDb(name) {
+  const db = new Dexie(name);
+  db.version(1).stores({
+    curations: '++id,&curation_id,entity_id,sync.status',
+    pendingAudio: '++id,sourceId,draftId,curationId,status',
+    draftRestaurants: '++id,curatorId,sessionId,targetCurationId,savedCurationId'
+  });
+  dbInstances.add(db);
+  return db;
+}
+
+function scriptRuntime() {
+  const logger = {
+    debug() {},
+    info() {},
+    warn() {},
+    error() {}
+  };
   return {
-    async add(value) { const id = autoIncrement ? nextId++ : value[key]; rows.set(id, { ...value, [key]: id }); return id; },
-    async get(id) { return rows.get(id) || null; },
-    async put(value) { const id = value[key] ?? (autoIncrement ? nextId++ : undefined); rows.set(id, { ...value, [key]: id }); return id; },
-    async update(id, changes) { const row = rows.get(id); if (!row) return 0; rows.set(id, { ...row, ...changes }); return 1; },
-    async delete(id) { rows.delete(id); },
-    async count() { return rows.size; },
-    async toArray() { return values().map((row) => ({ ...row })); },
-    where(field) {
-      const matches = (value) => values().filter((row) => row[field] === value);
-      return {
-        equals(value) { return { async first() { return matches(value)[0] || null; }, async toArray() { return matches(value).map((row) => ({ ...row })); }, async count() { return matches(value).length; } }; },
-        anyOf(statuses) { const selected = values().filter((row) => statuses.includes(row[field])); return { and(predicate) { return { async toArray() { return selected.filter(predicate).map((row) => ({ ...row })); } }; }, async toArray() { return selected.map((row) => ({ ...row })); } }; }
-      };
+    ModuleWrapper: { defineClass: (_name, cls) => cls },
+    Logger: { module: () => logger }
+  };
+}
+
+function loadPendingAudioManager() {
+  const src = readFileSync(pendingPath, 'utf8');
+  const window = {};
+  const { ModuleWrapper, Logger } = scriptRuntime();
+  // Shadow document so the production bootstrap does not inject browser scripts.
+  // eslint-disable-next-line no-new-func
+  const run = new Function(
+    'window',
+    'ModuleWrapper',
+    'Logger',
+    'crypto',
+    'Blob',
+    'document',
+    `${src}\nreturn window.PendingAudioManager;`
+  );
+  return run(window, ModuleWrapper, Logger, globalThis.crypto, Blob, undefined);
+}
+
+function loadDraftManager() {
+  const src = readFileSync(draftPath, 'utf8');
+  const window = {};
+  const { ModuleWrapper, Logger } = scriptRuntime();
+  // eslint-disable-next-line no-new-func
+  const run = new Function(
+    'window',
+    'ModuleWrapper',
+    'Logger',
+    'crypto',
+    'document',
+    `${src}\nreturn window.DraftRestaurantManager;`
+  );
+  return run(window, ModuleWrapper, Logger, globalThis.crypto, undefined);
+}
+
+function loadProcessor(runtime) {
+  const src = readFileSync(processorPath, 'utf8');
+  // eslint-disable-next-line no-new-func
+  const run = new Function('window', `${src}\nreturn window.OfflineCaptureProcessor;`);
+  const Processor = run(runtime);
+  return new Processor(runtime);
+}
+
+function loadStoragePolicy(fakeNavigator) {
+  const src = readFileSync(storagePath, 'utf8');
+  const fakeWindow = { navigator: fakeNavigator };
+  // eslint-disable-next-line no-new-func
+  const run = new Function('window', `${src}\nreturn window.StorageDurability;`);
+  return run(fakeWindow);
+}
+
+function makeProcessorRuntime(db, pendingManager, transcripts = []) {
+  let call = 0;
+  return {
+    navigator: { onLine: true },
+    addEventListener() {},
+    dispatchEvent() {},
+    DataStore: { db },
+    PendingAudioManager: pendingManager,
+    ApiService: {
+      async transcribeAudio() {
+        const text = transcripts[call] || `transcript-${call + 1}`;
+        call += 1;
+        return {
+          results: {
+            transcription: { text },
+            concepts: { concepts: [] }
+          }
+        };
+      }
     }
   };
 }
 
-function loadPendingManager(table) {
-  const fakeWindow = {}; const ModuleWrapper = { defineClass(_name, klass) { return klass; } }; const Logger = { module() { return { debug() {}, warn() {}, error() {}, info() {} }; } };
-  const fn = new Function('window', 'ModuleWrapper', 'Logger', 'Blob', 'crypto', `${pendingSrc}\nreturn window.PendingAudioManager;`); // eslint-disable-line no-new-func
-  const manager = fn(fakeWindow, ModuleWrapper, Logger, Blob, globalThis.crypto); manager.init({ db: { pendingAudio: table } }); return manager;
-}
+afterEach(async () => {
+  for (const db of dbInstances) {
+    try {
+      db.close();
+    } catch (_) {
+      // Best-effort test cleanup.
+    }
+  }
+  dbInstances.clear();
 
-function loadDraftManager(table) {
-  const fakeWindow = {}; const ModuleWrapper = { defineClass(_name, klass) { return klass; } }; const Logger = { module() { return { debug() {}, warn() {}, error() {}, info() {} }; } };
-  const fn = new Function('window', 'ModuleWrapper', 'Logger', 'crypto', `${draftSrc}\nreturn window.DraftRestaurantManager;`); // eslint-disable-line no-new-func
-  const manager = fn(fakeWindow, ModuleWrapper, Logger, globalThis.crypto); manager.init({ db: { draftRestaurants: table } }); return manager;
-}
+  for (const name of dbNames) {
+    await Dexie.delete(name);
+  }
+  dbNames.clear();
+});
 
-function loadProcessor(runtime) { const fn = new Function('window', `${processorSrc}\nreturn window.OfflineCaptureProcessor;`); return new (fn(runtime))(runtime); } // eslint-disable-line no-new-func
-function loadStoragePolicy(fakeNavigator) { const fakeWindow = { navigator: fakeNavigator }; const fn = new Function('window', `${storageSrc}\nreturn window.StorageDurability;`); return fn(fakeWindow); } // eslint-disable-line no-new-func
+describe('Collector AIRPLANE offline-authoring acceptance', () => {
+  test('AIRPLANE-01 — 50 offline Curations and raw voice captures survive a database restart', async () => {
+    const name = uniqueDbName('01');
+    let db = createDb(name);
+    await db.open();
 
-function runtimeFor(pendingTable, curationTable, draftTable, pending, transcribeAudio) {
-  return { navigator: { onLine: true }, addEventListener() {}, dispatchEvent() {}, DataStore: { db: { pendingAudio: pendingTable, curations: curationTable, draftRestaurants: draftTable } }, PendingAudioManager: pending, ApiService: { transcribeAudio } };
-}
+    const pending = loadPendingAudioManager();
+    pending.init({ db });
 
-describe('AIRPLANE offline-first acceptance', () => {
-  test('AIRPLANE-01: 50 offline voice captures survive manager recreation', async () => {
-    const table = makeTable({ autoIncrement: true }); let manager = loadPendingManager(table);
-    for (let i = 0; i < 50; i++) await manager.saveAudio(new Blob([`review-${i}`]), { draftId: i + 1 });
-    expect(await table.count()).toBe(50);
-    manager = loadPendingManager(table);
-    const rows = await manager.getAudios();
-    expect(rows).toHaveLength(50);
-    expect(rows.every((row) => row.audioBlob && row.disposable === false)).toBe(true);
+    for (let i = 0; i < 50; i += 1) {
+      const curationId = `offline-curation-${i}`;
+      await db.curations.add({
+        curation_id: curationId,
+        restaurant_name: `Remembered place ${i}`,
+        status: 'draft',
+        sync: { status: 'pending' }
+      });
+      await pending.saveAudio(
+        new Blob([`voice-${i}`], { type: 'audio/webm' }),
+        { curationId }
+      );
+    }
+
+    expect(await db.curations.count()).toBe(50);
+    expect(await db.pendingAudio.count()).toBe(50);
+    db.close();
+    dbInstances.delete(db);
+
+    db = createDb(name);
+    await db.open();
+
+    expect(await db.curations.count()).toBe(50);
+    expect(await db.pendingAudio.count()).toBe(50);
+
+    const rows = await db.pendingAudio.toArray();
+    expect(new Set(rows.map((row) => row.sourceId)).size).toBe(50);
+    expect(rows.every((row) => row.disposable === false && row.audioBlob)).toBe(true);
   });
 
-  test('AIRPLANE-02: separate Curation edit drafts retain their last flushed notes/text across restart', async () => {
-    const table = makeTable({ autoIncrement: true }); let manager = loadDraftManager(table);
-    const a = await manager.getOrCreateCurrentDraft('curator@example.com', { sessionId: 'curation:A', targetCurationId: 'A' });
-    await manager.autoSaveDraft(a, { transcription: 'edit A', notes: { public: 'A public', private: 'A private' } }); await manager.flushPendingSave(); manager.clearCurrentDraft();
-    const b = await manager.getOrCreateCurrentDraft('curator@example.com', { sessionId: 'curation:B', targetCurationId: 'B' });
-    await manager.autoSaveDraft(b, { transcription: 'edit B', notes: { public: 'B public', private: 'B private' } }); await manager.flushPendingSave();
-    manager = loadDraftManager(table);
-    expect(await manager.getDraft(a)).toMatchObject({ transcription: 'edit A', notes: { public: 'A public', private: 'A private' } });
-    expect(await manager.getDraft(b)).toMatchObject({ transcription: 'edit B', notes: { public: 'B public', private: 'B private' } });
+  test('AIRPLANE-02 — multiple existing-Curation edit drafts survive manager recreation with last flushed text and notes', async () => {
+    const name = uniqueDbName('02');
+    const db = createDb(name);
+    await db.open();
+
+    const drafts = loadDraftManager();
+    drafts.init({ db });
+
+    for (let i = 0; i < 3; i += 1) {
+      const targetCurationId = `existing-${i}`;
+      const id = await drafts.createDraft('curator@example.com', {}, {
+        sessionId: `curation:${targetCurationId}`,
+        targetCurationId
+      });
+      await drafts.autoSaveDraft(id, {
+        targetCurationId,
+        transcription: `final transcript ${i}`,
+        notes: { public: `public ${i}`, private: `private ${i}` }
+      });
+      await drafts.flushPendingSave();
+    }
+
+    const recreated = loadDraftManager();
+    recreated.init({ db });
+    const restored = await recreated.getDrafts('curator@example.com');
+
+    expect(restored).toHaveLength(3);
+    for (let i = 0; i < 3; i += 1) {
+      const row = restored.find((draft) => draft.targetCurationId === `existing-${i}`);
+      expect(row).toMatchObject({
+        transcription: `final transcript ${i}`,
+        notes: { public: `public ${i}`, private: `private ${i}` }
+      });
+    }
   });
 
-  test('AIRPLANE-03: unprocessed raw audio is not reclaimed by prune or completed-looking status', async () => {
-    const table = makeTable({ autoIncrement: true }); const manager = loadPendingManager(table);
-    const id = await manager.saveAudio(new Blob(['only copy']), { draftId: 1 });
-    await manager.updateAudio(id, { status: 'completed', timestamp: new Date('2020-01-01') }); await manager.prune({ maxCount: 0, maxAgeDays: 0 });
-    expect(await manager.getAudio(id)).toMatchObject({ disposable: false, transcriptPersisted: false });
+  test('AIRPLANE-03 — Save-state association retains unprocessed raw audio and photo-bearing draft material', async () => {
+    const name = uniqueDbName('03');
+    const db = createDb(name);
+    await db.open();
+
+    const pending = loadPendingAudioManager();
+    pending.init({ db });
+    const drafts = loadDraftManager();
+    drafts.init({ db });
+
+    const draftId = await drafts.createDraft('curator@example.com', {
+      name: 'Offline place',
+      photos: [{ photoData: 'data:image/jpeg;base64,AAAA' }],
+      hasAudio: true
+    }, { sessionId: 'offline-save-session' });
+    const audioId = await pending.saveAudio(
+      new Blob(['voice'], { type: 'audio/webm' }),
+      { draftId }
+    );
+
+    await db.curations.add({
+      curation_id: 'saved-offline',
+      restaurant_name: 'Offline place',
+      status: 'draft',
+      sources: {},
+      sync: { status: 'pending' }
+    });
+    await pending.associateWithCuration({ draftId }, 'saved-offline');
+    await db.draftRestaurants.update(draftId, {
+      savedCurationId: 'saved-offline',
+      preservedForMedia: true
+    });
+
+    const raw = await pending.getAudio(audioId);
+    const draft = await drafts.getDraft(draftId);
+
+    expect(raw).toMatchObject({
+      curationId: 'saved-offline',
+      disposable: false,
+      transcriptPersisted: false
+    });
+    expect(raw.audioBlob).toBeTruthy();
+    expect(draft.preservedForMedia).toBe(true);
+    expect(draft.photos).toHaveLength(1);
   });
 
-  test('AIRPLANE-04: interrupted reconnect resumes without duplicating already-materialized sources', async () => {
-    const pendingTable = makeTable({ autoIncrement: true }); const curationTable = makeTable({ key: 'curation_id' }); const draftTable = makeTable({ autoIncrement: true }); const pending = loadPendingManager(pendingTable);
-    await curationTable.put({ curation_id: 'cur-1', transcript: null, sources: {}, sync: { status: 'pending' } });
-    const firstId = await pending.saveAudio(new Blob(['one']), { curationId: 'cur-1', sourceId: 'src-1' });
-    const secondId = await pending.saveAudio(new Blob(['two']), { curationId: 'cur-1', sourceId: 'src-2' });
-    let calls = 0;
-    const runtime = runtimeFor(pendingTable, curationTable, draftTable, pending, async () => { calls++; if (calls === 2) throw new Error('network dropped again'); return { results: { transcription: { text: 'one text' }, concepts: { concepts: [] } } }; });
-    const processor = loadProcessor(runtime); const firstRun = await processor.processPending();
-    expect(firstRun).toMatchObject({ processed: 1, failed: 1 });
-    expect(await pending.getAudio(firstId)).toBeNull();
-    expect(await pending.getAudio(secondId)).toMatchObject({ disposable: false, status: 'failed' });
-    runtime.ApiService.transcribeAudio = async () => ({ results: { transcription: { text: 'two text' }, concepts: { concepts: [] } } });
+  test('AIRPLANE-04 — reconnect interrupted after N resumes without duplicate provenance or loss of N+1', async () => {
+    const name = uniqueDbName('04');
+    const db = createDb(name);
+    await db.open();
+
+    const pending = loadPendingAudioManager();
+    pending.init({ db });
+    await db.curations.add({
+      curation_id: 'cur-reconnect',
+      restaurant_name: 'Reconnect place',
+      transcript: null,
+      sources: {},
+      status: 'draft',
+      sync: { status: 'pending' }
+    });
+
+    const ids = [];
+    for (let i = 0; i < 3; i += 1) {
+      ids.push(await pending.saveAudio(new Blob([`voice-${i}`]), {
+        curationId: 'cur-reconnect',
+        sourceId: `src-${i + 1}`
+      }));
+    }
+
+    const firstRuntime = makeProcessorRuntime(db, pending, ['one']);
+    const firstProcessor = loadProcessor(firstRuntime);
+    const firstAudio = await pending.getAudio(ids[0]);
+    expect((await firstProcessor.processAudio(firstAudio)).status).toBe('processed');
+
+    // Simulate process death/reload after item N by constructing a new processor.
+    const secondRuntime = makeProcessorRuntime(db, pending, ['two', 'three']);
+    const restartedProcessor = loadProcessor(secondRuntime);
+    const summary = await restartedProcessor.processPending();
+    expect(summary.processed).toBe(2);
+
+    // Replay after completion must be a no-op because raw rows were released.
+    expect((await restartedProcessor.processPending()).processed).toBe(0);
+
+    const curation = await db.curations
+      .where('curation_id')
+      .equals('cur-reconnect')
+      .first();
+    expect(curation.sources.audio.map((source) => source.source_id)).toEqual([
+      'src-1',
+      'src-2',
+      'src-3'
+    ]);
+    expect(new Set(curation.sources.audio.map((source) => source.source_id)).size).toBe(3);
+    expect(curation.transcript).toContain('one');
+    expect(curation.transcript).toContain('two');
+    expect(curation.transcript).toContain('three');
+    expect(await db.pendingAudio.count()).toBe(0);
+  });
+
+  test('AIRPLANE-05 — critical quota blocks new media while existing durable rows remain untouched', async () => {
+    const name = uniqueDbName('05');
+    const db = createDb(name);
+    await db.open();
+
+    await db.curations.add({
+      curation_id: 'existing',
+      status: 'draft',
+      sync: { status: 'pending' }
+    });
+    await db.pendingAudio.add({
+      sourceId: 'existing-source',
+      audioBlob: new Blob(['existing']),
+      status: 'pending',
+      disposable: false
+    });
+
+    const StorageDurability = loadStoragePolicy({
+      storage: {
+        async estimate() {
+          return { usage: 96, quota: 100 };
+        }
+      }
+    });
+    const policy = new StorageDurability({ criticalRatio: 0.95 });
+
+    await expect(policy.assertCaptureCapacity('audio')).rejects.toMatchObject({
+      name: 'StorageCapacityError'
+    });
+    expect(await db.curations.count()).toBe(1);
+    expect(await db.pendingAudio.count()).toBe(1);
+    expect((await db.pendingAudio.toArray())[0]).toMatchObject({
+      sourceId: 'existing-source',
+      disposable: false
+    });
+  });
+
+  test('AIRPLANE-06 — raw audio is released only after transcript and source provenance are durable in the Curation', async () => {
+    const name = uniqueDbName('06');
+    const db = createDb(name);
+    await db.open();
+
+    const pending = loadPendingAudioManager();
+    pending.init({ db });
+    await db.curations.add({
+      curation_id: 'cur-finalize',
+      restaurant_name: 'Finalized place',
+      transcript: null,
+      sources: {},
+      status: 'draft',
+      sync: { status: 'pending' }
+    });
+    await pending.saveAudio(new Blob(['voice']), {
+      curationId: 'cur-finalize',
+      sourceId: 'src-finalize'
+    });
+
+    const runtime = makeProcessorRuntime(db, pending, ['durable spoken review']);
+    const processor = loadProcessor(runtime);
     expect((await processor.processPending()).processed).toBe(1);
-    const curation = await curationTable.get('cur-1');
-    expect(curation.sources.audio.map((source) => source.source_id)).toEqual(['src-1', 'src-2']);
-    expect(curation.sources.audio).toHaveLength(2);
-  });
 
-  test('AIRPLANE-05: critical quota blocks new media without deleting existing captures', async () => {
-    const table = makeTable({ autoIncrement: true }); const manager = loadPendingManager(table); await manager.saveAudio(new Blob(['keep me']), { draftId: 1 });
-    const Policy = loadStoragePolicy({ storage: { async estimate() { return { usage: 96, quota: 100 }; } } }); const policy = new Policy({ criticalRatio: 0.95 });
-    await expect(policy.assertCaptureCapacity('audio')).rejects.toMatchObject({ name: 'StorageCapacityError' });
-    expect(await table.count()).toBe(1);
-  });
-
-  test('AIRPLANE-06: durable transcript deletes raw blob while textual provenance survives', async () => {
-    const pendingTable = makeTable({ autoIncrement: true }); const curationTable = makeTable({ key: 'curation_id' }); const draftTable = makeTable({ autoIncrement: true }); const pending = loadPendingManager(pendingTable);
-    await curationTable.put({ curation_id: 'cur-final', transcript: null, sources: {}, sync: { status: 'pending' } });
-    const id = await pending.saveAudio(new Blob(['voice']), { curationId: 'cur-final', sourceId: 'src-final' });
-    const runtime = runtimeFor(pendingTable, curationTable, draftTable, pending, async () => ({ results: { transcription: { text: 'durable text' }, concepts: { concepts: [] } } }));
-    await loadProcessor(runtime).processPending();
-    expect(await pending.getAudio(id)).toBeNull();
-    expect(await curationTable.get('cur-final')).toMatchObject({ transcript: 'durable text' });
-    expect((await curationTable.get('cur-final')).sources.audio[0]).toMatchObject({ source_id: 'src-final', transcript: 'durable text' });
+    const curation = await db.curations
+      .where('curation_id')
+      .equals('cur-finalize')
+      .first();
+    expect(curation.transcript).toBe('durable spoken review');
+    expect(curation.sources.audio).toEqual([
+      expect.objectContaining({
+        source_id: 'src-finalize',
+        transcript: 'durable spoken review'
+      })
+    ]);
+    // markTranscriptPersisted releases raw only after the Curation put succeeds.
+    expect(await db.pendingAudio.count()).toBe(0);
   });
 });
