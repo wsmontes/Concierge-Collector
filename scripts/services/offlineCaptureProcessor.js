@@ -4,6 +4,11 @@
  * Durable raw-media -> textual-source materializer. Numeric Dexie ids locate
  * local blobs; stable sourceId values identify provenance. Processing does not
  * depend on the editor DOM and is safe to resume after crash/reconnect.
+ *
+ * Product invariant: durable editorial text is canonical English even when
+ * the curator speaks another language. `ApiService.transcribeAudio(..., 'en')`
+ * therefore means "materialize English text" and the backend implements that
+ * contract with the audio translation endpoint.
  */
 (function exposeOfflineCaptureProcessor(global) {
     'use strict';
@@ -66,7 +71,11 @@
         extractTranscriptionMetadata(result, audio = {}) {
             const transcription = result?.results?.transcription || result?.transcription || {};
             return {
-                language: transcription?.language || result?.language || audio.language || null,
+                // Durable source text is always English. The optional spoken
+                // language is provenance metadata only and never controls the
+                // language of the persisted transcript.
+                language: 'en',
+                sourceLanguage: audio.sourceLanguage || audio.source_language || null,
                 durationSeconds:
                     transcription?.duration_seconds ??
                     transcription?.duration ??
@@ -114,7 +123,8 @@
                 curator_id: audio.curatorId || null,
                 captured_at: capturedAt,
                 created_at: capturedAt,
-                language: audio.language || null,
+                language: 'en',
+                source_language: audio.sourceLanguage || audio.source_language || null,
                 duration_seconds: audio.durationSeconds ?? null,
                 transcription_model: model,
                 model
@@ -238,12 +248,11 @@
                 let result = null;
                 let metadata = this.extractTranscriptionMetadata(null, claimed);
                 if (!transcript) {
-                    // Never force English on reconnect. A known capture language
-                    // is reused; otherwise undefined lets ApiService apply its
-                    // configured/default transcription language.
+                    // Canonical DB invariant: always request English output,
+                    // regardless of the spoken language of the recording.
                     result = await this.runtime.ApiService.transcribeAudio(
                         claimed.audioBlob,
-                        claimed.language || undefined
+                        'en'
                     );
                     transcript = this.extractTranscript(result);
                     if (!transcript) throw new Error('Transcription returned no text');
