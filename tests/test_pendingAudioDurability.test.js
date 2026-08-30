@@ -30,7 +30,10 @@ function loadManager(seed = []) {
   const manager = fn(window, ModuleWrapper, Logger); const pendingAudio = createTable(seed); manager.dataStorage = { db: { pendingAudio } }; return { manager, pendingAudio };
 }
 
-beforeEach(() => { delete window.PendingAudioManager; });
+beforeEach(() => {
+  delete window.PendingAudioManager;
+  delete window.offlineCaptureProcessor;
+});
 
 describe('PendingAudioManager offline durability', () => {
   test('does not prune required recordings because they are old or over maxCount', async () => {
@@ -61,5 +64,21 @@ describe('PendingAudioManager offline durability', () => {
     const { manager, pendingAudio } = loadManager([{ id: 1, draftId: 10, curationId: null, disposable: false }, { id: 2, draftId: 10, curationId: null, disposable: false }, { id: 3, draftId: 11, curationId: null, disposable: false }]);
     const count = await manager.associateWithCuration({ draftId: 10 }, 'cur_saved');
     expect(count).toBe(2); expect(await pendingAudio.get(1)).toMatchObject({ curationId: 'cur_saved' }); expect(await pendingAudio.get(2)).toMatchObject({ curationId: 'cur_saved' }); expect(await pendingAudio.get(3)).toMatchObject({ curationId: null }); expect(await pendingAudio.count()).toBe(3);
+  });
+
+  test('legacy timer retry delegates to OfflineCaptureProcessor when the durable processor is available', async () => {
+    const { manager } = loadManager([{ id: 9, sourceId: 'src-9', audioBlob: new Blob(['voice']), retryCount: 0, status: 'failed', disposable: false }]);
+    manager.retryDelays = [0, 0];
+    let processorCalls = 0;
+    let legacyCalls = 0;
+    window.offlineCaptureProcessor = {
+      async processPending() { processorCalls += 1; }
+    };
+
+    await manager.scheduleAutoRetry(9, async () => { legacyCalls += 1; });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(processorCalls).toBe(1);
+    expect(legacyCalls).toBe(0);
   });
 });
