@@ -72,17 +72,23 @@ describe('StorageDurability', () => {
 });
 
 describe('Collector integration', () => {
-  const durabilityPath = path.resolve(__dirname, '../scripts/modules/offlineDurabilityModule.js');
-  const durabilitySrc = readFileSync(durabilityPath, 'utf8');
+  const storageSrc = readFileSync(sourcePath, 'utf8');
 
   test('preflights recording and photo intake through the storage policy', () => {
-    expect(durabilitySrc).toContain('installCaptureCapacityGuards');
-    expect(durabilitySrc).toContain("assertCaptureCapacity('audio')");
-    expect(durabilitySrc).toContain("assertCaptureCapacity('photo')");
+    expect(storageSrc).toContain('installCaptureCapacityGuards');
+    expect(storageSrc).toContain("assertCaptureCapacity('audio')");
+    expect(storageSrc).toContain("assertCaptureCapacity('photo')");
+  });
+
+  test('exposes the policy through DataStore without making text save depend on quota', () => {
+    expect(storageSrc).toContain('store.requestPersistentStorage');
+    expect(storageSrc).toContain('store.getStorageHealth');
+    expect(storageSrc).toContain('store.assertCaptureCapacity');
+    expect(storageSrc).not.toMatch(/saveRestaurant[\s\S]{0,300}assertCaptureCapacity/);
   });
 
   test('never treats quota pressure as permission to prune required captures', () => {
-    expect(durabilitySrc).toContain('QuotaExceededError');
-    expect(durabilitySrc).not.toMatch(/QuotaExceededError[\s\S]{0,300}(deleteAudio|deleteDraft|Dexie\.delete)/);
+    expect(storageSrc).toContain('QuotaExceededError');
+    expect(storageSrc).not.toMatch(/QuotaExceededError[\s\S]{0,300}(deleteAudio|deleteDraft|Dexie\.delete)/);
   });
 });
