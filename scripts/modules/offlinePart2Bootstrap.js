@@ -14,6 +14,7 @@
     const dependencies = [
         ['LocalEntitySearch', 'scripts/services/localEntitySearch.js?v=20260830-1'],
         ['CurationOwnershipPolicy', 'scripts/services/curationOwnershipPolicy.js?v=20260830-1'],
+        ['SyncSemanticPolicy', 'scripts/services/syncSemanticPolicy.js?v=20260830-1'],
         ['OfflineLinkingModule', 'scripts/modules/offlineLinkingModule.js?v=20260830-1'],
         ['OfflineOwnershipModule', 'scripts/modules/offlineOwnershipModule.js?v=20260830-1'],
         ['OfflineCaptureProcessor', 'scripts/services/offlineCaptureProcessor.js?v=20260830-1']
@@ -30,7 +31,6 @@
                 setTimeout(resolve, 5000);
             });
         }
-
         return new Promise((resolve) => {
             const script = document.createElement('script');
             script.src = src;
@@ -46,9 +46,8 @@
     }
 
     (async () => {
-        for (const [globalName, src] of dependencies) {
-            await loadScript(globalName, src);
-        }
+        for (const [globalName, src] of dependencies) await loadScript(globalName, src);
+        global.SyncSemanticPolicy?.installSyncManagerGuards?.(global);
         global.dispatchEvent?.(new CustomEvent('concierge:offline-part2-ready'));
     })();
 })(window);
