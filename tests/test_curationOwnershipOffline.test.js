@@ -5,7 +5,7 @@ import { describe, test, expect } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const policyPath = path.resolve(__dirname, '../scripts/services/curationOwnershipPolicy.js');
-const durabilityPath = path.resolve(__dirname, '../scripts/modules/offlineDurabilityModule.js');
+const ownershipModulePath = path.resolve(__dirname, '../scripts/modules/offlineOwnershipModule.js');
 
 function loadPolicy() {
   const src = readFileSync(policyPath, 'utf8');
@@ -42,17 +42,17 @@ describe('CurationOwnershipPolicy', () => {
 
 describe('offline editor ownership guard', () => {
   test('checks ownership before calling the mutable edit path', () => {
-    const src = readFileSync(durabilityPath, 'utf8');
+    const src = readFileSync(ownershipModulePath, 'utf8');
     expect(src).toContain('installOwnershipGuard');
     expect(src).toContain('CurationOwnershipPolicy.decide');
     expect(src).toContain("decision.action === 'create-own'");
   });
 
   test('create-own uses the linked local Entity and never rewrites the original Curation', () => {
-    const src = readFileSync(durabilityPath, 'utf8');
+    const src = readFileSync(ownershipModulePath, 'utf8');
     expect(src).toContain('startIndependentCuration');
     expect(src).toContain('importedEntityId');
     expect(src).toContain('prepareNewCurationState');
-    expect(src).not.toMatch(/startIndependentCuration[\s\S]{0,1400}curations\.(put|update)\(/);
+    expect(src).not.toMatch(/startIndependentCuration[\s\S]{0,1800}curations\.(put|update)\(/);
   });
 });
