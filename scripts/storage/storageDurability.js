@@ -98,6 +98,7 @@
             this._captureGuardsInstalled = false;
             this._audioWriteGuardInstalled = false;
             this._swRegistrationStarted = false;
+            this._part2BootstrapRequested = false;
             this._pollTimer = null;
         }
 
@@ -105,8 +106,25 @@
             if (this._started) return this;
             this._started = true;
             this.registerOfflineShell();
+            this.loadOfflinePart2Bootstrap();
             this._poll();
             return this;
+        }
+
+        loadOfflinePart2Bootstrap() {
+            if (this._part2BootstrapRequested || typeof document === 'undefined') return;
+            this._part2BootstrapRequested = true;
+            if (document.querySelector('script[data-offline-part2-bootstrap]')) return;
+
+            const script = document.createElement('script');
+            script.src = 'scripts/modules/offlinePart2Bootstrap.js?v=20260830-1';
+            script.async = false;
+            script.dataset.offlinePart2Bootstrap = 'true';
+            script.addEventListener('error', () => {
+                this._part2BootstrapRequested = false;
+                console.warn('[StorageDurability] Offline Part 2 bootstrap failed to load');
+            });
+            document.head.appendChild(script);
         }
 
         async registerOfflineShell() {
@@ -126,8 +144,6 @@
                 }
                 global.dispatchEvent?.(new CustomEvent('concierge:offline-ready'));
             } catch (error) {
-                // Offline install is progressive enhancement on first load.
-                // Failure never blocks the already-loaded editor.
                 console.warn('[StorageDurability] Offline shell registration failed:', error);
             }
         }
