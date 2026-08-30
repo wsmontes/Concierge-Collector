@@ -28,9 +28,10 @@ describe('Offline Part 2 production wiring', () => {
     expect(part2).toContain("'SyncOwnershipFailureGuard'");
   });
 
-  test('new Service Worker generation can satisfy versioned local requests from bare manifest entries offline', () => {
-    expect(serviceWorker).toContain("concierge-collector-shell-v2");
+  test('fresh Service Worker generation precaches new dynamic modules and serves versioned local requests offline', () => {
+    expect(serviceWorker).toContain("concierge-collector-shell-v3");
     expect(serviceWorker).toContain('ignoreSearch: true');
     expect(serviceWorker).toContain('url.origin === self.location.origin');
+    expect(serviceWorker).toContain('manifest.map');
   });
 });
