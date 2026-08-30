@@ -18,6 +18,7 @@
         ['OfflineLinkingModule', 'scripts/modules/offlineLinkingModule.js?v=20260830-1'],
         ['OfflineOwnershipModule', 'scripts/modules/offlineOwnershipModule.js?v=20260830-1'],
         ['OfflineCaptureProcessor', 'scripts/services/offlineCaptureProcessor.js?v=20260830-1'],
+        ['OfflinePhotoProcessor', 'scripts/services/offlinePhotoProcessor.js?v=20260830-1'],
         ['OfflineSourceIdentityBridge', 'scripts/modules/offlineSourceIdentityBridge.js?v=20260830-1'],
         ['OfflineKnownLinkageGuard', 'scripts/modules/offlineKnownLinkageGuard.js?v=20260830-1']
     ];
