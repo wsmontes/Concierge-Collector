@@ -1,5 +1,8 @@
 /* Concierge Collector offline authoring shell */
-const CACHE_NAME = 'concierge-collector-shell-v2';
+// Bump whenever the shipped authoring shell changes. The manifest is fetched
+// during SW install; without a byte-level SW change, a browser may keep the
+// previous cache generation and never precache newly added dynamic modules.
+const CACHE_NAME = 'concierge-collector-shell-v3';
 const MANIFEST_URL = './.manifest.json';
 const INDEX_URL = './index.html';
 
