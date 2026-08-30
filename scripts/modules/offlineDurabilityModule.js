@@ -10,10 +10,11 @@
  *   associate pending sources;
  * - only explicit audio provenance can make a raw recording disposable;
  * - photo-bearing drafts survive Save until photos have another durable home;
- * - lifecycle events flush pending draft writes.
+ * - lifecycle events flush pending draft writes;
+ * - direct IndexedDB destruction is blocked outside guarded recovery/reset.
  *
- * This module deliberately does not make network calls. Local durability is
- * authoritative; synchronization remains SyncManagerV3's responsibility.
+ * Local durability is authoritative; synchronization remains SyncManagerV3's
+ * responsibility.
  */
 (function bootstrapOfflineDurability(global) {
     'use strict';
@@ -25,12 +26,16 @@
             this._saveInstalled = false;
             this._audioCleanupInstalled = false;
             this._lifecycleInstalled = false;
+            this._dbDestructionGuardInstalled = false;
+            this._explicitResetInstalled = false;
             this._pollTimer = null;
         }
 
         start() {
             if (this._started) return this;
             this._started = true;
+            this.installDatabaseDestructionGuard();
+            this.installExplicitResetAuthorization();
             this.installLifecycleFlush();
             this.installSafeBulkAudioCleanup();
             this._pollForAuthoringRuntime();
@@ -38,12 +43,10 @@
         }
 
         _pollForAuthoringRuntime(attempt = 0) {
+            this.installExplicitResetAuthorization();
             const uiManager = global.uiManager || null;
             const conceptModule = uiManager?.conceptModule || null;
 
-            // CurationWorkspace also wraps saveRestaurant. Wait until that
-            // compatibility layer has installed so this durability wrapper is
-            // the outermost boundary and can observe the final local put.
             const workspacePresent = Boolean(global.curationWorkspace);
             const workspaceReady = !workspacePresent ||
                 conceptModule?.__curationWorkspaceSaveCompatibilityInstalled === true;
@@ -51,6 +54,7 @@
             if (conceptModule?.saveRestaurant && workspaceReady) {
                 this.installSaveDurability(uiManager);
                 this.installSafeBulkAudioCleanup();
+                this.installExplicitResetAuthorization();
                 return;
             }
 
@@ -64,11 +68,91 @@
         }
 
         /**
-         * Legacy Save/Draft code calls deleteAudios({draftId|restaurantId})
-         * as automatic cleanup. That call is not an explicit user deletion,
-         * therefore it may delete only rows already proven disposable.
-         * Individual user deletion continues to use deleteAudio(id).
+         * There were two independent destructive authorities: DatabaseManager
+         * (which checks _hasUnsavedWork) and legacy main.js helpers (which did
+         * not). Put a hard boundary at IDBFactory.deleteDatabase so a direct
+         * call can no longer bypass the guarded recovery path.
          */
+        installDatabaseDestructionGuard() {
+            if (this._dbDestructionGuardInstalled || !global.indexedDB?.deleteDatabase) return;
+            if (global.indexedDB.__collectorDurabilityDeleteGuardInstalled) {
+                this._dbDestructionGuardInstalled = true;
+                return;
+            }
+
+            const idb = global.indexedDB;
+            const nativeDeleteDatabase = idb.deleteDatabase.bind(idb);
+            global.__collectorNativeDeleteDatabase = nativeDeleteDatabase;
+            global.__collectorAuthorizedDbDelete = false;
+
+            idb.deleteDatabase = (name) => {
+                if (name === 'ConciergeCollector' && global.__collectorAuthorizedDbDelete !== true) {
+                    const error = new Error(
+                        'Direct IndexedDB destruction blocked: ConciergeCollector must be recovered through DatabaseManager'
+                    );
+                    this.log.error(error.message);
+                    throw error;
+                }
+                return nativeDeleteDatabase(name);
+            };
+            idb.__collectorDurabilityDeleteGuardInstalled = true;
+            this._dbDestructionGuardInstalled = true;
+
+            const prototype = global.DatabaseManager?.prototype;
+            if (!prototype) return;
+
+            const wrapAuthorizedDelete = (methodName) => {
+                const original = prototype[methodName];
+                if (typeof original !== 'function' || original.__collectorAuthorizedDeleteWrapper) return;
+
+                const wrapped = async function (...args) {
+                    const previous = global.__collectorAuthorizedDbDelete;
+                    global.__collectorAuthorizedDbDelete = true;
+                    try {
+                        return await original.apply(this, args);
+                    } finally {
+                        global.__collectorAuthorizedDbDelete = previous === true;
+                    }
+                };
+                wrapped.__collectorAuthorizedDeleteWrapper = true;
+                wrapped.__collectorOriginal = original;
+                prototype[methodName] = wrapped;
+            };
+
+            // Both methods already consult DatabaseManager._hasUnsavedWork
+            // before their nuclear delete. Authorization only removes the
+            // second, accidental legacy authority; it does not weaken guards.
+            for (const methodName of ['_autoReset', 'attemptRecovery']) {
+                wrapAuthorizedDelete(methodName);
+            }
+        }
+
+        /**
+         * Data Management exposes an intentional reset action. It is separate
+         * from automatic recovery and is allowed only for the duration of the
+         * explicit resetDatabase call rather than reopening global deletion.
+         */
+        installExplicitResetAuthorization() {
+            const store = global.DataStore || global.dataStore;
+            if (!store || this._explicitResetInstalled || store.__offlineDurabilityResetInstalled) return;
+            if (typeof store.resetDatabase !== 'function') return;
+
+            const originalReset = store.resetDatabase.bind(store);
+            store.__offlineDurabilityResetInstalled = true;
+            store.__offlineDurabilityOriginalResetDatabase = originalReset;
+            this._explicitResetInstalled = true;
+
+            store.resetDatabase = async (...args) => {
+                const previous = global.__collectorAuthorizedDbDelete;
+                global.__collectorAuthorizedDbDelete = true;
+                try {
+                    return await originalReset(...args);
+                } finally {
+                    global.__collectorAuthorizedDbDelete = previous === true;
+                }
+            };
+        }
+
         installSafeBulkAudioCleanup() {
             const manager = global.PendingAudioManager;
             if (!manager || this._audioCleanupInstalled || manager.__offlineDurabilityBulkCleanupInstalled) {
@@ -106,10 +190,6 @@
             };
         }
 
-        /**
-         * Capture the exact Curation passed to Dexie during Save and use it as
-         * the durable association point for raw media.
-         */
         installSaveDurability(uiManager) {
             const conceptModule = uiManager?.conceptModule;
             if (!conceptModule?.saveRestaurant || this._saveInstalled || conceptModule.__offlineDurabilitySaveInstalled) {
@@ -148,9 +228,6 @@
 
                 if (curationTable && typeof originalPut === 'function') {
                     curationTable.put = async (curation, ...putArgs) => {
-                        // Explicit recording identity wins. A transcript alone
-                        // is never treated as proof that a new voice source
-                        // exists (web research can also live in transcript).
                         if (audioSourceId && global.SourceUtils?.buildSourcesPayloadFromContext) {
                             curation.sources = global.SourceUtils.buildSourcesPayloadFromContext({
                                 existingSources: curation.sources || {},
@@ -169,11 +246,6 @@
                     };
                 }
 
-                // The legacy Save deletes its current draft after a successful
-                // put. That is safe for text fields copied into the Curation,
-                // but NOT for accepted photos whose only durable copy is still
-                // the draft metadata. Keep that draft until a later media
-                // materialization step moves those photos elsewhere.
                 const originalDeleteDraft = typeof draftManager?.deleteDraft === 'function'
                     ? draftManager.deleteDraft.bind(draftManager)
                     : null;
@@ -197,10 +269,6 @@
                         await pendingAudio.associateWithCuration?.({ draftId }, curationId);
                     }
 
-                    // A successful transcription can still exist only in the
-                    // DOM. Raw audio becomes disposable only when the exact
-                    // source id is present in the Curation provenance AND the
-                    // transcript has just been durably written with it.
                     const savedAudioSources = Array.isArray(capturedCuration.sources?.audio)
                         ? capturedCuration.sources.audio
                         : [];
@@ -233,12 +301,6 @@
             };
         }
 
-        /**
-         * Keep photo-bearing draft data addressable after a Curation Save.
-         * We intentionally write the marker directly because the legacy
-         * DraftRestaurantManager metadata serializer does not yet expose this
-         * field; Task 4 promotes this into the draft/session API.
-         */
         async preserveDraftAfterSave(draftId, curationId, draftSnapshot) {
             const table = global.DataStore?.db?.draftRestaurants ||
                 global.dataStore?.db?.draftRestaurants || null;
@@ -253,10 +315,6 @@
             return true;
         }
 
-        /**
-         * Debounced autosave is not enough on iOS: backgrounding can freeze
-         * or kill the page before the timer fires. Flush on lifecycle edges.
-         */
         installLifecycleFlush() {
             if (this._lifecycleInstalled || typeof document === 'undefined') return;
             this._lifecycleInstalled = true;
