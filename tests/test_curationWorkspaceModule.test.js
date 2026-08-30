@@ -72,7 +72,7 @@ function minimalEditorDom() {
     <div id="restaurant-edit-toolbar"><span class="toolbar-info-title">Edit Restaurant</span><button id="save-restaurant"><span>Save</span></button></div>`;
 }
 
-function makeUiManager({ curation = null, entity = null, concepts = [] } = {}) {
+function makeUiManager({ curation = null, entity = null, concepts = [], isEditingEntity = false } = {}) {
   const conceptModule = {
     setupAdditionalReviewButton: vi.fn(() => {
       if (document.getElementById('additional-recording-section')) return;
@@ -84,7 +84,7 @@ function makeUiManager({ curation = null, entity = null, concepts = [] } = {}) {
     startAdditionalRecording: vi.fn()
   };
   return {
-    isEditingEntity: false,
+    isEditingEntity,
     currentConcepts: concepts,
     restaurantModule: { currentCuration: curation, currentEntity: entity },
     conceptModule,
@@ -203,6 +203,59 @@ describe('CurationWorkspaceModule — authoring surface', () => {
     expect(document.getElementById('curation-linked-entity-card').textContent).not.toContain('Old captured label');
   });
 
+  test('keeps Entity editing as its own surface and hides curator-authoring tools', async () => {
+    const Workspace = loadWorkspaceClass();
+    const entity = { entity_id: 'ent-1', name: 'Canonical Bistro', type: 'restaurant' };
+    const uiManager = makeUiManager({ entity, isEditingEntity: true });
+    const workspace = new Workspace(uiManager);
+    workspace.compose();
+    await workspace.refresh({ curation: null, entity });
+
+    expect(document.getElementById('curation-workspace-about').classList.contains('hidden')).toBe(false);
+    for (const id of [
+      'curation-workspace-capture',
+      'curation-workspace-content',
+      'curation-workspace-concepts',
+      'curation-workspace-sources',
+      'curation-workspace-advanced'
+    ]) {
+      expect(document.getElementById(id).classList.contains('hidden')).toBe(true);
+    }
+    expect(document.getElementById('entity-metadata-editor').classList.contains('hidden')).toBe(false);
+    expect(document.querySelector('#restaurant-edit-toolbar .toolbar-info-title').textContent).toBe('Edit Entity');
+    expect(document.querySelector('#save-restaurant span:last-child').textContent).toBe('Save Entity');
+  });
+
+  test('resolves linked Entity from supplied context before local cache or API', async () => {
+    const Workspace = loadWorkspaceClass();
+    const supplied = { entity_id: 'ent-1', name: 'Supplied Entity' };
+    const localFirst = vi.fn();
+    window.dataStore = { db: { entities: { where: vi.fn(() => ({ equals: vi.fn(() => ({ first: localFirst })) })) } } };
+    window.ApiService = { getEntity: vi.fn() };
+    const workspace = new Workspace(makeUiManager());
+
+    const result = await workspace.resolveEntity('ent-1', supplied);
+
+    expect(result).toBe(supplied);
+    expect(localFirst).not.toHaveBeenCalled();
+    expect(window.ApiService.getEntity).not.toHaveBeenCalled();
+  });
+
+  test('falls back from local Entity cache to API when linked context is absent', async () => {
+    const Workspace = loadWorkspaceClass();
+    const apiEntity = { entity_id: 'ent-1', name: 'Fresh API Entity' };
+    const first = vi.fn(async () => null);
+    window.dataStore = { db: { entities: { where: vi.fn(() => ({ equals: vi.fn(() => ({ first })) })) } } };
+    window.ApiService = { getEntity: vi.fn(async () => apiEntity) };
+    const workspace = new Workspace(makeUiManager());
+
+    const result = await workspace.resolveEntity('ent-1');
+
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(window.ApiService.getEntity).toHaveBeenCalledWith('ent-1');
+    expect(result).toBe(apiEntity);
+  });
+
   test('makes recording and photos primary capture tools and delegates recording to the existing pipeline', async () => {
     const Workspace = loadWorkspaceClass();
     const curation = { curation_id: 'cur-1', restaurant_name: 'Place', entity_id: null, curator_type: 'human' };
@@ -250,5 +303,21 @@ describe('CurationWorkspaceModule — authoring surface', () => {
     expect(curation.curator_id).toBe('curator-ai-research');
     expect(window.ApiService.updateCuration).not.toHaveBeenCalled();
     expect(window.ApiService.patchCuration).not.toHaveBeenCalled();
+  });
+
+  test('refresh is idempotent and does not duplicate workspace chrome', async () => {
+    const Workspace = loadWorkspaceClass();
+    const curation = { restaurant_name: 'Place', entity_id: null, curator_type: 'human' };
+    const workspace = new Workspace(makeUiManager({ curation }));
+    workspace.compose();
+
+    await workspace.refresh({ curation, entity: null });
+    await workspace.refresh({ curation, entity: null });
+    await workspace.refresh({ curation, entity: null });
+
+    expect(document.querySelectorAll('#curation-workspace')).toHaveLength(1);
+    expect(document.querySelectorAll('.curation-orphan-helper')).toHaveLength(1);
+    expect(document.querySelectorAll('#curation-record-review')).toHaveLength(1);
+    expect(document.querySelectorAll('#additional-recording-section')).toHaveLength(1);
   });
 });
