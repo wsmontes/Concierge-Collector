@@ -62,6 +62,14 @@ describe('Local release gate', () => {
     expect(seen).toEqual(['python3'])
   })
 
+  test('full gate enables the live CMS E2E suites by default', () => {
+    const e2e = createReleasePlan('full').find((step) => step.name === 'Admin browser E2E')
+
+    expect(e2e.env.CMS_E2E_AUTH_HANDOFF).toBe('1')
+    expect(e2e.env.CMS_E2E_PUBLISH).toBe('1')
+    expect(e2e.env.CMS_E2E_EXPLORER).toBe('1')
+  })
+
   test('admin test environment supplies safe defaults without overriding caller values', () => {
     const env = withAdminTestEnv({ CMS_MONGODB_URL: 'mongodb://custom:27017' })
 
