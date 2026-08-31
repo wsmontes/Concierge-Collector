@@ -14,6 +14,11 @@ const ADMIN_TEST_DEFAULTS = {
   FASTAPI_BASE_URL: 'http://127.0.0.1:8000',
   METRICS_KEY: 'test-metrics-key',
   PAYLOAD_SECRET: 'test-payload-secret-with-at-least-32-chars',
+  // Mesma chave com que o runbook sobe o FastAPI (CLAUDE_BASELINE_1_QUALIFICATION.md
+  // §2): sem ela, os testes de integração autenticam com a API_SECRET_KEY do
+  // .env local (valor de produção) e falham 401 contra o stack -test.
+  // process.env exportado continua prevalecendo sobre este default.
+  API_SECRET_KEY: 'test-api-secret-key',
 }
 
 const API_MONGO_TEST_DEFAULTS = {
@@ -65,7 +70,9 @@ export function createReleasePlan(mode = 'standard', { env = process.env } = {})
   const standard = [
     npmStep('Collector build freshness', 'build:collector:check'),
     npmStep('Collector lint', 'lint:collector'),
-    npmStep('Collector unit tests', 'test:collector'),
+    // Os testes do Collector incluem integração contra o FastAPI do stack
+    // -test — precisam da mesma chave com que o runbook sobe a API (§2).
+    npmStep('Collector unit tests', 'test:collector', { env: adminEnv }),
     npmStep('Admin unit tests', 'test:admin', { env: adminEnv }),
     npmStep('Admin typecheck', 'typecheck:admin', { env: adminEnv }),
     npmStep('Admin build', 'build:admin', { env: adminEnv }),
