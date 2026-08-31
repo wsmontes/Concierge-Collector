@@ -84,8 +84,6 @@ def _compact_embeddings_for_storage(embeddings):
     dropped = False
     for emb in embeddings:
         if not isinstance(emb, dict) or "vector" not in emb:
-            # texto sem vetor é EXATAMENTE o que o backfill precisa gerar —
-            # marca o drop (senão o filtro do backfill nunca re-selecionaria)
             if isinstance(emb, dict):
                 dropped = True
             out.append(emb)
@@ -104,18 +102,13 @@ def _compact_embeddings_for_storage(embeddings):
             dropped = True
             continue
         out.append({**emb, "vector": packed})
-    # drop parcial PRESERVA os vetores válidos e sinaliza backfill — o filtro
-    # do backfill inclui embeddings_metadata.backfill_needed: True, então os
-    # textos dropados são regenerados sem destruir o que está bom
     return out, dropped
 
 
 def _filter_by_entity_types(db, curations, entity_types):
     """Filtra candidatos cujo tipo de entity não está em entity_types.
     Resolve os DOIS formatos (type v3 e entity_type legado) e o hazard de
-    ObjectId: entity_id 24-hex que referencia entity ObjectId sem campo
-    entity_id precisa do variant ObjectId no $in (auditoria ago/2026: o
-    campo entity_types era aceito mas NUNCA aplicado)."""
+    ObjectId."""
     from bson import ObjectId as _OID
 
     allowed = set(entity_types)
@@ -142,12 +135,13 @@ def _filter_by_entity_types(db, curations, entity_types):
 
 
 def _vector_search_or_fallback(db, projection, query_vector, candidate_limit, fallback_filter):
-    """Tenta o $vectorSearch (índice Atlas) e cai para a varredura bounded por
-    recência. RECALL conhecido: o Atlas não indexa o Binary subtype 0 do
-    formato compactado, então sem o índice vector só as candidate_limit
-    curadorias com embeddings MAIS RECENTES são pontuadas em Python —
-    curadorias antigas ficam fora dos candidatos enquanto o índice não for
-    recriado no Atlas. Falha do $vectorSearch é logada, nunca silenciosa."""
+    """Use Atlas Vector Search when available, otherwise scan every eligible Curation.
+
+    Packed Binary float32 vectors are not guaranteed to be indexable by the
+    deployed Atlas vector index. The fallback therefore prioritizes correctness:
+    it NEVER truncates candidates by recency. This can be slower than the native
+    index, but it cannot silently hide an older high-quality Curation.
+    """
     vector_index_name = os.getenv("MONGODB_CURATIONS_VECTOR_INDEX", "").strip()
     if vector_index_name:
         try:
@@ -166,22 +160,27 @@ def _vector_search_or_fallback(db, projection, query_vector, candidate_limit, fa
             resultados = list(db.curations.aggregate(vector_pipeline))
             if resultados:
                 return resultados, True
-        except Exception as e:
+        except Exception as exc:
             logger.warning(
-                f"$vectorSearch falhou (índice '{vector_index_name}' indisponível "
-                f"ou vetores em formato não indexável — Binary float32): {e}. "
-                "Usando fallback por varredura + score em Python."
+                "$vectorSearch falhou para o índice %r; usando fallback exaustivo: %s",
+                vector_index_name,
+                exc.__class__.__name__,
             )
-    return list(db.curations.find(fallback_filter, projection).sort("updatedAt", -1).limit(candidate_limit)), False
+
+    scan_started = time.time()
+    resultados = list(db.curations.find(fallback_filter, projection))
+    logger.warning(
+        "semantic_search_fallback_exhaustive candidates=%s elapsed_ms=%s",
+        len(resultados),
+        round((time.time() - scan_started) * 1000, 1),
+    )
+    return resultados, False
 
 
 router = APIRouter(prefix="/curations", tags=["curations"])
 
 
 def _pending_category_texts(categories):
-    """Textos 'category concept' derivados de categories (mesmo formato dos
-    geradores de embeddings) — a ÚNICA fonte de pendência. Guarda contra
-    categories não-dict."""
     pending = set()
     if isinstance(categories, dict):
         for category, concepts in categories.items():
@@ -192,10 +191,6 @@ def _pending_category_texts(categories):
 
 
 def _compute_backfill_flag(stored_categories, new_embeddings, client_meta, stored_meta):
-    """Regra ÚNICA da flag backfill_needed: True se QUALQUER texto pendente de
-    categories não está coberto pelos novos embeddings. O cliente NUNCA
-    controla a flag (o servidor é a autoridade) e metadata não-dict não
-    quebra o merge."""
     client_meta = dict(client_meta or {})
     client_meta.pop("backfill_needed", None)
     base = stored_meta if isinstance(stored_meta, dict) else {}
@@ -211,22 +206,6 @@ def _compute_backfill_flag(stored_categories, new_embeddings, client_meta, store
 
 
 def _repair_curator_identity(doc, stored):
-    """Regra ÚNICA server-side de identidade do curator (bulk update + PATCH).
-
-    Identidade REAL prevalece sobre placeholder em TODOS os campos:
-    - payload sem identidade real (top-level e embutida placeholders) →
-      identidade ARMAZENADA prevalece; name/email reais nunca são destruídos
-      por placeholder do payload (payload {id:'unknown', name:'unknown',
-      email:null} do sync offline é o caso real — syncManagerV3.js);
-    - top-level real + embutida placeholder → embutida sincroniza com a
-      top-level (um id embutido '' some da busca por curator.id e re-infecta
-      o próximo push);
-    - top-level placeholder não sombreia embutida real (estado legado
-      'unknown' no curator_id não mata o reparo);
-    - nada real em lugar nenhum → placeholder não persiste no curator_id
-      (objeto embutido fica como o payload mandou — comportamento de create).
-    Sem menção a identidade no doc, nada muda.
-    """
     if "curator_id" not in doc and "curator" not in doc:
         return doc
 
@@ -242,16 +221,13 @@ def _repair_curator_identity(doc, stored):
     payload_emb = payload_cur.get("id")
 
     if not _is_placeholder_identity(payload_top):
-        # top-level real é autoritativo — embutida placeholder não envenena
         if _is_placeholder_identity(payload_emb):
             doc["curator"] = {**payload_cur, "id": payload_top}
         return doc
     if not _is_placeholder_identity(payload_emb):
-        # embutida real é autoritativo (o normalize já sincronizou top-level)
         doc["curator_id"] = payload_emb
         return doc
 
-    # payload todo placeholder: armazenado prevalece
     if stored_id:
         merged = {**stored_cur}
         for key, value in payload_cur.items():
@@ -266,7 +242,6 @@ def _repair_curator_identity(doc, stored):
 
 
 def build_curation_response_payload(curation_doc: dict) -> dict:
-    """Build lightweight curation payload without embeddings."""
     if not curation_doc:
         return {}
 
@@ -285,21 +260,12 @@ def build_curation_response_payload(curation_doc: dict) -> dict:
 def create_curation(
     curation: CurationCreate,
     db: Database = Depends(get_database),
-    auth: dict = Depends(require_role("curator")),  # Support both API key and JWT
+    auth: dict = Depends(require_role("curator")),
 ):
-    """Create a new curation
-
-    **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
-
-    Delega para o curation_service (fronteira única de escrita — o AI
-    Orchestrator usa o mesmo caminho).
-    """
     return create_curation_doc(db, curation, auth)
 
 
 def _parse_iso_param(name: str, raw: str) -> datetime:
-    """Parse de timestamp ISO de query param — 400 no formato inválido
-    (mesmo contrato do since; compartilhado por since/created_after)."""
     try:
         return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
@@ -319,14 +285,6 @@ def build_search_query(
     q: Optional[str] = None,
     unlinked: bool = False,
 ) -> dict:
-    """Monta o filtro Mongo do /curations/search — função pura (sem I/O),
-    unit-testável sem banco. Regras:
-    - q vira grupo $or de regex; unlinked vira condição de órfã e compõe
-      por $and com esse grupo (AND entre texto e vínculo, nunca OR)
-    - unlinked: entity_id ausente/None/string vazia — $in: [None, ""]
-      já cobre as três formas (Mongo trata chave ausente como null)
-    - sem status explícito e sem include_deleted, 'deleted' é excluído
-    """
     query = {}
     if entity_id:
         query["entity_id"] = entity_id
@@ -348,22 +306,18 @@ def build_search_query(
 
     if since:
         query["updatedAt"] = {"$gte": _parse_iso_param("since", since)}
-
     if created_after:
         query["createdAt"] = {"$gte": _parse_iso_param("created_after", created_after)}
-
     if unlinked:
         unlinked_cond = {"entity_id": {"$in": [None, ""]}}
         if "$or" in query:
             query = {"$and": [query, unlinked_cond]}
         else:
             query["entity_id"] = unlinked_cond["entity_id"]
-
     if status:
         query["status"] = status
     elif not include_deleted:
         query["status"] = {"$ne": "deleted"}
-
     return query
 
 
@@ -373,55 +327,20 @@ def search_curations(
     curator_id: Optional[str] = Query(None),
     status: Optional[CurationStatus] = Query(None),
     include_deleted: bool = Query(False),
-    since: Optional[str] = Query(
-        None,
-        description="ISO timestamp - only return curations updated after this time",
-    ),
-    created_after: Optional[str] = Query(
-        None,
-        description="ISO timestamp - only return curations created after this time (saved view 'Recently added')",
-    ),
+    since: Optional[str] = Query(None),
+    created_after: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
     type: Optional[str] = Query(None),
-    q: Optional[str] = Query(None, description="Busca por texto em restaurant_name"),
-    unlinked: bool = Query(
-        False,
-        description="Apenas curadorias órfãs (entity_id ausente/vazio) — saved view 'Unlinked'",
-    ),
-    sort_by: str = Query(
-        "updated_at",
-        description="Campo de ordenação do modo offset: updated_at (padrão) ou created_at",
-    ),
-    sort_order: str = Query(
-        "desc",
-        pattern="^(asc|desc)$",
-        description="Direção da ordenação do modo offset: desc (padrão) ou asc",
-    ),
+    q: Optional[str] = Query(None),
+    unlinked: bool = Query(False),
+    sort_by: str = Query("updated_at"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    after_id: Optional[str] = Query(
-        None,
-        description=(
-            "Cursor-based pagination: return items with _id > after_id "
-            "(O(log n), preferred over offset for large sets)"
-        ),
-    ),
+    after_id: Optional[str] = Query(None),
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),  # login-gate: curadorias são IP interna (2026-08-15)
+    auth: dict = Depends(verify_auth),
 ):
-    """Search curations with filters.
-
-    **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
-    (login-gate sem redação por dono — usuário logado vê o documento completo).
-
-    Two pagination modes (mutually exclusive — after_id takes priority):
-    - **Cursor-based** (?after_id=<last_id>): O(log n), preferred for large collections.
-    - **Offset-based** (?offset=N): legacy compatible, degrades at high offsets.
-
-    Supports incremental sync via ?since (updatedAt >= since).
-    Saved views (auditoria UX, ponto 20): ?unlinked=true (órfãs) e
-    ?created_after=<ISO> (recém-criadas, janela de 24h no frontend).
-    """
     query = build_search_query(
         entity_id=entity_id,
         curator_id=curator_id,
@@ -436,13 +355,8 @@ def search_curations(
     )
 
     if after_id:
-        # Cursor por _id com TRANSIÇÃO DE SEGMENTO (mesmo hazard de entities:
-        # $gt contra string não alcança _ids ObjectId — página vazia no fim
-        # das strings entra no segmento ObjectId)
         query["_id"] = {"$gt": resolve_after_id(db, "curations", after_id)}
-        total = -1  # not computed in cursor mode
-        # janela 2x: skips de docs malformados não podem esvaziar a página
-        # (o cliente para em página vazia e avançaria o watermark)
+        total = -1
         docs = list(db.curations.find(query, CURATION_RESPONSE_PROJECTION).sort("_id", 1).limit(limit * 2))
         if not docs and isinstance(query["_id"]["$gt"], str):
             transition = dict(query)
@@ -452,19 +366,12 @@ def search_curations(
         for doc in docs:
             try:
                 items.append(Curation(**doc))
-            except ValidationError as e:
-                # doc legado não pode derrubar a página NEM esvaziá-la: o
-                # cliente para em página vazia e avança o watermark — um
-                # skip silencioso causaria invisibilidade permanente
-                logger.warning("curadoria malformada pulada na listagem: %s", e)
+            except ValidationError as exc:
+                logger.warning("curadoria malformada pulada na listagem: %s", exc)
         return PaginatedResponse(items=items[:limit], total=total, limit=limit, offset=offset)
 
     total = db.curations.count_documents(query)
-    # Ordenação do modo offset: últimas modificações por padrão (pedido
-    # do concierge, ago/2026 — a lista abria em ordem de inserção).
-    # _id como desempate garante paginação estável com updatedAt iguais.
-    _SORT_FIELDS = {"updated_at": "updatedAt", "created_at": "createdAt"}
-    sort_field = _SORT_FIELDS.get(sort_by, "updatedAt")
+    sort_field = {"updated_at": "updatedAt", "created_at": "createdAt"}.get(sort_by, "updatedAt")
     sort_dir = 1 if sort_order == "asc" else -1
     cursor = (
         db.curations.find(query, CURATION_RESPONSE_PROJECTION)
@@ -472,24 +379,17 @@ def search_curations(
         .skip(offset)
         .limit(limit)
     )
-
     items = []
     for doc in cursor:
         try:
             items.append(Curation(**doc))
-        except ValidationError as e:
-            # doc de formato legado (curator/curation_id ausentes) não pode
-            # derrubar a página inteira com 500 (modo offset)
-            logger.warning("curadoria malformada pulada na listagem (offset): %s", e)
-
+        except ValidationError as exc:
+            logger.warning("curadoria malformada pulada na listagem (offset): %s", exc)
     return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.get("/cities")
 def list_cities(db: Database = Depends(get_database), auth: dict = Depends(verify_auth)):
-    """Retorna lista distinta de cidades para o dropdown de filtro.
-    Usa MongoDB distinct() com índice implícito — O(1) na prática.
-    Login-gate (2026-08-15): exige autenticação como as demais leituras de curation."""
     cities = db.curations.distinct("city")
     return sorted([c for c in cities if c])
 
@@ -498,37 +398,26 @@ def list_cities(db: Database = Depends(get_database), auth: dict = Depends(verif
 def get_entity_curations(
     entity_id: str,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),  # login-gate: curadorias são IP interna (2026-08-15)
+    auth: dict = Depends(verify_auth),
 ):
-    """Get all curations for an entity"""
-    # Verify entity exists
     entity = find_entity(db, entity_id)
     if not entity:
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
-
-    # Get curations (exclude deleted by default)
-    projection = CURATION_RESPONSE_PROJECTION
-
-    cursor = db.curations.find({"entity_id": entity_id, "status": {"$ne": "deleted"}}, projection).limit(200)
-    curations = []
-    for doc in cursor:
-        curations.append(Curation(**doc))
-
-    return curations
+    cursor = db.curations.find(
+        {"entity_id": entity_id, "status": {"$ne": "deleted"}}, CURATION_RESPONSE_PROJECTION
+    ).limit(200)
+    return [Curation(**doc) for doc in cursor]
 
 
 @router.get("/{curation_id}", response_model=Curation)
 def get_curation(
     curation_id: str,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),  # login-gate: curadorias são IP interna (2026-08-15)
+    auth: dict = Depends(verify_auth),
 ):
-    """Get curation by ID"""
     result = find_curation(db, curation_id, projection=CURATION_RESPONSE_PROJECTION)
-
     if not result:
         raise HTTPException(status_code=404, detail=f"Curation {curation_id} not found")
-
     return Curation(**result)
 
 
@@ -538,22 +427,13 @@ def update_curation(
     updates: CurationUpdate,
     if_match: Optional[str] = Header(None, alias="If-Match"),
     db: Database = Depends(get_database),
-    auth: dict = Depends(require_role("curator")),  # Support both API key and JWT
+    auth: dict = Depends(require_role("curator")),
 ):
-    """Update curation with optimistic locking
-
-    **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
-    """
-    # Get current curation for version — resolução DETERMINÍSTICA: o $or
-    # poderia ler a versão de UM twin e escrever no OUTRO (dois contadores
-    # de versão independentes ping-pongando 409)
     current = find_curation(db, curation_id, projection=CURATION_RESPONSE_PROJECTION)
     if not current:
         raise HTTPException(status_code=404, detail="Curation not found")
 
     current_version = current.get("version", 1)
-
-    # If If-Match provided, validate it
     if if_match:
         try:
             requested_version = int(if_match.strip('"'))
@@ -565,27 +445,16 @@ def update_curation(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid If-Match header format")
 
-    # ── IDOR (ownership): regra central em resolve_ownership_action — humana
-    # de terceiro = 403 (caminho é duplicar); sintética/placeholder editada
-    # por humano = transfer (assume a autoria); admin em humana = ok sem
-    # transferência. DEPOIS do If-Match — 404/409/400 têm prioridade.
     stored_owner = stored_owner_identity(current)
     ownership_action = resolve_ownership_action(stored_owner, current.get("curator_type"), auth)
     if ownership_action == "forbidden":
-        raise HTTPException(
-            status_code=403,
-            detail="Cannot modify another curator's curation",
-        )
+        raise HTTPException(status_code=403, detail="Cannot modify another curator's curation")
 
-    # Prepare update
     update_data = {k: v for k, v in updates.model_dump(exclude_unset=True).items() if v is not None}
-
-    # Keep curator fields consistent regardless of which one is provided
     if "curator" in update_data and "curator_id" not in update_data:
         curator_obj = update_data.get("curator") or {}
         if isinstance(curator_obj, dict) and curator_obj.get("id"):
             update_data["curator_id"] = curator_obj.get("id")
-
     if "curator_id" in update_data and "curator" not in update_data:
         current_curator = current.get("curator") or {}
         update_data["curator"] = {
@@ -594,49 +463,30 @@ def update_curation(
             "email": current_curator.get("email"),
         }
 
-    # Preserve original creator forever (backfill once for legacy records)
-    if current.get("createdBy"):
-        update_data["createdBy"] = current.get("createdBy")
-    else:
-        update_data["createdBy"] = current.get("curator_id") or (current.get("curator") or {}).get("id")
-
-    # Denormalize city/type if entity_id is changing
+    update_data["createdBy"] = current.get("createdBy") or current.get("curator_id") or (current.get("curator") or {}).get("id")
     if "entity_id" in update_data and update_data["entity_id"]:
         entity = find_entity(db, update_data["entity_id"])
         if entity:
             entity = {k: entity.get(k) for k in ("type", "data")}
-        if entity:
             update_data.update(denormalize_curation_location(entity))
 
     update_data["updatedAt"] = datetime.now(timezone.utc)
     update_data["version"] = current_version + 1
 
-    # Fronteira de escrita: vetores entram no Mongo compactados (Binary float32)
     if "categories" in update_data or "embeddings" in update_data:
-        # Fronteira de escrita: vetores compactados + flag de pendência
-        # computada a partir das CATEGORIES.
         compacted = None
         if "embeddings" in update_data:
             compacted, _dropped = _compact_embeddings_for_storage(update_data["embeddings"])
             update_data["embeddings"] = compacted
-        # categories do PATCH prevalecem — INCLUSIVE {} (clear legítimo não é
-        # falsy: limpar conceitos não pode re-estampar pendência do snapshot)
-        if "categories" in update_data and update_data["categories"] is not None:
-            categorias_pendencia = update_data["categories"]
-        else:
-            # categories já veio no current (o projection não a exclui)
-            categorias_pendencia = current.get("categories") or {}
-        # embeddings armazenados (presença de vetor) cobrem a pendência quando
-        # o PATCH é só-categories — sem isso, qualquer edição de conceito
-        # re-estamparia True em docs já totalmente embutidos
+        categorias_pendencia = (
+            update_data["categories"]
+            if "categories" in update_data and update_data["categories"] is not None
+            else current.get("categories") or {}
+        )
         stored_raw = (
             db.curations.find_one(
                 {"_id": current["_id"]},
-                {
-                    "embeddings_metadata": 1,
-                    "embeddings.text": 1,
-                    "embeddings.vector": {"$slice": 1},
-                },
+                {"embeddings_metadata": 1, "embeddings.text": 1, "embeddings.vector": {"$slice": 1}},
             )
             or {}
         )
@@ -653,14 +503,9 @@ def update_curation(
             stored_raw.get("embeddings_metadata"),
         )
 
-    # Regra única de identidade (mesma do bulk): identidade REAL prevalece;
-    # placeholder ('unknown'/'') nunca persiste por cima do valor real
-    # armazenado e id embutido placeholder não envenena top-level real
     _normalize_curator_id(update_data)
     _repair_curator_identity(update_data, current)
 
-    # ── Takeover: curadoria sintética/placeholder editada por humano vira
-    # humana e o editor assume a autoria (createdBy preserva a origem).
     if ownership_action == "transfer" and auth.get("user"):
         takeover_owner = auth.get("user")
         owner_profile = db.users.find_one({"email": takeover_owner}) or {}
@@ -672,19 +517,11 @@ def update_curation(
         }
         update_data["curator_type"] = "human"
 
-    # ── IDOR (atribuição): a identidade REAL final escrita só pode ser a do
-    # próprio usuário (ou admin); placeholder (sync offline) passa. Sem chaves
-    # de identidade no payload, nada a checar.
     final_owner = update_data.get("curator_id") or (update_data.get("curator") or {}).get("id")
     if not is_admin_auth(auth) and not _is_placeholder_identity(final_owner):
         if final_owner != auth.get("user"):
-            raise HTTPException(
-                status_code=403,
-                detail="curator_id must match the authenticated user",
-            )
+            raise HTTPException(status_code=403, detail="curator_id must match the authenticated user")
 
-    # Last writer becomes the last updater — DEPOIS do reparo: placeholder
-    # nunca persiste no updatedBy
     update_data["updatedBy"] = (
         update_data.get("curator_id")
         or (update_data.get("curator") or {}).get("id")
@@ -692,13 +529,9 @@ def update_curation(
         or current.get("updatedBy")
     )
 
-    # Cliente NUNCA controla a flag: PATCH só de embeddings_metadata tem a
-    # chave removida (o servidor é a autoridade)
     if "embeddings_metadata" in update_data and "categories" not in update_data and "embeddings" not in update_data:
         meta_client = dict(update_data.get("embeddings_metadata") or {})
         meta_client.pop("backfill_needed", None)
-        # PRESERVA a flag armazenada (o cliente não pode apagar pendência) —
-        # lê do BANCO: a projeção do current exclui embeddings_metadata
         stored_flag = (db.curations.find_one({"_id": current["_id"]}, {"embeddings_metadata": 1}) or {}).get(
             "embeddings_metadata"
         ) or {}
@@ -706,23 +539,21 @@ def update_curation(
             meta_client["backfill_needed"] = True
         update_data["embeddings_metadata"] = meta_client
 
-    # Update — escreve no _id ESPECÍFICO do doc que a versão leu (nunca no
-    # twin por decisão do planner). O filtro de version é CONDICIONAL: doc
-    # sem campo version (legado/restore) nunca casaria com {"version": 1}
-    # no equality match — para esses, o PATCH segue sem optimistic lock.
     write_filter = {"_id": current["_id"]}
     if "version" in current:
         write_filter["version"] = current_version
+    else:
+        # Legacy documents without a version still participate in CAS: only
+        # one concurrent writer may claim the absent-version snapshot.
+        write_filter["version"] = {"$exists": False}
     result = db.curations.find_one_and_update(
         write_filter,
         {"$set": update_data},
         projection=CURATION_RESPONSE_PROJECTION,
         return_document=True,
     )
-
     if not result:
         raise HTTPException(status_code=409, detail="Version conflict or curation not found")
-
     return Curation(**result)
 
 
@@ -730,27 +561,15 @@ def update_curation(
 def delete_curation(
     curation_id: str,
     db: Database = Depends(get_database),
-    auth: dict = Depends(require_role("curator")),  # Support both API key and JWT
+    auth: dict = Depends(require_role("curator")),
 ):
-    """Delete curation (Soft Delete)
-
-    Marks the curation as 'deleted' instead of removing from DB.
-    **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
-    """
-    # Projeção inclui identidade — o owner check abaixo precisa dela
     alvo = find_curation(db, curation_id, projection={"_id": 1, "curator_id": 1, "curator": 1})
     if not alvo:
         raise HTTPException(status_code=404, detail=f"Curation {curation_id} not found")
-
-    # ── IDOR (ownership): só o dono (ou admin) deleta. DEPOIS do 404.
     stored_owner = alvo.get("curator_id") or (alvo.get("curator") or {}).get("id")
     if not is_admin_auth(auth) and not _is_placeholder_identity(stored_owner):
         if stored_owner != auth.get("user"):
-            raise HTTPException(
-                status_code=403,
-                detail="Cannot delete another curator's curation",
-            )
-
+            raise HTTPException(status_code=403, detail="Cannot delete another curator's curation")
     result = db.curations.update_one(
         {"_id": alvo["_id"]},
         {
@@ -762,7 +581,6 @@ def delete_curation(
             "$inc": {"version": 1},
         },
     )
-
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail=f"Curation {curation_id} not found")
 
@@ -773,46 +591,26 @@ def semantic_search_curations(
     request: Request,
     body: SemanticSearchRequest,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),  # login-gate: curadorias são IP interna (2026-08-15)
+    auth: dict = Depends(require_role("viewer")),
 ):
-    """Semantic search for curations using concept embeddings
-
-    Generates embedding for the query and finds curations with similar concepts
-    using cosine similarity between vectors.
-
-    **Authentication Required** (login-gate 2026-08-15): cada busca gera um
-    embedding pago na OpenAI — agora exige login, além do limite de 10/min por IP.
-
-    **Example queries:**
-    - "casual japanese food"
-    - "romantic dinner with wine"
-    - "outdoor seating italian restaurant"
-    - "business lunch downtown"
-    """
     start_time = time.time()
-
-    # 1. Generate query embedding
     openai_api_key = os.getenv("OPENAI_API_KEY")
     if not openai_api_key:
         raise HTTPException(status_code=500, detail="OpenAI API key not configured")
-
     client = OpenAI(api_key=openai_api_key)
-
     query_embed_start = time.time()
     try:
         response = client.embeddings.create(input=body.query, model="text-embedding-3-small", dimensions=1536)
         query_vector = np.asarray(response.data[0].embedding, dtype=np.float32)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {str(e)}")
+    except Exception:
+        logger.exception("semantic query embedding generation failed")
+        raise HTTPException(status_code=500, detail="Failed to generate embedding")
 
     query_norm = float(np.linalg.norm(query_vector))
     if query_norm == 0.0:
         raise HTTPException(status_code=500, detail="Failed to generate valid query embedding")
-
     query_embed_time = time.time() - query_embed_start
 
-    # 2. Fetch candidate curations with embeddings
-    # Prefer MongoDB native vector search when an index is configured, fallback to full scan.
     projection = {
         "entity_id": 1,
         "curation_id": 1,
@@ -821,7 +619,6 @@ def semantic_search_curations(
         "notes": 1,
         "embeddings": 1,
     }
-
     candidate_limit = min(max(body.limit * 20, 200), 2000)
     curations, used_atlas = _vector_search_or_fallback(
         db,
@@ -831,33 +628,24 @@ def semantic_search_curations(
         {"embeddings": {"$exists": True, "$ne": []}},
     )
     candidate_count = len(curations)
-
     if body.entity_types:
         curations = _filter_by_entity_types(db, curations, body.entity_types)
 
-    # 3. Calculate similarities for each curation
     results = []
-
     allowed_categories = set(body.categories) if body.categories else None
-
     for curation in curations:
         embeddings = curation.get("embeddings", [])
         if not embeddings:
             continue
-
         matches = []
         similarity_sum = 0.0
         max_similarity = 0.0
         match_count = 0
-
         for emb in embeddings:
             if not isinstance(emb, dict):
-                continue  # entrada corrompida não pode derrubar a busca
-            # Filter by category if specified
+                continue
             if allowed_categories and emb.get("category") not in allowed_categories:
                 continue
-
-            # Calculate cosine similarity
             try:
                 concept_vector = _vector_to_array(emb["vector"])
                 concept_norm = float(np.linalg.norm(concept_vector))
@@ -866,8 +654,6 @@ def semantic_search_curations(
                 similarity = float(np.dot(query_vector, concept_vector) / (query_norm * concept_norm))
             except Exception:
                 continue
-
-            # Filter by threshold
             if similarity >= body.min_similarity:
                 rounded_similarity = round(similarity, 4)
                 matches.append(
@@ -880,46 +666,29 @@ def semantic_search_curations(
                 )
                 similarity_sum += rounded_similarity
                 match_count += 1
-                if rounded_similarity > max_similarity:
-                    max_similarity = rounded_similarity
-
+                max_similarity = max(max_similarity, rounded_similarity)
         if not matches:
             continue
-
-        # Sort matches by similarity (descending)
         matches.sort(key=lambda x: x["similarity"], reverse=True)
-        avg_similarity = similarity_sum / match_count
-
         entity_id = curation.get("entity_id")
         if entity_id is None:
             continue
+        results.append(
+            {
+                "entity_id": entity_id,
+                "curation": build_curation_response_payload(curation),
+                "matches": matches[:10],
+                "avg_similarity": round(similarity_sum / match_count, 4),
+                "max_similarity": round(max_similarity, 4),
+                "match_count": match_count,
+            }
+        )
 
-        # Build result
-        result_data = {
-            "entity_id": entity_id,
-            "curation": build_curation_response_payload(curation),
-            "matches": matches[:10],  # Top 10 matches
-            "avg_similarity": round(avg_similarity, 4),
-            "max_similarity": round(max_similarity, 4),
-            "match_count": match_count,
-        }
-
-        results.append(result_data)
-
-    # 5. Sort by max_similarity (best match first)
     results.sort(key=lambda x: x["max_similarity"], reverse=True)
-
-    # 6. Limit results
     results = results[: body.limit]
-
     if body.include_entity and results:
         entity_ids = [result["entity_id"] for result in results]
-        entity_projection = {
-            "name": 1,
-            "entity_type": 1,
-            "location": 1,
-            "contact": 1,
-        }
+        entity_projection = {"name": 1, "entity_type": 1, "location": 1, "contact": 1}
         entities = list(db.entities.find({"_id": {"$in": entity_ids}}, entity_projection))
         entities_by_id = {
             entity["_id"]: {
@@ -935,21 +704,16 @@ def semantic_search_curations(
             if entity_data:
                 result["entity"] = entity_data
 
-    # 7. Calculate total time
     total_time = time.time() - start_time
     search_time = total_time - query_embed_time
-
     return SemanticSearchResponse(
         results=[SemanticSearchResult(**r) for r in results],
         query=body.query,
         query_embedding_time=round(query_embed_time, 3),
         search_time=round(search_time, 3),
         total_results=len(results),
-        # honestidade epistemológica (auditoria ago/2026): o fallback só
-        # pontua as candidate_limit curadorias mais recentes — o consumidor
-        # precisa SABER que o top-k pode estar parcial
-        search_mode="atlas_vector" if used_atlas else "fallback",
-        partial=not used_atlas,
+        search_mode="atlas_vector" if used_atlas else "fallback_exhaustive",
+        partial=False,
         candidate_count=candidate_count,
     )
 
@@ -960,36 +724,14 @@ def hybrid_search(
     request: Request,
     body: HybridSearchRequest,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),  # login-gate: curadorias são IP interna (2026-08-15)
+    auth: dict = Depends(require_role("viewer")),
 ):
-    """Busca híbrida: combina busca tradicional de entities + busca semântica de curations
-
-    Executa ambas as buscas EM PARALELO e combina os resultados de forma inteligente:
-    - Entities que batem por nome/localização recebem entity_score
-    - Curations que batem semanticamente recebem semantic_score
-    - Score final = (1 - boost_semantic) * entity_score + boost_semantic * semantic_score
-
-    **Authentication Required** (login-gate 2026-08-15): cada busca gera um
-    embedding pago na OpenAI — agora exige login, além do limite de 10/min por IP.
-
-    **Example queries:**
-    - "restaurante japonês em jardins"
-    - "jantar romântico com vinho"
-    - "casual lunch near paulista"
-    """
     start_time = time.time()
-
-    # ========== 1. BUSCA TRADICIONAL DE ENTITIES (rápida) ==========
     entity_search_start = time.time()
     entity_results = {}
-
     entity_filter = {}
-
-    # Text search no nome
     if body.query:
         entity_filter["$text"] = {"$search": body.query}
-
-    # Location filter
     if body.location:
         escaped_location = re.escape(body.location)
         entity_filter["$or"] = [
@@ -997,8 +739,6 @@ def hybrid_search(
             {"location.neighborhood": {"$regex": escaped_location, "$options": "i"}},
             {"location.address": {"$regex": escaped_location, "$options": "i"}},
         ]
-
-    # Se tiver filtros, busca entities
     if entity_filter:
         entities = list(db.entities.find(entity_filter).limit(50))
         for entity in entities:
@@ -1006,38 +746,30 @@ def hybrid_search(
             if entity_id is None:
                 continue
             entity_key = str(entity_id)
-            # Score baseado em text score (se disponível) ou 0.5 default
-            entity_score = entity.get("score", 0.5)
             entity_results[entity_key] = {
                 "entity": entity,
-                "entity_score": entity_score,
+                "entity_score": entity.get("score", 0.5),
                 "entity_id_raw": entity_id,
             }
-
     entity_search_time = time.time() - entity_search_start
 
-    # ========== 2. BUSCA SEMÂNTICA DE CURATIONS (paralela) ==========
     semantic_search_start = time.time()
     semantic_results = {}
-
-    # Generate query embedding
     openai_api_key = os.getenv("OPENAI_API_KEY")
     if not openai_api_key:
         raise HTTPException(status_code=500, detail="OpenAI API key not configured")
-
     client = OpenAI(api_key=openai_api_key)
-
     try:
         response = client.embeddings.create(input=body.query, model="text-embedding-3-small", dimensions=1536)
         query_vector = np.asarray(response.data[0].embedding, dtype=np.float32)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {str(e)}")
+    except Exception:
+        logger.exception("hybrid query embedding generation failed")
+        raise HTTPException(status_code=500, detail="Failed to generate embedding")
 
     query_norm = float(np.linalg.norm(query_vector))
     if query_norm == 0.0:
         raise HTTPException(status_code=500, detail="Failed to generate valid query embedding")
 
-    # Fetch candidate curations with embeddings (prefer vector index, fallback to scan)
     projection = {
         "entity_id": 1,
         "curation_id": 1,
@@ -1046,42 +778,30 @@ def hybrid_search(
         "notes": 1,
         "embeddings": 1,
     }
-
     candidate_limit = min(max(body.limit * 20, 200), 2000)
     curations, _used_atlas = _vector_search_or_fallback(
         db,
         projection,
         query_vector,
         candidate_limit,
-        {
-            "embeddings": {"$exists": True, "$ne": []},
-            "entity_id": {"$ne": None, "$exists": True},
-        },
+        {"embeddings": {"$exists": True, "$ne": []}, "entity_id": {"$ne": None, "$exists": True}},
     )
-
     allowed_categories = set(body.categories) if body.categories else None
-
     for curation in curations:
         entity_id = curation.get("entity_id")
         if entity_id is None:
             continue
         entity_key = str(entity_id)
         embeddings = curation.get("embeddings", [])
-
         if not embeddings:
             continue
-
         matches = []
         similarities = []
-
         for emb in embeddings:
             if not isinstance(emb, dict):
-                continue  # entrada corrompida não pode derrubar a busca
-            # Filter by category if specified
+                continue
             if allowed_categories and emb.get("category") not in allowed_categories:
                 continue
-
-            # Calculate cosine similarity
             try:
                 concept_vector = _vector_to_array(emb["vector"])
                 concept_norm = float(np.linalg.norm(concept_vector))
@@ -1090,7 +810,6 @@ def hybrid_search(
                 similarity = float(np.dot(query_vector, concept_vector) / (query_norm * concept_norm))
             except Exception:
                 continue
-
             if similarity >= body.min_similarity:
                 similarities.append(similarity)
                 matches.append(
@@ -1101,39 +820,28 @@ def hybrid_search(
                         similarity=similarity,
                     )
                 )
-
         if matches:
-            # Sort matches by similarity
             matches.sort(key=lambda x: x.similarity, reverse=True)
-
-            # Use max similarity as semantic score
             semantic_score = max(similarities)
-
             existing = semantic_results.get(entity_key)
             if existing and existing.get("semantic_score", 0.0) >= semantic_score:
                 continue
-
             semantic_results[entity_key] = {
                 "curation": build_curation_response_payload(curation),
                 "semantic_score": semantic_score,
-                "matches": matches[:10],  # Top 10 matches
+                "matches": matches[:10],
                 "entity_id_raw": entity_id,
             }
-
     semantic_search_time = time.time() - semantic_search_start
 
-    # ========== 3. COMBINAR RESULTADOS ==========
     combined = {}
     all_entity_ids = set(entity_results.keys()) | set(semantic_results.keys())
-
-    # Fetch missing entities in batch (avoid N+1 find_one)
     missing_entity_ids = []
     seen_missing = set()
     for entity_id in all_entity_ids:
         if entity_id in entity_results:
             continue
-        semantic_data = semantic_results.get(entity_id, {})
-        raw_id = semantic_data.get("entity_id_raw")
+        raw_id = semantic_results.get(entity_id, {}).get("entity_id_raw")
         if raw_id is None:
             continue
         raw_id_key = str(raw_id)
@@ -1141,7 +849,6 @@ def hybrid_search(
             continue
         seen_missing.add(raw_id_key)
         missing_entity_ids.append(raw_id)
-
     entities_by_id = {}
     if missing_entity_ids:
         missing_entities = list(db.entities.find({"_id": {"$in": missing_entity_ids}}))
@@ -1150,32 +857,19 @@ def hybrid_search(
     for entity_id in all_entity_ids:
         entity_data = entity_results.get(entity_id, {})
         semantic_data = semantic_results.get(entity_id, {})
-
         entity_score = entity_data.get("entity_score", 0.0)
         semantic_score = semantic_data.get("semantic_score", 0.0)
-
-        # Determine match type
         if entity_score > 0 and semantic_score > 0:
             match_type = "hybrid"
         elif semantic_score > 0:
             match_type = "semantic"
         else:
             match_type = "entity"
-
-        # Combined score: weighted average
-        # boost_semantic controla o peso da busca semântica
         combined_score = (1 - body.boost_semantic) * entity_score + body.boost_semantic * semantic_score
-
-        # Get entity data (from entity search or from curation's entity_id)
-        entity = entity_data.get("entity")
-        if not entity:
-            entity = entities_by_id.get(entity_id)
-
+        entity = entity_data.get("entity") or entities_by_id.get(entity_id)
         if not entity:
             continue
-
         output_entity_id = str(entity.get("_id", entity_id))
-
         combined[entity_id] = {
             "entity_id": output_entity_id,
             "entity": {
@@ -1192,13 +886,10 @@ def hybrid_search(
             "semantic_matches": semantic_data.get("matches"),
         }
 
-    # ========== 4. RANKEAR E LIMITAR ==========
     results = list(combined.values())
     results.sort(key=lambda x: x["score"], reverse=True)
     results = results[: body.limit]
-
     total_time = time.time() - start_time
-
     return HybridSearchResponse(
         results=[HybridSearchResult(**r) for r in results],
         query=body.query,
@@ -1216,71 +907,31 @@ def bulk_upsert_curations(
     db: Database = Depends(get_database),
     auth: dict = Depends(require_role("curator")),
 ):
-    """Bulk upsert curations (create or update) — max 500 per call.
-
-    Each item is processed independently. Errors are collected per item and
-    returned in the response so the caller can decide how to retry.
-
-    If a curation with the same curation_id already exists it is updated
-    (all fields merged); otherwise it is created.
-
-    **Authentication Required:** Bearer token or X-API-Key header.
-    **Minimum role:** curator
-    """
     caller_role = auth.get("role", "curator")
     if not has_role(caller_role, "curator"):
-        raise HTTPException(
-            status_code=403,
-            detail="Insufficient role: curator or admin required for bulk import",
-        )
+        raise HTTPException(status_code=403, detail="Insufficient role: curator or admin required for bulk import")
     created = 0
     updated = 0
     errors: list = []
     now = datetime.now(timezone.utc)
 
-    # Pre-fetch all unique entity_ids to avoid N+1 queries in the loop.
-    # find_entity resolve ObjectId/string/slug — o $in com strings puras não
-    # casava as 471 entities ObjectId (type bracketing) e a denormalização
-    # city/type era pulada no caminho que o sync offline usa.
     unique_eids = list({c.entity_id for c in payload.curations if c.entity_id})
     by_id: dict = {}
     by_slug: dict = {}
     if unique_eids:
-        # hex válido vira ObjectId no $in: entity ObjectId SEM campo entity_id
-        # (bulk import) é alcançada — $in com string nunca casa ObjectId
         eid_variants = list(unique_eids)
         for eid in unique_eids:
             if ObjectId.is_valid(eid):
                 eid_variants.append(ObjectId(eid))
         entity_docs = db.entities.find(
-            {
-                "$or": [
-                    {"_id": {"$in": eid_variants}},
-                    {"entity_id": {"$in": unique_eids}},
-                ]
-            },
-            {
-                "type": 1,
-                "data.location": 1,
-                "entity_id": 1,
-            },  # entity_id NA projeção (senão o slug nunca casa)
+            {"$or": [{"_id": {"$in": eid_variants}}, {"entity_id": {"$in": unique_eids}}]},
+            {"type": 1, "data.location": 1, "entity_id": 1},
         )
-        # strings ANTES de ObjectIds (prioridade documentada do repo) —
-        # setdefault: o primeiro escreve, o outro não sobrescreve
         for e in sorted(entity_docs, key=lambda e: 0 if isinstance(e["_id"], str) else 1):
-            # DOIS dicts: str(_id) e slug nunca se sobrescrevem (colisão
-            # slug==str(_id) de outra entity denormalizaria cidade errada)
             by_id.setdefault(str(e["_id"]), e)
             if e.get("entity_id"):
                 by_slug.setdefault(e["entity_id"], e)
 
-    # Pré-fetch de existência das curadorias (mesma estratégia do pre-fetch
-    # de entities): sem isso, o loop faz até 2 probes SEQUENCIAIS por item —
-    # ~1000 round trips num lote de 500. Prioridade de resolução idêntica à
-    # do find_curation: _id string exato → _id ObjectId → campo curation_id
-    # (setdefault: o primeiro escreve). Dois grupos de projeção: 'curator'
-    # inteiro só para payloads SEM identidade real (o reparo pode precisar
-    # do armazenado) — sync logado não paga o subdoc no lote todo.
     plain_ids, curator_ids = [], []
     for c in payload.curations:
         needs_stored_curator = _is_placeholder_identity(c.curator_id) and _is_placeholder_identity((c.curator or {}).id)
@@ -1292,13 +943,11 @@ def bulk_upsert_curations(
         "createdBy": 1,
         "createdAt": 1,
         "curator_id": 1,
-        # ownership por item (auditoria ago/2026): curator.id embutido é
-        # necessário quando o curator_id top-level é placeholder
         "curator": 1,
+        "curator_type": 1,
     }
 
     def _load_existing_group(ids, extra_proj):
-        """Carga em lote de um grupo de ids no existing_map."""
         if not ids:
             return
         proj = {**base_proj, **extra_proj}
@@ -1318,17 +967,8 @@ def bulk_upsert_curations(
     for idx, curation in enumerate(payload.curations):
         try:
             existing = existing_map.get(curation.curation_id)
-
-            # Denormalize city/type from entity (pre-fetched batch) — _id
-            # exato tem prioridade sobre o slug
-            entity_for_denorm = None
-            if curation.entity_id:
-                entity_for_denorm = by_id.get(curation.entity_id) or by_slug.get(curation.entity_id)
-
+            entity_for_denorm = by_id.get(curation.entity_id) or by_slug.get(curation.entity_id) if curation.entity_id else None
             if existing:
-                # ── OWNERSHIP: regra central (resolve_ownership_action) — o
-                # sync offline do editor pode empurrar uma curadoria sintética
-                # que ele editou: vira humana e assume a autoria.
                 stored_owner = stored_owner_identity(existing)
                 ownership_action = resolve_ownership_action(stored_owner, existing.get("curator_type"), auth)
                 if ownership_action == "forbidden":
@@ -1340,37 +980,23 @@ def bulk_upsert_curations(
                         )
                     )
                     continue
-
-                # ── CAS (auditoria ago/2026): com expected_version, o update
-                # só aplica se a versão do servidor bate — stale client vira
-                # conflito POR ITEM (nunca sobrescreve em silêncio). Sem o
-                # campo, mantém o upsert legado (recuperação do sync quando
-                # o serverId se perdeu e o cliente não tem versão conhecida).
                 expected_version = getattr(curation, "expected_version", None)
                 if expected_version is not None and existing.get("version", 1) != expected_version:
                     errors.append(
                         BulkItemError(
                             index=idx,
                             id=curation.curation_id,
-                            error=(
-                                f"version conflict: server has v{existing.get('version', 1)}, "
-                                f"payload expects v{expected_version}"
-                            ),
+                            error=f"version conflict: server has v{existing.get('version', 1)}, payload expects v{expected_version}",
                         )
                     )
                     continue
-
                 doc = curation.model_dump(exclude_unset=True)
-                doc.pop("curation_id", None)
-                doc.pop("createdAt", None)
-                doc.pop("createdBy", None)
-                doc.pop("expected_version", None)
+                for key in ("curation_id", "createdAt", "createdBy", "expected_version"):
+                    doc.pop(key, None)
                 doc["updatedAt"] = now
                 doc["version"] = existing.get("version", 1) + 1
-                _normalize_curator_id(doc)  # embutida real sincroniza top-level ANTES do reparo
+                _normalize_curator_id(doc)
                 _repair_curator_identity(doc, existing)
-                # ── Takeover (mesma regra do PATCH individual): sintética/
-                # placeholder editada por humano vira humana do editor.
                 if ownership_action == "transfer" and auth.get("user"):
                     takeover_owner = auth.get("user")
                     owner_profile = db.users.find_one({"email": takeover_owner}) or {}
@@ -1381,20 +1007,14 @@ def bulk_upsert_curations(
                         "email": takeover_owner,
                     }
                     doc["curator_type"] = "human"
-                # DEPOIS do reparo: placeholder nunca persiste no updatedBy
                 doc["updatedBy"] = doc.get("curator_id") or auth.get("user")
                 if entity_for_denorm:
                     doc.update(denormalize_curation_location(entity_for_denorm))
-
-                # atualiza o doc ESPECÍFICO que a existência achou (twin
-                # ObjectId/string nunca é tocado por engano)
                 db.curations.update_one({"_id": existing["_id"]}, {"$set": doc})
                 updated += 1
             else:
                 doc = curation.model_dump()
-                _normalize_curator_id(doc)  # ANTES do createdBy/updatedBy
-                # IDOR de create: curator comum não cria em nome de terceiro
-                # (mesma regra do POST /curations individual)
+                _normalize_curator_id(doc)
                 owner = doc.get("curator_id") or (doc.get("curator") or {}).get("id")
                 if not is_admin_auth(auth) and not _is_placeholder_identity(owner) and owner != auth.get("user"):
                     errors.append(
@@ -1405,7 +1025,7 @@ def bulk_upsert_curations(
                         )
                     )
                     continue
-                _repair_curator_identity(doc, {})  # create: placeholder não persiste no curator_id
+                _repair_curator_identity(doc, {})
                 doc["_id"] = curation.curation_id
                 doc["createdAt"] = now
                 doc["updatedAt"] = now
@@ -1419,14 +1039,6 @@ def bulk_upsert_curations(
                 created += 1
 
         except DuplicateKeyError:
-            # Race: outro request inseriu entre o find_one e o insert_one.
-            # Duplicate ⇒ colisão de _id (não existe outro índice único em
-            # curations). VENCEDOR é autoritativo em identidade, entidade e
-            # versão: $inc atômico mantém a versão monotônica sem TOCTOU de
-            # leitura+escrita, e entity_id/city/type do loser não re-linkam a
-            # curadoria para outra entity. matched_count==0 (vencedor deletado
-            # no meio da corrida) é erro explícito — nunca contabilizar como
-            # salvo: o cliente descarta a cópia local pelo contador de erros.
             try:
                 update_doc = {
                     k: v
@@ -1445,11 +1057,7 @@ def bulk_upsert_curations(
                         "type",
                     )
                 }
-                winner = find_curation(
-                    db,
-                    curation.curation_id,
-                    projection={"_id": 1, "curator": 1, "curator_id": 1},
-                )
+                winner = find_curation(db, curation.curation_id, projection={"_id": 1, "curator": 1, "curator_id": 1})
                 if winner:
                     winner_id = winner.get("curator_id")
                     if _is_placeholder_identity(winner_id):
@@ -1458,8 +1066,6 @@ def bulk_upsert_curations(
                         not _is_placeholder_identity(doc.get("curator_id"))
                         or not _is_placeholder_identity((doc.get("curator") or {}).get("id"))
                     ):
-                        # vencedor sem identidade real: a do loser (real)
-                        # sobrevive — senão o doc fica órfão de curator
                         update_doc["curator_id"] = doc.get("curator_id")
                         update_doc["curator"] = doc.get("curator")
                 res = db.curations.update_one(
