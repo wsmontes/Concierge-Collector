@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { createReleasePlan, withAdminTestEnv } from '../scripts/release/release-gate.mjs'
+import { createReleasePlan, withAdminTestEnv, withApiMongoTestEnv } from '../scripts/release/release-gate.mjs'
 import { findPython, resolvePythonCandidates } from '../scripts/release/run-python.mjs'
 
 describe('Local release gate', () => {
@@ -20,7 +20,7 @@ describe('Local release gate', () => {
     ])
   })
 
-  test('full gate extends standard with integration and browser coverage', () => {
+  test('full gate extends standard with integration, real Mongo and browser coverage', () => {
     const standard = createReleasePlan('standard').map((step) => step.name)
     const full = createReleasePlan('full').map((step) => step.name)
 
@@ -28,6 +28,7 @@ describe('Local release gate', () => {
     expect(full.slice(standard.length)).toEqual([
       'Admin integration tests',
       'API integration tests',
+      'API Mongo integration tests',
       'Admin browser E2E',
     ])
   })
@@ -86,12 +87,27 @@ describe('Local release gate', () => {
     ).toThrow(/CMS_MONGODB_DB_NAME.*-test/)
   })
 
-  test('full gate accepts an explicitly named CMS test database', () => {
-    const integration = createReleasePlan('full', {
-      env: { CMS_MONGODB_DB_NAME: 'concierge-cms-integration-test' },
-    }).find((step) => step.name === 'Admin integration tests')
+  test('full gate refuses an API Mongo database that is not explicitly a test database', () => {
+    expect(() =>
+      createReleasePlan('full', {
+        env: { MONGODB_TEST_DB_NAME: 'concierge-collector' },
+      }),
+    ).toThrow(/MONGODB_TEST_DB_NAME.*-test/)
+  })
 
-    expect(integration.env.CMS_MONGODB_DB_NAME).toBe('concierge-cms-integration-test')
+  test('full gate accepts explicitly named CMS and API test databases', () => {
+    const plan = createReleasePlan('full', {
+      env: {
+        CMS_MONGODB_DB_NAME: 'concierge-cms-integration-test',
+        MONGODB_TEST_DB_NAME: 'concierge-collector-integration-test',
+      },
+    })
+    const adminIntegration = plan.find((step) => step.name === 'Admin integration tests')
+    const apiMongo = plan.find((step) => step.name === 'API Mongo integration tests')
+
+    expect(adminIntegration.env.CMS_MONGODB_DB_NAME).toBe('concierge-cms-integration-test')
+    expect(apiMongo.env.MONGODB_TEST_DB_NAME).toBe('concierge-collector-integration-test')
+    expect(apiMongo.args).toContain('--run-mongo')
   })
 
   test('full gate forces live E2E flags even when caller tries to disable them', () => {
@@ -115,5 +131,15 @@ describe('Local release gate', () => {
     expect(env.CMS_MONGODB_DB_NAME).toBe('concierge-cms-test')
     expect(env.CMS_SERVICE_KEY).toBe('test-cms-service-key')
     expect(env.PAYLOAD_SECRET).toBe('test-payload-secret-with-at-least-32-chars')
+  })
+
+  test('api Mongo test environment supplies a local safe default without overriding caller values', () => {
+    const defaults = withApiMongoTestEnv({})
+    const custom = withApiMongoTestEnv({ MONGODB_TEST_URL: 'mongodb://test-host:27017' })
+
+    expect(defaults.MONGODB_TEST_URL).toBe('mongodb://127.0.0.1:27017')
+    expect(defaults.MONGODB_TEST_DB_NAME).toBe('concierge-collector-test')
+    expect(custom.MONGODB_TEST_URL).toBe('mongodb://test-host:27017')
+    expect(custom.MONGODB_TEST_DB_NAME).toBe('concierge-collector-test')
   })
 })
