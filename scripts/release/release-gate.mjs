@@ -16,8 +16,17 @@ const ADMIN_TEST_DEFAULTS = {
   PAYLOAD_SECRET: 'test-payload-secret-with-at-least-32-chars',
 }
 
+const API_MONGO_TEST_DEFAULTS = {
+  MONGODB_TEST_URL: 'mongodb://127.0.0.1:27017',
+  MONGODB_TEST_DB_NAME: 'concierge-collector-test',
+}
+
 export function withAdminTestEnv(env = process.env) {
   return { ...ADMIN_TEST_DEFAULTS, ...env }
+}
+
+export function withApiMongoTestEnv(env = process.env) {
+  return { ...API_MONGO_TEST_DEFAULTS, ...env }
 }
 
 function npmStep(name, script, { env = process.env } = {}) {
@@ -39,11 +48,11 @@ function assertSafeE2ETarget(value, name, env) {
   }
 }
 
-function assertSafeTestDatabase(env) {
-  const dbName = String(env.CMS_MONGODB_DB_NAME || '').trim()
+function assertSafeTestDatabase(env, name) {
+  const dbName = String(env[name] || '').trim()
   if (!dbName.endsWith('-test')) {
     throw new Error(
-      `Refusing full release gate with CMS_MONGODB_DB_NAME=${dbName || '<empty>'}. ` +
+      `Refusing full release gate with ${name}=${dbName || '<empty>'}. ` +
         'Integration/E2E databases must end with -test.',
     )
   }
@@ -69,7 +78,7 @@ export function createReleasePlan(mode = 'standard', { env = process.env } = {})
   if (mode === 'standard') return standard
 
   const fullEnv = {
-    ...adminEnv,
+    ...withApiMongoTestEnv(adminEnv),
     CMS_E2E_AUTH_HANDOFF: '1',
     CMS_E2E_PUBLISH: '1',
     CMS_E2E_EXPLORER: '1',
@@ -77,7 +86,8 @@ export function createReleasePlan(mode = 'standard', { env = process.env } = {})
     CMS_E2E_FASTAPI_URL: env.CMS_E2E_FASTAPI_URL || 'http://127.0.0.1:8000',
   }
 
-  assertSafeTestDatabase(fullEnv)
+  assertSafeTestDatabase(fullEnv, 'CMS_MONGODB_DB_NAME')
+  assertSafeTestDatabase(fullEnv, 'MONGODB_TEST_DB_NAME')
   assertSafeE2ETarget(fullEnv.CMS_E2E_BASE_URL, 'CMS_E2E_BASE_URL', env)
   assertSafeE2ETarget(fullEnv.CMS_E2E_FASTAPI_URL, 'CMS_E2E_FASTAPI_URL', env)
 
@@ -85,6 +95,7 @@ export function createReleasePlan(mode = 'standard', { env = process.env } = {})
     ...standard,
     npmStep('Admin integration tests', 'test:admin:integration', { env: fullEnv }),
     pythonStep('API integration tests', ['-m', 'pytest', '-m', 'integration and not external_api and not openai', '-q'], { env: fullEnv }),
+    pythonStep('API Mongo integration tests', ['-m', 'pytest', '-m', 'mongo and not external_api and not openai', '--run-mongo', '-q'], { env: fullEnv }),
     npmStep('Admin browser E2E', 'test:e2e', { env: fullEnv }),
   ]
 }
