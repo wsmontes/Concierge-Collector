@@ -9,11 +9,12 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
     constructor() {
         this.log = Logger.module('DraftRestaurantManager');
         this.dataStorage = null;
-        this.autoSaveTimeout = null;
         this.autoSaveDelay = 3000;
         this.currentDraftId = null;
         this.currentSessionId = null;
-        this.pendingAutoSave = null;
+        // Autosave is keyed by durable draft identity. Independent drafts must
+        // never cancel or overwrite each other's pending writes.
+        this.pendingAutoSaves = new Map();
     }
 
     init(dataStorage) {
@@ -134,34 +135,50 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
     }
 
     async autoSaveDraft(draftId, data) {
-        if (this.autoSaveTimeout) clearTimeout(this.autoSaveTimeout);
+        if (draftId === null || draftId === undefined) return false;
+
+        const previous = this.pendingAutoSaves.get(draftId);
+        if (previous?.timeout) clearTimeout(previous.timeout);
+
         const token = {};
-        this.pendingAutoSave = { draftId, data, token };
-        this.autoSaveTimeout = setTimeout(async () => {
-            const pending = this.pendingAutoSave;
-            if (!pending || pending.token !== token) return;
+        const pending = { draftId, data, token, timeout: null };
+        pending.timeout = setTimeout(async () => {
+            const current = this.pendingAutoSaves.get(draftId);
+            if (!current || current.token !== token) return;
             try {
-                await this.updateDraft(pending.draftId, pending.data);
+                await this.updateDraft(current.draftId, current.data);
             } catch (error) {
                 this.log.error('Error auto-saving draft:', error);
             } finally {
-                if (this.pendingAutoSave?.token === token) {
-                    this.pendingAutoSave = null;
-                    this.autoSaveTimeout = null;
-                }
+                const latest = this.pendingAutoSaves.get(draftId);
+                if (latest?.token === token) this.pendingAutoSaves.delete(draftId);
             }
         }, this.autoSaveDelay);
+
+        this.pendingAutoSaves.set(draftId, pending);
+        return true;
     }
 
-    async flushPendingSave() {
-        if (this.autoSaveTimeout) {
-            clearTimeout(this.autoSaveTimeout);
-            this.autoSaveTimeout = null;
+    async flushPendingSave(draftId = null) {
+        const entries = draftId === null || draftId === undefined
+            ? [...this.pendingAutoSaves.entries()]
+            : (this.pendingAutoSaves.has(draftId)
+                ? [[draftId, this.pendingAutoSaves.get(draftId)]]
+                : []);
+        if (!entries.length) return false;
+
+        for (const [id, pending] of entries) {
+            if (pending?.timeout) clearTimeout(pending.timeout);
+            // Delete before awaiting I/O so a new autosave scheduled while the
+            // flush is in flight gets a fresh entry rather than being erased.
+            if (this.pendingAutoSaves.get(id)?.token === pending.token) {
+                this.pendingAutoSaves.delete(id);
+            }
         }
-        const pending = this.pendingAutoSave;
-        this.pendingAutoSave = null;
-        if (!pending) return false;
-        await this.updateDraft(pending.draftId, pending.data);
+
+        await Promise.all(entries.map(([, pending]) =>
+            this.updateDraft(pending.draftId, pending.data)
+        ));
         return true;
     }
 
@@ -194,7 +211,9 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
     }
 
     async deleteDraft(draftId) {
-        await this.flushPendingSave().catch(() => {});
+        // Flush only the draft being deleted. Other draft sessions retain
+        // their independent debounce state and can still be flushed later.
+        await this.flushPendingSave(draftId).catch(() => {});
         await this.dataStorage.db.draftRestaurants.delete(draftId);
         if (this.currentDraftId === draftId) this.clearCurrentDraft();
     }
