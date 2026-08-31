@@ -42,10 +42,11 @@ describe('Offline Part 2 production wiring', () => {
     expect(coordinator).toBeGreaterThan(identity);
   });
 
-  test('fresh Service Worker generation precaches exact versioned aliases', () => {
-    expect(serviceWorker).toContain('__COLLECTOR_SHELL_VERSION__');
+  test('fresh Service Worker generation precaches final-hash and shell-generation identities', () => {
+    expect(serviceWorker).toContain("const SHELL_VERSION = '__COLLECTOR_SHELL_VERSION__'");
     expect(serviceWorker).not.toContain('ignoreSearch: true');
     expect(serviceWorker).toContain('entry.sha256.slice(0, 12)');
+    expect(serviceWorker).toContain('?v=${SHELL_VERSION}');
     expect(serviceWorker).toContain('url.origin === self.location.origin');
   });
 });
