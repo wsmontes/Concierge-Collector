@@ -36,7 +36,7 @@
     "check:contracts": "node scripts/release/run-python.mjs scripts/export_admin_openapi.py --check && npm run check --workspace=@concierge/fastapi-client",
     "verify": "node scripts/release/release-gate.mjs",
     "verify:full": "node scripts/release/release-gate.mjs --full",
-    "hooks:enable": "git config core.hooksPath .githooks"
+    "hooks:enable": "node scripts/release/enable-hooks.mjs"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^1.6.1",
