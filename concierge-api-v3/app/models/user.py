@@ -34,7 +34,10 @@ class User(BaseModel):
         description="Account creation timestamp",
     )
     last_login: Optional[datetime] = Field(None, description="Last login timestamp")
-    refresh_token: Optional[str] = Field(None, description="Encrypted Google refresh token for persistent login")
+    refresh_token: Optional[str] = Field(
+        None,
+        description="Legacy Google OAuth refresh credential; no longer stored or used",
+    )
 
     class Config:
         json_schema_extra = {
@@ -70,7 +73,7 @@ class OAuthCallbackRequest(BaseModel):
     """OAuth callback request from frontend"""
 
     code: str = Field(..., description="Authorization code from Google")
-    state: str = Field(..., description="State parameter for CSRF protection")
+    state: str = Field(..., description="State parameter for CSRF validation")
 
 
 class OAuthCallbackResponse(BaseModel):
