@@ -1,8 +1,8 @@
 /* Concierge Collector offline authoring shell */
-// Bump whenever the shipped authoring shell changes. The manifest is fetched
-// during SW install; without a byte-level SW change, a browser may keep the
-// previous cache generation and never precache newly added dynamic modules.
-const CACHE_NAME = 'concierge-collector-shell-v3';
+// The production build replaces this placeholder with a deterministic hash of
+// the shipped local shell. Any local byte change therefore creates a new SW
+// script and Cache Storage generation without a manual version bump.
+const CACHE_NAME = 'concierge-collector-shell-__COLLECTOR_SHELL_VERSION__';
 const MANIFEST_URL = './.manifest.json';
 const INDEX_URL = './index.html';
 
@@ -63,10 +63,15 @@ async function precacheLocalBuild(cache) {
     throw new Error('Collector build manifest unavailable; refusing partial offline shell');
   }
   const manifest = await manifestResponse.json();
+  const manifestUrls = manifest.flatMap((entry) => {
+    const bare = `./${entry.path}`;
+    if (!entry.sha256) return [bare];
+    return [bare, `${bare}?v=${entry.sha256.slice(0, 12)}`];
+  });
   const localUrls = [...new Set([
     './',
     INDEX_URL,
-    ...manifest.map((entry) => `./${entry.path}`)
+    ...manifestUrls
   ])];
   await cache.addAll(localUrls);
   await cache.put(MANIFEST_URL, manifestResponse.clone());
@@ -119,16 +124,10 @@ async function navigationResponse(request) {
 
 async function cacheFirst(request) {
   const cache = await caches.open(CACHE_NAME);
-  const url = new URL(request.url);
 
-  // Prefer the exact URL first. The build manifest stores local assets without
-  // cache-busting query strings, while index.html may request ?v=... variants.
-  // For SAME-ORIGIN shell assets only, fall back to the bare cached resource.
-  // Never ignore query strings for remote dependencies or API traffic.
-  let cached = await cache.match(request, { ignoreSearch: false });
-  if (!cached && url.origin === self.location.origin) {
-    cached = await cache.match(request, { ignoreSearch: true });
-  }
+  // Versioned shell URLs are identities, not hints. A request for ?v=NEW must
+  // never be satisfied by bytes cached under ?v=OLD (or the bare URL).
+  const cached = await cache.match(request, { ignoreSearch: false });
   if (cached) return cached;
 
   try {
