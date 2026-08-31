@@ -345,11 +345,23 @@ class BulkCurationCreate(BaseModel):
 
 
 class BulkItemError(BaseModel):
-    """Error detail for a single item in a bulk operation"""
+    """Error detail for a single item in a bulk operation."""
 
     index: int = Field(..., description="Zero-based position in the request array")
     id: Optional[str] = Field(None, description="entity_id or curation_id if available")
     error: str = Field(..., description="Error message")
+    code: Optional[str] = Field(None, description="Stable machine-readable domain error code")
+
+    def model_post_init(self, __context) -> None:
+        # Existing-Curation ownership rejection is currently emitted by the
+        # bulk route as a string rather than an HTTPException. Upgrade only
+        # that exact server-owned message at the response-model boundary; do
+        # not classify generic 403/authorization text or create attribution.
+        if (
+            self.code is None
+            and self.error == "ownership violation: curator_id does not match authenticated user"
+        ):
+            self.code = "curation_owner_mismatch"
 
 
 class BulkOperationResponse(BaseModel):
@@ -448,7 +460,7 @@ class HybridSearchResult(BaseModel):
     score: float = Field(..., description="Combined score (0-1)")
     match_type: str = Field(..., description="Type of match: 'entity', 'semantic', 'hybrid'")
     entity_score: float = Field(default=0.0, description="Entity match score")
-    semantic_score: float = Field(default=0.0, description="Semantic match score")
+    semantic_score: float = Field(default=0.0, description="Semantic score")
     semantic_matches: Optional[List[ConceptMatch]] = Field(None, description="Top semantic matches")
 
 
@@ -459,5 +471,5 @@ class HybridSearchResponse(BaseModel):
     query: str = Field(..., description="Original query")
     entity_search_time: float = Field(..., description="Time for entity search (seconds)")
     semantic_search_time: float = Field(..., description="Time for semantic search (seconds)")
-    total_time: float = Field(..., description="Total search time (seconds)")
+    total_time: float = Field(..., description="Total time (seconds)")
     total_results: int = Field(..., description="Total number of results")
