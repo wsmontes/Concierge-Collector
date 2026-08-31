@@ -136,15 +136,21 @@ describe('OfflineSourceIdentityBridge', () => {
     });
   });
 
-  test('Save without a current audio row preserves the original Save return value', async () => {
-    const { runtime, conceptModule } = makeRuntime(null);
+  test('Save without a current audio row leaves the legacy source context untouched', async () => {
+    const { runtime, seen, conceptModule } = makeRuntime(null);
     const Bridge = loadBridge(runtime);
     const bridge = new Bridge(runtime);
     expect(bridge.install()).toBe(true);
 
     const result = await conceptModule.saveRestaurant();
 
-    expect(result.audio).toHaveLength(1);
-    expect(result.audio[0].source_id).toBeNull();
+    expect(result.audio).toHaveLength(0);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      hasAudio: true,
+      audioSourceId: null,
+      transcriptionId: 'legacy-transcription-id',
+      transcript: 'OLD AGGREGATE\n\nNEW SOURCE TEXT'
+    });
   });
 });
