@@ -112,6 +112,11 @@ describe('Collector integration', () => {
     expect(storageSrc).toContain('audioBlob.size');
   });
 
+  test('keeps polling until both capture and raw-audio guards are actually installed', () => {
+    expect(storageSrc).toContain('this._captureGuardsInstalled && this._audioWriteGuardInstalled');
+    expect(storageSrc).toContain('manager.__storageDurabilitySaveAudioInstalled');
+  });
+
   test('exposes the policy through DataStore without making text save depend on quota', () => {
     expect(storageSrc).toContain('store.requestPersistentStorage');
     expect(storageSrc).toContain('store.getStorageHealth');
