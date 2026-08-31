@@ -29,7 +29,16 @@ function makeRuntime(audio) {
   const SourceUtils = {
     buildSourcesPayloadFromContext(context) {
       seen.push({ ...context });
-      return context;
+      const sources = { audio: [] };
+      if (context.hasAudio && context.audioSourceId && context.transcript) {
+        sources.audio.push({
+          source_id: context.audioSourceId,
+          language: context.language || null,
+          source_language: context.sourceLanguage || null,
+          transcript: context.transcript
+        });
+      }
+      return sources;
     }
   };
   const conceptModule = {
@@ -69,7 +78,8 @@ describe('OfflineSourceIdentityBridge', () => {
       transcriptText: 'NEW SOURCE TEXT',
       curatorId: 'wagner@example.com',
       timestamp: capturedAt,
-      language: 'pt-BR',
+      language: 'en',
+      sourceLanguage: 'pt-BR',
       durationSeconds: 64.2,
       transcriptionModel: 'whisper-test',
       disposable: false
@@ -80,15 +90,11 @@ describe('OfflineSourceIdentityBridge', () => {
 
     const result = await conceptModule.saveRestaurant();
 
-    expect(result).toMatchObject({
-      hasAudio: true,
-      audioSourceId: 'source-stable-7',
+    expect(result.audio[0]).toMatchObject({
+      source_id: 'source-stable-7',
       transcript: 'NEW SOURCE TEXT',
-      curatorId: 'wagner@example.com',
-      capturedAt,
-      language: 'pt-BR',
-      durationSeconds: 64.2,
-      transcriptionModel: 'whisper-test'
+      language: 'en',
+      source_language: 'pt-BR'
     });
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({
@@ -98,7 +104,8 @@ describe('OfflineSourceIdentityBridge', () => {
       transcript: 'NEW SOURCE TEXT',
       curatorId: 'wagner@example.com',
       capturedAt,
-      language: 'pt-BR',
+      language: 'en',
+      sourceLanguage: 'pt-BR',
       durationSeconds: 64.2,
       transcriptionModel: 'whisper-test'
     });
@@ -110,6 +117,7 @@ describe('OfflineSourceIdentityBridge', () => {
       sourceId: 'source-offline-8',
       transcriptText: null,
       curatorId: 'wagner@example.com',
+      sourceLanguage: 'fr',
       disposable: false
     });
     const Bridge = loadBridge(runtime);
@@ -118,11 +126,7 @@ describe('OfflineSourceIdentityBridge', () => {
 
     const result = await conceptModule.saveRestaurant();
 
-    expect(result).toMatchObject({
-      hasAudio: false,
-      audioSourceId: null,
-      suppressManualFallback: true
-    });
+    expect(result.audio).toHaveLength(0);
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({
       hasAudio: false,
@@ -140,9 +144,7 @@ describe('OfflineSourceIdentityBridge', () => {
 
     const result = await conceptModule.saveRestaurant();
 
-    expect(result).toMatchObject({
-      hasAudio: true,
-      transcriptionId: 'legacy-transcription-id'
-    });
+    expect(result.audio).toHaveLength(1);
+    expect(result.audio[0].source_id).toBeNull();
   });
 });
