@@ -1,67 +1,74 @@
 /**
  * Draft Restaurant Manager Module
- * 
- * Purpose: Manages incomplete/draft restaurant data that hasn't been saved yet.
- * Provides auto-save functionality and draft persistence across sessions.
- * 
- * Main Responsibilities:
- * - Store draft restaurant data with any metadata (name, transcription, concepts, etc.)
- * - Auto-save draft data with debouncing
- * - Load and restore draft data when user returns
- * - Track draft completion status
- * - Clean up drafts when restaurants are saved
- * 
- * Dependencies: dataStorage (window.dataStorage)
+ *
+ * Durable authoring-session storage for incomplete/new/edited Curations.
+ * A curator may have many independent drafts at once; curatorId is ownership
+ * metadata, never the identity of "the current draft".
  */
-
 const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager', class {
     constructor() {
-        // Create module logger instance
         this.log = Logger.module('DraftRestaurantManager');
-        
         this.dataStorage = null;
         this.autoSaveTimeout = null;
-        this.autoSaveDelay = 3000; // 3 seconds
+        this.autoSaveDelay = 3000;
         this.currentDraftId = null;
+        this.currentSessionId = null;
+        this.pendingAutoSave = null;
     }
 
-    /**
-     * Initialize the draft restaurant manager
-     * @param {Object} dataStorage - DataStorage instance
-     */
     init(dataStorage) {
         this.dataStorage = dataStorage;
         this.log.debug('DraftRestaurantManager initialized');
     }
 
-    /**
-     * Create a new draft restaurant
-     * @param {number} curatorId - Curator ID
-     * @param {Object} data - Initial draft data
-     * @returns {Promise<number>} - Draft ID
-     */
-    async createDraft(curatorId, data = {}) {
+    _newSessionId() {
         try {
+            if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+        } catch (_) {}
+        return `draft_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }
+
+    _parseMetadata(draft) {
+        if (!draft?.metadata) return {};
+        try {
+            return JSON.parse(draft.metadata) || {};
+        } catch (error) {
+            this.log.warn('Error parsing draft metadata:', error);
+            return {};
+        }
+    }
+
+    _serializeMetadata(data, currentDraft = null) {
+        return JSON.stringify({
+            concepts: data.concepts !== undefined ? data.concepts : (currentDraft?.concepts || []),
+            location: data.location !== undefined ? data.location : (currentDraft?.location || null),
+            photos: data.photos !== undefined ? data.photos : (currentDraft?.photos || []),
+            notes: data.notes !== undefined ? data.notes : (currentDraft?.notes || { public: '', private: '' }),
+            voiceSources: data.voiceSources !== undefined ? data.voiceSources : (currentDraft?.voiceSources || [])
+        });
+    }
+
+    async createDraft(curatorId, data = {}, options = {}) {
+        try {
+            const sessionId = options.sessionId || data.sessionId || this._newSessionId();
             const draftData = {
-                curatorId: curatorId,
+                curatorId,
+                sessionId,
+                targetCurationId: options.targetCurationId || data.targetCurationId || null,
+                targetEntityId: options.targetEntityId || data.targetEntityId || null,
+                savedCurationId: options.savedCurationId || data.savedCurationId || null,
+                preservedForMedia: Boolean(options.preservedForMedia || data.preservedForMedia),
                 name: data.name || '',
                 timestamp: new Date(),
                 lastModified: new Date(),
-                hasAudio: false,
+                hasAudio: Boolean(data.hasAudio),
                 transcription: data.transcription || '',
                 description: data.description || '',
-                // Store additional data as JSON
-                metadata: JSON.stringify({
-                    concepts: data.concepts || [],
-                    location: data.location || null,
-                    photos: data.photos || []
-                })
+                metadata: this._serializeMetadata(data)
             };
-
             const id = await this.dataStorage.db.draftRestaurants.add(draftData);
             this.currentDraftId = id;
-            this.log.debug(`Draft restaurant created with ID: ${id}`);
-            
+            this.currentSessionId = sessionId;
             return id;
         } catch (error) {
             this.log.error('Error creating draft restaurant:', error);
@@ -69,73 +76,34 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
         }
     }
 
-    /**
-     * Get draft restaurant by ID
-     * @param {number} draftId - Draft ID
-     * @returns {Promise<Object>} - Draft restaurant data with parsed metadata
-     */
     async getDraft(draftId) {
-        try {
-            const draft = await this.dataStorage.db.draftRestaurants.get(draftId);
-            if (!draft) {
-                return null;
-            }
-
-            // Parse metadata
-            let metadata = {};
-            if (draft.metadata) {
-                try {
-                    metadata = JSON.parse(draft.metadata);
-                } catch (e) {
-                    this.log.warn('Error parsing draft metadata:', e);
-                }
-            }
-
-            return {
-                ...draft,
-                concepts: metadata.concepts || [],
-                location: metadata.location || null,
-                photos: metadata.photos || []
-            };
-        } catch (error) {
-            this.log.error('Error retrieving draft restaurant:', error);
-            throw error;
-        }
+        const draft = await this.dataStorage.db.draftRestaurants.get(draftId);
+        if (!draft) return null;
+        const metadata = this._parseMetadata(draft);
+        return {
+            ...draft,
+            concepts: metadata.concepts || [],
+            location: metadata.location || null,
+            photos: metadata.photos || [],
+            notes: metadata.notes || { public: '', private: '' },
+            voiceSources: metadata.voiceSources || []
+        };
     }
 
-    /**
-     * Get all draft restaurants for a curator
-     * @param {number} curatorId - Curator ID
-     * @returns {Promise<Array>} - Array of draft restaurants
-     */
     async getDrafts(curatorId = null) {
         try {
-            let drafts;
-            
-            if (curatorId) {
-                drafts = await this.dataStorage.db.draftRestaurants
-                    .where('curatorId').equals(curatorId)
-                    .toArray();
-            } else {
-                drafts = await this.dataStorage.db.draftRestaurants.toArray();
-            }
-
-            // Parse metadata for each draft
-            return drafts.map(draft => {
-                let metadata = {};
-                if (draft.metadata) {
-                    try {
-                        metadata = JSON.parse(draft.metadata);
-                    } catch (e) {
-                        this.log.warn('Error parsing draft metadata:', e);
-                    }
-                }
-
+            const drafts = curatorId
+                ? await this.dataStorage.db.draftRestaurants.where('curatorId').equals(curatorId).toArray()
+                : await this.dataStorage.db.draftRestaurants.toArray();
+            return drafts.map((draft) => {
+                const metadata = this._parseMetadata(draft);
                 return {
                     ...draft,
                     concepts: metadata.concepts || [],
                     location: metadata.location || null,
-                    photos: metadata.photos || []
+                    photos: metadata.photos || [],
+                    notes: metadata.notes || { public: '', private: '' },
+                    voiceSources: metadata.voiceSources || []
                 };
             });
         } catch (error) {
@@ -144,163 +112,108 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
         }
     }
 
-    /**
-     * Update draft restaurant data
-     * @param {number} draftId - Draft ID
-     * @param {Object} data - Data to update
-     * @returns {Promise<void>}
-     */
-    async updateDraft(draftId, data) {
-        try {
-            const updates = {
-                lastModified: new Date()
-            };
+    async updateDraft(draftId, data = {}) {
+        const updates = { lastModified: new Date() };
+        if (data.name !== undefined) updates.name = data.name;
+        if (data.transcription !== undefined) updates.transcription = data.transcription;
+        if (data.description !== undefined) updates.description = data.description;
+        if (data.hasAudio !== undefined) updates.hasAudio = data.hasAudio;
+        if (data.sessionId !== undefined) updates.sessionId = data.sessionId;
+        if (data.targetCurationId !== undefined) updates.targetCurationId = data.targetCurationId;
+        if (data.targetEntityId !== undefined) updates.targetEntityId = data.targetEntityId;
+        if (data.savedCurationId !== undefined) updates.savedCurationId = data.savedCurationId;
+        if (data.preservedForMedia !== undefined) updates.preservedForMedia = Boolean(data.preservedForMedia);
 
-            // Handle simple fields
-            if (data.name !== undefined) updates.name = data.name;
-            if (data.transcription !== undefined) updates.transcription = data.transcription;
-            if (data.description !== undefined) updates.description = data.description;
-            if (data.hasAudio !== undefined) updates.hasAudio = data.hasAudio;
-
-            // Handle metadata fields
-            if (data.concepts || data.location || data.photos) {
-                const currentDraft = await this.getDraft(draftId);
-                const metadata = {
-                    concepts: data.concepts !== undefined ? data.concepts : (currentDraft?.concepts || []),
-                    location: data.location !== undefined ? data.location : (currentDraft?.location || null),
-                    photos: data.photos !== undefined ? data.photos : (currentDraft?.photos || [])
-                };
-                updates.metadata = JSON.stringify(metadata);
-            }
-
-            await this.dataStorage.db.draftRestaurants.update(draftId, updates);
-            this.log.debug(`Draft ${draftId} updated`);
-        } catch (error) {
-            this.log.error('Error updating draft restaurant:', error);
-            throw error;
+        const metadataChanged = ['concepts', 'location', 'photos', 'notes', 'voiceSources']
+            .some((key) => data[key] !== undefined);
+        if (metadataChanged) {
+            const currentDraft = await this.getDraft(draftId);
+            updates.metadata = this._serializeMetadata(data, currentDraft);
         }
+        await this.dataStorage.db.draftRestaurants.update(draftId, updates);
     }
 
-    /**
-     * Auto-save draft data with debouncing
-     * @param {number} draftId - Draft ID
-     * @param {Object} data - Data to save
-     * @returns {Promise<void>}
-     */
     async autoSaveDraft(draftId, data) {
-        // Clear existing timeout
-        if (this.autoSaveTimeout) {
-            clearTimeout(this.autoSaveTimeout);
-        }
-
-        // Set new timeout
+        if (this.autoSaveTimeout) clearTimeout(this.autoSaveTimeout);
+        const token = {};
+        this.pendingAutoSave = { draftId, data, token };
         this.autoSaveTimeout = setTimeout(async () => {
+            const pending = this.pendingAutoSave;
+            if (!pending || pending.token !== token) return;
             try {
-                await this.updateDraft(draftId, data);
-                this.log.debug(`Auto-saved draft ${draftId}`);
+                await this.updateDraft(pending.draftId, pending.data);
             } catch (error) {
                 this.log.error('Error auto-saving draft:', error);
+            } finally {
+                if (this.pendingAutoSave?.token === token) {
+                    this.pendingAutoSave = null;
+                    this.autoSaveTimeout = null;
+                }
             }
         }, this.autoSaveDelay);
     }
 
-    /**
-     * Check if draft has any meaningful data
-     * @param {Object} draft - Draft restaurant data
-     * @returns {boolean} - True if draft has data
-     */
+    async flushPendingSave() {
+        if (this.autoSaveTimeout) {
+            clearTimeout(this.autoSaveTimeout);
+            this.autoSaveTimeout = null;
+        }
+        const pending = this.pendingAutoSave;
+        this.pendingAutoSave = null;
+        if (!pending) return false;
+        await this.updateDraft(pending.draftId, pending.data);
+        return true;
+    }
+
+    clearCurrentDraft() {
+        this.currentDraftId = null;
+        this.currentSessionId = null;
+    }
+
     hasData(draft) {
         if (!draft) return false;
-
-        // Check if any field has data
-        return !!(
-            draft.name?.trim() ||
-            draft.transcription?.trim() ||
-            draft.description?.trim() ||
-            (draft.concepts && draft.concepts.length > 0) ||
-            draft.location ||
-            (draft.photos && draft.photos.length > 0) ||
-            draft.hasAudio
+        const notes = draft.notes || {};
+        return Boolean(
+            draft.name?.trim() || draft.transcription?.trim() || draft.description?.trim() ||
+            notes.public?.trim?.() || notes.private?.trim?.() ||
+            draft.concepts?.length || draft.location || draft.photos?.length ||
+            draft.voiceSources?.length || draft.hasAudio
         );
     }
 
-    /**
-     * Calculate draft completion percentage
-     * @param {Object} draft - Draft restaurant data
-     * @returns {number} - Completion percentage (0-100)
-     */
     getCompletionPercentage(draft) {
         if (!draft) return 0;
-
         const fields = {
-            name: !!draft.name?.trim(),
-            transcription: !!draft.transcription?.trim(),
-            concepts: draft.concepts && draft.concepts.length > 0,
-            location: !!draft.location,
-            photos: draft.photos && draft.photos.length > 0
+            name: Boolean(draft.name?.trim()),
+            transcription: Boolean(draft.transcription?.trim()),
+            concepts: Boolean(draft.concepts?.length),
+            location: Boolean(draft.location),
+            photos: Boolean(draft.photos?.length)
         };
-
-        const completed = Object.values(fields).filter(Boolean).length;
-        const total = Object.keys(fields).length;
-
-        return Math.round((completed / total) * 100);
+        return Math.round((Object.values(fields).filter(Boolean).length / Object.keys(fields).length) * 100);
     }
 
-    /**
-     * Delete draft restaurant
-     * @param {number} draftId - Draft ID
-     * @returns {Promise<void>}
-     */
     async deleteDraft(draftId) {
-        try {
-            // Also delete associated pending audios
-            if (window.PendingAudioManager) {
-                await window.PendingAudioManager.deleteAudios({ draftId });
-            }
-
-            await this.dataStorage.db.draftRestaurants.delete(draftId);
-            this.log.debug(`Draft ${draftId} deleted`);
-
-            if (this.currentDraftId === draftId) {
-                this.currentDraftId = null;
-            }
-        } catch (error) {
-            this.log.error('Error deleting draft restaurant:', error);
-            throw error;
-        }
+        await this.flushPendingSave().catch(() => {});
+        await this.dataStorage.db.draftRestaurants.delete(draftId);
+        if (this.currentDraftId === draftId) this.clearCurrentDraft();
     }
 
-    /**
-     * Clean up empty drafts older than specified days
-     * @param {number} daysOld - Days old to consider for cleanup
-     * @returns {Promise<number>} - Number of cleaned up drafts
-     */
     async cleanupOldDrafts(daysOld = 30) {
         try {
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-
-            const allDrafts = await this.dataStorage.db.draftRestaurants.toArray();
-            const oldEmptyDrafts = allDrafts.filter(draft => 
-                new Date(draft.lastModified) < cutoffDate && !this.hasData(draft)
+            const allDrafts = await this.getDrafts();
+            const oldEmptyDrafts = allDrafts.filter((draft) =>
+                !draft.preservedForMedia && new Date(draft.lastModified) < cutoffDate && !this.hasData(draft)
             );
-
-            const deletePromises = oldEmptyDrafts.map(draft => this.deleteDraft(draft.id));
-            await Promise.all(deletePromises);
-
-            this.log.debug(`Cleaned up ${oldEmptyDrafts.length} old empty drafts`);
+            for (const draft of oldEmptyDrafts) await this.deleteDraft(draft.id);
             return oldEmptyDrafts.length;
-        } catch (error) {
-            this.log.error('Error cleaning up old drafts:', error);
+        } catch (_) {
             return 0;
         }
     }
 
-    /**
-     * Convert draft to restaurant data format
-     * @param {Object} draft - Draft restaurant data
-     * @returns {Object} - Restaurant data ready for saving
-     */
     draftToRestaurantData(draft) {
         return {
             name: draft.name || '',
@@ -308,45 +221,45 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
             location: draft.location || null,
             photos: draft.photos || [],
             transcription: draft.transcription || '',
-            description: draft.description || ''
+            description: draft.description || '',
+            notes: draft.notes || { public: '', private: '' },
+            voiceSources: draft.voiceSources || [],
+            targetCurationId: draft.targetCurationId || null,
+            targetEntityId: draft.targetEntityId || null
         };
     }
 
-    /**
-     * Get or create current draft for a curator
-     * @param {number} curatorId - Curator ID
-     * @returns {Promise<number>} - Draft ID
-     */
-    async getOrCreateCurrentDraft(curatorId) {
-        try {
-            // Check if we already have a current draft ID
-            if (this.currentDraftId) {
-                const draft = await this.getDraft(this.currentDraftId);
-                if (draft && draft.curatorId === curatorId) {
-                    return this.currentDraftId;
-                }
-            }
+    async getOrCreateCurrentDraft(curatorId, options = {}) {
+        const requestedSessionId = options.sessionId || null;
+        const requestedTargetCurationId = options.targetCurationId || null;
+        const requestedTargetEntityId = options.targetEntityId || null;
 
-            // Find the most recent draft for this curator
-            const drafts = await this.getDrafts(curatorId);
-            if (drafts.length > 0) {
-                // Sort by lastModified and get the most recent
-                drafts.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
-                this.currentDraftId = drafts[0].id;
-                return this.currentDraftId;
-            }
-
-            // Create a new draft if none exist
-            this.currentDraftId = await this.createDraft(curatorId);
-            return this.currentDraftId;
-        } catch (error) {
-            this.log.error('Error getting or creating draft:', error);
-            throw error;
+        if (this.currentDraftId) {
+            const current = await this.getDraft(this.currentDraftId);
+            const currentMatches = Boolean(
+                current && current.curatorId === curatorId &&
+                (!requestedSessionId || current.sessionId === requestedSessionId) &&
+                (!requestedTargetCurationId || current.targetCurationId === requestedTargetCurationId)
+            );
+            if (currentMatches) return this.currentDraftId;
         }
+
+        const drafts = await this.getDrafts(curatorId);
+        let match = null;
+        if (requestedSessionId) match = drafts.find((draft) => draft.sessionId === requestedSessionId) || null;
+        if (!match && requestedTargetCurationId) match = drafts.find((draft) => draft.targetCurationId === requestedTargetCurationId) || null;
+        if (match) {
+            this.currentDraftId = match.id;
+            this.currentSessionId = match.sessionId || requestedSessionId || null;
+            return match.id;
+        }
+
+        return await this.createDraft(curatorId, {}, {
+            sessionId: requestedSessionId || this._newSessionId(),
+            targetCurationId: requestedTargetCurationId,
+            targetEntityId: requestedTargetEntityId
+        });
     }
 });
 
-// Create and expose global instance
-if (typeof window !== 'undefined') {
-    window.DraftRestaurantManager = new DraftRestaurantManager();
-}
+if (typeof window !== 'undefined') window.DraftRestaurantManager = new DraftRestaurantManager();

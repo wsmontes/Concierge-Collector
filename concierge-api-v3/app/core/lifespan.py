@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
     from app.core.config import settings
     from app.core.database import connect_to_mongo, close_mongo_connection, get_database
     from app.core.cms_database import close_cms_mongo_connection, connect_cms_mongo
-    from app.services.openai_service import OpenAIService
+    from app.services.canonical_english_openai_service import CanonicalEnglishOpenAIService
 
     # Startup
     try:
@@ -54,10 +54,16 @@ async def lifespan(app: FastAPI):
 
     # Singleton do OpenAIService no app.state — os clients OpenAI/Motor/PyMongo
     # são criados UMA vez aqui (antes, ai.py criava uma instância nova a cada
-    # request, desperdiçando conexões). A criação é lazy (sem I/O até o 1º uso).
+    # request, desperdiçando conexões). A variante CanonicalEnglish centraliza
+    # a regra de domínio: qualquer áudio pode ser falado em qualquer idioma,
+    # mas o texto que alimenta Curations/concepts é sempre inglês.
     api_key = os.getenv("OPENAI_API_KEY")
     if api_key:
-        app.state.openai_service = OpenAIService(api_key, settings.mongodb_url, settings.mongodb_db_name)
+        app.state.openai_service = CanonicalEnglishOpenAIService(
+            api_key,
+            settings.mongodb_url,
+            settings.mongodb_db_name,
+        )
     else:
         app.state.openai_service = None
         logger.warning("OPENAI_API_KEY not set — AI endpoints (orchestrate, transcribe) will fail")

@@ -47,7 +47,8 @@ PRICE_RANGE_SYNONYMS = {
     "premium": "expensive",
 }
 
-# Curadores de automação/import cujos valores NÃO contam como vocabulário humano.
+# Compatibilidade SOMENTE para documentos legados sem curator_type. Dados
+# novos usam curator_type como autoridade e nunca são classificados pelo ID.
 AUTOMATION_CURATOR_MARKERS = ("research", "import", "michelin", "ai-", "curator-json")
 
 CURATOR_ID = "curator-ai-research"
@@ -126,9 +127,9 @@ _BOILERPLATE_PATTERNS = [
     re.compile(r"cookie", re.I),
     re.compile(r"newsletter|assine|subscribe", re.I),
     re.compile(r"último update", re.I),
-    re.compile(r"^\s*★?\s*\d+([.,]\d+)?\s*/\s*5"),          # ★ 2.3 / 5
-    re.compile(r"\(\s*\d+\s+avalia", re.I),                # (6 Avaliação)
-    re.compile(r"^avalia(ç|c)", re.I),                     # Avaliações
+    re.compile(r"^\s*★?\s*\d+([.,]\d+)?\s*/\s*5"),
+    re.compile(r"\(\s*\d+\s+avalia", re.I),
+    re.compile(r"^avalia(ç|c)", re.I),
     re.compile(r"compartilh|facebook|whatsapp|twitter", re.I),
 ]
 
@@ -178,8 +179,9 @@ def build_vocabulary(
 ) -> Dict[str, List[str]]:
     """Vocabulário controlado por categoria a partir de curadorias HUMANAS.
 
-    Ignora curadorias de automação/import. Valores em minúsculo, ordenados por
-    frequência (mais comum primeiro). Só chaves em TARGET_CATEGORIES.
+    `curator_type` explícito é a autoridade. A heurística histórica por
+    substring do curator_id só é usada para documentos legados em que o campo
+    ainda não existe.
     """
     from collections import Counter
 
@@ -187,10 +189,19 @@ def build_vocabulary(
     for c in curations:
         if not isinstance(c, dict):
             continue
-        curator = c.get("curator") if isinstance(c.get("curator"), dict) else {}
-        cid = str(c.get("curator_id") or curator.get("id") or "").lower()
-        if any(marker in cid for marker in exclude_substrings):
+
+        curator_type = c.get("curator_type")
+        if curator_type == "synthetic":
             continue
+        if curator_type is not None and curator_type != "human":
+            continue
+
+        if curator_type is None:
+            curator = c.get("curator") if isinstance(c.get("curator"), dict) else {}
+            cid = str(c.get("curator_id") or curator.get("id") or "").lower()
+            if any(marker in cid for marker in exclude_substrings):
+                continue
+
         cats = c.get("categories")
         if not isinstance(cats, dict):
             continue
@@ -251,7 +262,6 @@ def build_curation(
         "status": "draft",
         "curator_id": curator_id,
         "curator": {"id": curator_id, "name": curator_name},
-        # curador sintético: edição humana assume a curadoria (takeover)
         "curator_type": "synthetic",
         "categories": categories,
         "sources": {"web_research": urls},
@@ -359,9 +369,6 @@ def extract_concepts_llm(
         '"description": "..."} with only categories that have explicit support.\n\n'
         f"RESEARCHED TEXT:\n{research_block}"
     )
-    # Re-prompt único em parse inválido (mesmo padrão do backend — Fase 5):
-    # resposta sem JSON recebe o aviso e tenta mais uma vez; sem sucesso,
-    # cai no fallback vazio ({} + description "") como antes.
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     data = None
     for attempt in range(2):
@@ -380,7 +387,7 @@ def extract_concepts_llm(
         )}]
     if not isinstance(data, dict):
         return {"categories": {}, "description": ""}
-    categories = clean_llm_categories(data.get("categories"))  # safe: clean_llm_categories(None) -> {}
+    categories = clean_llm_categories(data.get("categories"))
     raw_desc = data.get("description")
     description = (raw_desc or "").strip()[:DESCRIPTION_MAX_CHARS] if isinstance(raw_desc, str) else ""
     return {"categories": categories, "description": description}
@@ -409,8 +416,6 @@ def scrape_url(url: str, fetcher=None) -> str:
         def fetcher(u):
             import requests
             import trafilatura
-            # timeout por fetch: evita travar o run inteiro numa URL que
-            # mantém a conexão aberta (ThreadPoolExecutor.map espera todas).
             resp = requests.get(
                 u,
                 timeout=15,
@@ -426,13 +431,7 @@ def scrape_url(url: str, fetcher=None) -> str:
 
 
 def scrape_urls(urls: List[str], max_workers: int = 8, scraper=None, timeout: float = 30) -> List[Dict[str, str]]:
-    """Baixa várias URLs em paralelo (I/O-bound), preservando a ordem de `urls`.
-
-    `scraper` é injetável (default: scrape_url). `timeout` é o teto TOTAL (s) para
-    o conjunto: URLs que não terminam a tempo (ex.: servidor "drip") viram "" e não
-    travam a entidade — a thread pendurada é abandonada (shutdown wait=False).
-    Retorna [{"url", "text"}].
-    """
+    """Baixa várias URLs em paralelo (I/O-bound), preservando a ordem de `urls`."""
     if not urls:
         return []
     if scraper is None:
@@ -451,7 +450,7 @@ def scrape_urls(urls: List[str], max_workers: int = 8, scraper=None, timeout: fl
                 except Exception:
                     results[u] = ""
         except _FutTimeout:
-            pass  # URLs não terminadas ficam "" (não espera as lentas)
+            pass
     finally:
         ex.shutdown(wait=False)
     return [{"url": u, "text": results[u]} for u in urls]
@@ -493,12 +492,7 @@ def research_entity(
 
 
 def metadata_field_count(entity: Dict[str, Any]) -> int:
-    """Conta valores-folha não-vazios em entity['data'] (recursivo).
-
-    Densidade de metadados: dict soma as chaves, list soma os itens, escalar
-    não-vazio vale 1 (string vazia e None valem 0). Usado para ordenar por
-    'mais metadados'.
-    """
+    """Conta valores-folha não-vazios em entity['data'] (recursivo)."""
     def count(v: Any) -> int:
         if isinstance(v, dict):
             return sum(count(x) for x in v.values())
@@ -531,7 +525,7 @@ def parse_args() -> argparse.Namespace:
 
 def load_vocabulary_from_db(db) -> Dict[str, List[str]]:
     """Carrega o vocabulário controlado das curadorias humanas do Mongo."""
-    proj = {"categories": 1, "curator": 1, "curator_id": 1, "_id": 0}
+    proj = {"categories": 1, "curator": 1, "curator_id": 1, "curator_type": 1, "_id": 0}
     curations = list(db.curations.find({"categories": {"$exists": True}}, proj))
     return build_vocabulary(curations)
 
@@ -550,7 +544,6 @@ def main() -> int:
         api_key=s["deepseek_api_key"],
         base_url=s["deepseek_base_url"],
         timeout=90,
-        # Fase 4: retries explícitos — antes dependia só do default do SDK
         max_retries=3,
     )
     model = s["deepseek_model"]
@@ -577,7 +570,6 @@ def main() -> int:
         entities = list(cursor)
         print(f"{len(entities)} entidades candidatas")
 
-    # --- saída 1: curations ---
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     curations = []
@@ -586,7 +578,6 @@ def main() -> int:
         curations = json.loads(out_path.read_text(encoding="utf-8"))
         done_ids = {c.get("entity_id") for c in curations}
 
-    # --- saída 2: entity descriptions ---
     desc_path = Path(args.descriptions_output)
     desc_path.parent.mkdir(parents=True, exist_ok=True)
     descriptions = []
@@ -595,14 +586,11 @@ def main() -> int:
         descriptions = json.loads(desc_path.read_text(encoding="utf-8"))
         done_desc_ids = {d.get("entity_id") for d in descriptions}
 
-    # --- ledger de processados: registra TODOS os entity_ids tentados (inclusive
-    # "sem conceitos"), para o relaunch não reprocessar a cauda vazia toda vez ---
     processed_path = out_path.with_suffix(out_path.suffix + ".processed.txt")
     processed_ids = set()
     if processed_path.exists():
         processed_ids = {ln.strip() for ln in processed_path.read_text(encoding="utf-8").splitlines() if ln.strip()}
 
-    # Cache combinado: pula entidade já com artefato OU já tentada (ledger).
     done = done_ids | done_desc_ids | processed_ids
     for i, e in enumerate(entities, 1):
         eid = e.get("entity_id") or e.get("_id")
@@ -631,8 +619,6 @@ def main() -> int:
         _write_json_atomic(out_path, curations)
         _write_json_atomic(desc_path, descriptions)
         if not falhou:
-            # ledger só no SUCESSO (ou cauda vazia legítima): uma falha
-            # transitória de web/LLM não pode queimar a entidade para sempre
             with processed_path.open("a", encoding="utf-8") as pf:
                 pf.write(f"{eid}\n")
             done.add(eid)

@@ -1,0 +1,292 @@
+.curation-workspace {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.curation-workspace__section {
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 1rem;
+    background: var(--color-surface, #fff);
+    overflow: hidden;
+}
+
+.curation-workspace__heading {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 1rem 1.1rem 0.75rem;
+}
+
+.curation-workspace__heading .material-icons {
+    color: var(--color-primary, #6b7142);
+    font-size: 1.2rem;
+}
+
+.curation-workspace__heading h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.curation-workspace__body {
+    padding: 0 1.1rem 1.1rem;
+}
+
+#curation-workspace-about,
+#curation-workspace-capture {
+    border-color: color-mix(in srgb, var(--color-primary, #6b7142) 28%, #e5e7eb);
+}
+
+#curation-workspace-capture {
+    background: color-mix(in srgb, var(--color-primary, #6b7142) 4%, #fff);
+}
+
+.curation-workspace__lead {
+    margin: -0.2rem 0 1rem;
+    color: var(--color-text-secondary, #667085);
+    font-size: 0.92rem;
+}
+
+.curation-capture-actions {
+    display: flex;
+    align-items: stretch;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.curation-capture-actions__record {
+    min-height: 3.25rem;
+    flex: 1 1 18rem;
+    justify-content: center;
+    gap: 0.5rem;
+    font-weight: 700;
+}
+
+.curation-capture-actions #curation-write-note {
+    min-height: 3.25rem;
+    gap: 0.4rem;
+}
+
+.curation-capture-photos {
+    margin-bottom: 0 !important;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--color-border, #e5e7eb);
+}
+
+.curation-capture-photos > .label {
+    font-size: 0.86rem;
+    color: var(--color-text-secondary, #667085);
+}
+
+.curation-workspace-recorder {
+    margin: 0.75rem 0 0 !important;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--color-border, #e5e7eb);
+}
+
+.curation-workspace-recorder__legacy-start {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+.curation-orphan-helper {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #667085);
+}
+
+.curation-linked-entity-card {
+    display: grid;
+    gap: 0.3rem;
+    padding: 0.95rem;
+    border-radius: 0.85rem;
+    background: var(--color-background-subtle, #f8f8f5);
+    border: 1px solid var(--color-border, #e5e7eb);
+}
+
+.curation-linked-entity-card__name {
+    font-family: "Cormorant Garamond", serif;
+    font-size: 1.35rem;
+    line-height: 1.15;
+}
+
+.curation-linked-entity-card__meta,
+.curation-linked-entity-card__detail {
+    color: var(--color-text-secondary, #667085);
+    font-size: 0.84rem;
+    overflow-wrap: anywhere;
+}
+
+.curation-linked-entity-card__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 0.55rem;
+}
+
+.curation-linked-entity-card__badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    background: #eef6ea;
+    color: #43612d;
+}
+
+.curation-synthetic-banner {
+    display: grid;
+    gap: 0.2rem;
+    margin-bottom: 0.75rem;
+    padding: 0.8rem 0.9rem;
+    border-radius: 0.8rem;
+    border: 1px solid #e7d8b6;
+    background: #fff9ec;
+    color: #6f5624;
+}
+
+.curation-synthetic-banner strong {
+    font-size: 0.88rem;
+}
+
+.curation-synthetic-banner span {
+    font-size: 0.8rem;
+}
+
+.curation-concepts-summary {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.curation-concepts-summary span {
+    color: var(--color-text-secondary, #667085);
+    font-size: 0.78rem;
+    text-align: right;
+}
+
+.curation-concepts-review {
+    margin-top: 0.85rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--color-border, #e5e7eb);
+}
+
+.curation-concepts-review-list {
+    display: grid;
+    gap: 0.8rem;
+    margin-bottom: 0.85rem;
+}
+
+.curation-concepts-review__group {
+    display: grid;
+    gap: 0.4rem;
+}
+
+.curation-concepts-review__group > strong {
+    font-size: 0.78rem;
+    color: var(--color-text-secondary, #667085);
+}
+
+.curation-concepts-review__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.curation-concept-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.28rem 0.55rem;
+    background: #f1f2ea;
+    color: #4f5534;
+    font-size: 0.76rem;
+}
+
+.curation-manual-concepts {
+    margin-top: 0.8rem;
+    padding-top: 0.8rem;
+    border-top: 1px dashed var(--color-border, #d1d5db);
+}
+
+.curation-sources-disclosure {
+    border-radius: 0.75rem;
+    background: var(--color-background-subtle, #f8f8f5);
+}
+
+.curation-sources-disclosure > summary {
+    cursor: pointer;
+    padding: 0.8rem 0.9rem;
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.curation-sources-disclosure__content {
+    padding: 0 0.9rem 0.9rem;
+}
+
+#curation-workspace-sources,
+#curation-workspace-advanced {
+    background: color-mix(in srgb, #fff 97%, #6b7280);
+}
+
+#curation-workspace-advanced #curation-edit-footer {
+    margin-top: 0;
+    padding-top: 0;
+}
+
+@media (max-width: 639px) {
+    #concepts-section {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+
+    .curation-workspace {
+        gap: 0.75rem;
+    }
+
+    .curation-workspace__heading {
+        padding: 0.9rem 0.9rem 0.7rem;
+    }
+
+    .curation-workspace__body {
+        padding: 0 0.9rem 0.9rem;
+    }
+
+    .curation-capture-actions {
+        flex-direction: column;
+    }
+
+    .curation-capture-actions__record {
+        flex-basis: auto;
+        width: 100%;
+    }
+
+    .curation-linked-entity-card__footer {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .curation-concepts-summary {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .curation-concepts-summary span {
+        text-align: left;
+    }
+}

@@ -47,10 +47,13 @@ describe('PendingAudioManager — prune (retenção local)', () => {
     vi.clearAllMocks();
   });
 
+  // Contrato de durabilidade (spec offline-first): prune SÓ remove áudio
+  // explicitamente marcado disposable — linhas de teste precisam da flag.
   const makeRow = (id, daysAgo) => ({
     id,
     audioBlob: new Blob(['x']),
-    timestamp: new Date(Date.now() - daysAgo * 24 * 3600 * 1000)
+    timestamp: new Date(Date.now() - daysAgo * 24 * 3600 * 1000),
+    disposable: true
   });
 
   test('remove gravações mais velhas que 7 dias', async () => {
@@ -71,7 +74,8 @@ describe('PendingAudioManager — prune (retenção local)', () => {
       rows.push({
         id: i + 1,
         audioBlob: new Blob(['x']),
-        timestamp: new Date(Date.now() - (35 - i) * 3600 * 1000)
+        timestamp: new Date(Date.now() - (35 - i) * 3600 * 1000),
+        disposable: true
       });
     }
     // as mais recentes ficam: ids 35..6

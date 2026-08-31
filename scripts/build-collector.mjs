@@ -1,12 +1,13 @@
 import { cp, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join, relative, resolve } from 'node:path'
+import { basename, join, relative, resolve } from 'node:path'
 import { TOKENS_GENERATED_PATH, checkCollectorTokens, writeCollectorTokens } from './design-tokens.mjs'
+import { stampLocalAssetVersions } from './build/cacheBustLocalAssets.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const outputDir = join(root, 'dist', 'collector')
-const inputs = ['index.html', 'images', 'scripts', 'styles']
+const inputs = ['index.html', 'service-worker.js', 'images', 'scripts', 'styles']
 const externalHosts = new Set(['fonts.googleapis.com', 'fonts.gstatic.com', 'cdn.jsdelivr.net'])
 
 async function fileManifest(directory) {
@@ -54,7 +55,13 @@ async function build(destination) {
   await rm(destination, { force: true, recursive: true })
   await mkdir(destination, { recursive: true })
   for (const input of inputs) await cp(join(root, input), join(destination, basename(input)), { recursive: true })
+
+  // Production cache-busting is content-addressed. The source index may keep
+  // legacy/manual ?v values for development, but dist always ships hashes of
+  // the exact local asset bytes copied above.
+  await stampLocalAssetVersions(destination)
   await validateHtml(destination)
+
   const manifest = await fileManifest(destination)
   await writeFile(join(destination, '.manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   return manifest

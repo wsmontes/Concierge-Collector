@@ -1,426 +1,244 @@
 /**
  * Pending Audio Manager Module
- * 
- * Purpose: Manages audio recordings that are waiting for transcription or have failed transcription.
- * Handles storage, retrieval, retry logic, and cleanup of pending audio data.
- * 
- * Main Responsibilities:
- * - Store audio blobs in IndexedDB with metadata
- * - Implement automatic retry logic (2 attempts with exponential backoff)
- * - Provide manual retry functionality
- * - Track transcription status and error states
- * - Clean up audio after successful transcription and restaurant save
- * 
- * Dependencies: dataStorage (window.dataStorage)
+ *
+ * Raw audio is authoritative until a durable textual source exists. Numeric
+ * Dexie `id` is only the local blob locator; stable `sourceId` is provenance.
  */
-
 const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', class {
     constructor() {
-        // Create module logger instance
         this.log = Logger.module('PendingAudioManager');
-
         this.dataStorage = null;
         this.maxAutoRetries = 2;
-        this.retryDelays = [5000, 15000]; // 5s, 15s
+        this.retryDelays = [5000, 15000];
     }
 
-    /**
-     * Initialize the pending audio manager
-     * @param {Object} dataStorage - DataStorage instance
-     */
-    init(dataStorage) {
-        this.dataStorage = dataStorage;
-        this.log.debug('PendingAudioManager initialized');
-        // Retenção local (ago/2026): o IndexedDB não pode crescer
-        // indefinidamente com áudio bruto — poda antigas no boot
-        this.prune().catch((error) => this.log.warn('prune no init falhou:', error));
-    }
+    init(dataStorage) { this.dataStorage = dataStorage; this.prune().catch((error) => this.log.warn('prune no init falhou:', error)); }
+    canDeleteAudio(audio) { return Boolean(audio && audio.disposable === true); }
 
-    /**
-     * Retenção local: mantém as gravações mais recentes dentro de um
-     * limite razoável de TEMPO (7 dias) e NÚMERO (30) — o áudio bruto
-     * no IndexedDB é o maior consumidor de espaço local.
-     * @param {number} options.maxCount - Número máximo de gravações
-     * @param {number} options.maxAgeDays - Idade máxima em dias
-     */
     async prune({ maxCount = 30, maxAgeDays = 7 } = {}) {
         try {
-            const audios = await this.getAudios();
-            const cutoff = Date.now() - maxAgeDays * 24 * 3600 * 1000;
-            const sorted = audios
-                .filter((audio) => audio && audio.id != null)
-                .sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+            const audios = await this.getAudios(); const cutoff = Date.now() - maxAgeDays * 24 * 3600 * 1000;
+            const sorted = audios.filter((audio) => audio?.id != null).sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
             const toDelete = [];
-            sorted.forEach((audio, index) => {
-                const age = new Date(audio.timestamp || 0).getTime();
-                if (age < cutoff || index >= maxCount) {
-                    toDelete.push(audio.id);
-                }
-            });
-            for (const id of toDelete) {
-                await this.deleteAudio(id).catch(() => {});
-            }
-            if (toDelete.length) {
-                this.log.debug(`Retenção de áudio: ${toDelete.length} gravações antigas removidas`);
-            }
-        } catch (error) {
-            this.log.error('Prune de áudios pendentes falhou:', error);
-        }
+            sorted.forEach((audio, index) => { if (this.canDeleteAudio(audio) && (new Date(audio.timestamp || 0).getTime() < cutoff || index >= maxCount)) toDelete.push(audio.id); });
+            for (const id of toDelete) await this.deleteAudio(id).catch(() => {});
+        } catch (error) { this.log.error('Prune de áudios pendentes falhou:', error); }
     }
 
-    /**
-     * Save audio recording to pending storage
-     * @param {Blob} audioBlob - The audio blob
-     * @param {Object} options - Additional options
-     * @param {number} options.restaurantId - Restaurant ID (optional)
-     * @param {number} options.draftId - Draft restaurant ID (optional)
-     * @param {boolean} options.isAdditional - Is this an additional recording?
-     * @returns {Promise<number>} - Pending audio ID
-     */
+    _newSourceId() {
+        try { if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID(); } catch (_) {}
+        return `src_voice_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }
+
+    _currentCuratorId(options = {}) {
+        const explicit = options.curatorId || options.curator_id;
+        if (explicit) return String(explicit);
+        try {
+            const profile = typeof window !== 'undefined' ? window.CuratorProfile?.getCurrentCurator?.() : null;
+            if (profile?.curator_id) return String(profile.curator_id);
+        } catch (_) {}
+        try {
+            const resolved = typeof window !== 'undefined' ? window.uiManager?.conceptModule?.resolveCuratorId?.() : null;
+            if (resolved) return String(resolved);
+        } catch (_) {}
+        const current = typeof window !== 'undefined' ? window.uiManager?.currentCurator : null;
+        const legacy = current?.id || current?.curator_id || current?.email || null;
+        return legacy ? String(legacy) : null;
+    }
+
     async saveAudio(audioBlob, options = {}) {
-        try {
-            // Support both: saveAudio(blob, opts) and legacy saveAudio({audioBlob, ...})
-            let blob = audioBlob;
-            let opts = options;
-            if (audioBlob && !(audioBlob instanceof Blob) && audioBlob.audioBlob) {
-                // Legacy call: saveAudio({ audioBlob, restaurantId, ... })
-                blob = audioBlob.audioBlob;
-                opts = audioBlob;
-            }
-
-            const audioData = {
-                audioBlob: blob,
-                restaurantId: opts.restaurantId || null,
-                draftId: opts.draftId || null,
-                timestamp: new Date(),
-                retryCount: 0,
-                lastError: null,
-                status: 'pending',
-                isAdditional: opts.isAdditional || false
-            };
-
-            const id = await this.dataStorage.db.pendingAudio.add(audioData);
-            this.log.debug(`Pending audio saved with ID: ${id}`);
-
-            // Poda pós-save (fire-and-forget): toda gravação nova passa
-            // pela retenção de tempo/número
-            this.prune().catch((error) => this.log.warn('prune pós-save falhou:', error));
-
-            return id;
-        } catch (error) {
-            this.log.error('Error saving pending audio:', error);
-            throw error;
-        }
+        let blob = audioBlob; let opts = options;
+        if (audioBlob && !(audioBlob instanceof Blob) && audioBlob.audioBlob) { blob = audioBlob.audioBlob; opts = audioBlob; }
+        const capturedAt = opts.capturedAt instanceof Date
+            ? opts.capturedAt
+            : (opts.capturedAt ? new Date(opts.capturedAt) : new Date());
+        const row = {
+            sourceId: opts.sourceId || this._newSourceId(),
+            audioBlob: blob,
+            restaurantId: opts.restaurantId || null,
+            draftId: opts.draftId || null,
+            curationId: opts.curationId || null,
+            curatorId: this._currentCuratorId(opts),
+            capturedAt,
+            // timestamp is retained for legacy ordering/prune callers.
+            timestamp: capturedAt,
+            language: opts.language || null,
+            durationSeconds: opts.durationSeconds ?? opts.duration_seconds ?? null,
+            transcriptionModel: opts.transcriptionModel || opts.transcription_model || opts.model || null,
+            retryCount: 0,
+            lastError: null,
+            status: 'pending',
+            isAdditional: opts.isAdditional || false,
+            transcriptText: opts.transcriptText || null,
+            transcriptPersisted: false,
+            disposable: false
+        };
+        const id = await this.dataStorage.db.pendingAudio.add(row); this.prune().catch(() => {}); return id;
     }
 
-    /**
-     * Get pending audio by ID
-     * @param {number} id - Pending audio ID
-     * @returns {Promise<Object>} - Pending audio data
-     */
-    async getAudio(id) {
-        try {
-            const audio = await this.dataStorage.db.pendingAudio.get(id);
-            return audio;
-        } catch (error) {
-            this.log.error('Error retrieving pending audio:', error);
-            throw error;
+    async getAudio(id) { return await this.dataStorage.db.pendingAudio.get(id); }
+
+    async getBySourceId(sourceId) {
+        if (!sourceId) return null;
+        const table = this.dataStorage.db.pendingAudio;
+        if (table.where) {
+            try { const row = await table.where('sourceId').equals(sourceId).first(); if (row) return row; } catch (_) {}
         }
+        const rows = await table.toArray(); return rows.find((row) => String(row?.sourceId || '') === String(sourceId)) || null;
     }
 
-    /**
-     * Get all pending audios, optionally filtered
-     * @param {Object} filter - Filter options
-     * @param {number} filter.restaurantId - Filter by restaurant ID
-     * @param {number} filter.draftId - Filter by draft ID
-     * @param {string} filter.status - Filter by status
-     * @returns {Promise<Array>} - Array of pending audio records
-     */
+    async resolveAudio(idOrSourceId) {
+        if (idOrSourceId === null || idOrSourceId === undefined) return null;
+        if (typeof idOrSourceId === 'number') { const row = await this.getAudio(idOrSourceId); if (row) return row; }
+        return await this.getBySourceId(idOrSourceId);
+    }
+
+    _matchesFilter(audio, filter = {}) {
+        if (filter.restaurantId && audio?.restaurantId !== filter.restaurantId) return false;
+        if (filter.draftId && audio?.draftId !== filter.draftId) return false;
+        if (filter.curationId && audio?.curationId !== filter.curationId) return false;
+        if (filter.status && audio?.status !== filter.status) return false;
+        return true;
+    }
+
     async getAudios(filter = {}) {
+        const table = this.dataStorage.db.pendingAudio;
         try {
-            let query = this.dataStorage.db.pendingAudio;
-
-            if (filter.restaurantId) {
-                query = query.where('restaurantId').equals(filter.restaurantId);
-            } else if (filter.draftId) {
-                query = query.where('draftId').equals(filter.draftId);
-            } else if (filter.status) {
-                query = query.where('status').equals(filter.status);
+            let query = table;
+            if (filter.restaurantId) query = query.where('restaurantId').equals(filter.restaurantId);
+            else if (filter.draftId) query = query.where('draftId').equals(filter.draftId);
+            else if (filter.curationId) query = query.where('curationId').equals(filter.curationId);
+            else if (filter.status) query = query.where('status').equals(filter.status);
+            return await query.toArray();
+        } catch (error) {
+            // Profiles created by the old manual DataStore fallback may not
+            // have the new authoring indexes yet. Never turn that into an
+            // empty result: scan the small pending-audio table in memory.
+            this.log.warn('Pending audio index unavailable; falling back to scan:', error?.message || error);
+            try {
+                const rows = await table.toArray();
+                return rows.filter((audio) => this._matchesFilter(audio, filter));
+            } catch (fallbackError) {
+                this.log.error('Error retrieving pending audios:', fallbackError);
+                return [];
             }
-
-            const audios = await query.toArray();
-            return audios;
-        } catch (error) {
-            this.log.error('Error retrieving pending audios:', error);
-            return [];
         }
     }
 
-    /**
-     * Update pending audio record
-     * @param {number} id - Pending audio ID
-     * @param {Object} updates - Data to update
-     * @returns {Promise<void>}
-     */
-    async updateAudio(id, updates) {
-        try {
-            await this.dataStorage.db.pendingAudio.update(id, updates);
-            this.log.debug(`Pending audio ${id} updated`);
-        } catch (error) {
-            this.log.error('Error updating pending audio:', error);
-            throw error;
-        }
+    async updateAudio(id, updates) { await this.dataStorage.db.pendingAudio.update(id, updates); }
+
+    async claimForProcessing(idOrSourceId) {
+        const audio = await this.resolveAudio(idOrSourceId);
+        if (!audio?.audioBlob || audio.id == null || audio.disposable === true) return null;
+        const sourceId = audio.sourceId || this._newSourceId();
+        const capturedAt = audio.capturedAt || audio.timestamp || new Date();
+        const curatorId = audio.curatorId || this._currentCuratorId();
+        await this.updateAudio(audio.id, {
+            sourceId,
+            capturedAt,
+            curatorId,
+            status: 'processing',
+            processingStartedAt: new Date(),
+            lastError: null
+        });
+        return { ...audio, sourceId, capturedAt, curatorId, status: 'processing' };
     }
 
-    /**
-     * Increment retry count and update last error
-     * @param {number} id - Pending audio ID
-     * @param {string} errorMessage - Error message
-     * @returns {Promise<number>} - New retry count
-     */
+    async markProcessingFailed(idOrSourceId, errorMessage) {
+        const audio = await this.resolveAudio(idOrSourceId); if (!audio || audio.id == null) return false;
+        await this.updateAudio(audio.id, { retryCount: (audio.retryCount || 0) + 1, status: 'failed', lastError: String(errorMessage?.message || errorMessage || 'Processing failed'), processingStartedAt: null }); return true;
+    }
+
+    async storeTranscript(idOrSourceId, transcriptText, metadata = {}) {
+        const audio = await this.resolveAudio(idOrSourceId); if (!audio || audio.id == null) throw new Error(`Pending audio ${idOrSourceId} not found`);
+        await this.updateAudio(audio.id, {
+            transcriptText: transcriptText || null,
+            status: transcriptText ? 'transcribed' : audio.status,
+            transcriptPersisted: false,
+            disposable: false,
+            lastError: null,
+            ...(metadata.language ? { language: metadata.language } : {}),
+            ...(metadata.durationSeconds !== undefined ? { durationSeconds: metadata.durationSeconds } : {}),
+            ...((metadata.transcriptionModel || metadata.model) ? { transcriptionModel: metadata.transcriptionModel || metadata.model } : {})
+        });
+        return { ...audio, transcriptText: transcriptText || null, ...metadata };
+    }
+
+    async associateWithCuration(filter, curationId) {
+        if (!curationId) return 0; const audios = await this.getAudios(filter || {}); let updated = 0;
+        for (const audio of audios) { if (audio?.id == null) continue; await this.updateAudio(audio.id, { curationId }); updated++; } return updated;
+    }
+
+    /** Two-phase commit: durable transcript first, then raw blob deletion. */
+    async markTranscriptPersisted(idOrSourceId, { curationId = null, draftId = null } = {}) {
+        const audio = await this.resolveAudio(idOrSourceId); if (!audio || audio.id == null) throw new Error(`Pending audio ${idOrSourceId} not found`);
+        await this.updateAudio(audio.id, { ...(curationId ? { curationId } : {}), ...(draftId ? { draftId } : {}), transcriptPersisted: true, disposable: true, status: 'completed', processingStartedAt: null, lastError: null });
+        await this.deleteAudio(audio.id);
+    }
+
     async incrementRetryCount(id, errorMessage) {
-        try {
-            const audio = await this.getAudio(id);
-            if (!audio) {
-                throw new Error(`Pending audio ${id} not found`);
-            }
-
-            const newRetryCount = (audio.retryCount || 0) + 1;
-            await this.updateAudio(id, {
-                retryCount: newRetryCount,
-                lastError: errorMessage,
-                status: newRetryCount >= this.maxAutoRetries ? 'failed' : 'retrying'
-            });
-
-            this.log.debug(`Pending audio ${id} retry count: ${newRetryCount}`);
-            return newRetryCount;
-        } catch (error) {
-            this.log.error('Error incrementing retry count:', error);
-            throw error;
-        }
+        const audio = await this.getAudio(id); if (!audio) throw new Error(`Pending audio ${id} not found`);
+        const retryCount = (audio.retryCount || 0) + 1; await this.updateAudio(id, { retryCount, lastError: errorMessage, status: retryCount >= this.maxAutoRetries ? 'failed' : 'retrying' }); return retryCount;
     }
 
-    /**
-     * Schedule automatic retry for failed transcription
-     * @param {number} id - Pending audio ID
-     * @param {Function} retryCallback - Function to call for retry
-     * @returns {Promise<void>}
-     */
     async scheduleAutoRetry(id, retryCallback) {
-        try {
-            const audio = await this.getAudio(id);
-            if (!audio) {
-                this.log.error(`Cannot schedule retry: pending audio ${id} not found`);
-                return;
-            }
+        const audio = await this.getAudio(id); if (!audio) return; const retryCount = audio.retryCount || 0;
+        if (retryCount >= this.maxAutoRetries) { await this.updateAudio(id, { status: 'failed' }); return; }
+        const delay = this.retryDelays[retryCount] || this.retryDelays[this.retryDelays.length - 1];
+        setTimeout(async () => {
+            const latest = await this.getAudio(id).catch(() => null);
+            if (!latest || latest.disposable === true) return;
 
-            const retryCount = audio.retryCount || 0;
-
-            if (retryCount >= this.maxAutoRetries) {
-                this.log.debug(`Max retries reached for pending audio ${id}, marking as failed`);
-                await this.updateAudio(id, { status: 'failed' });
-                return;
-            }
-
-            const delay = this.retryDelays[retryCount] || this.retryDelays[this.retryDelays.length - 1];
-
-            this.log.debug(`Scheduling retry ${retryCount + 1} for pending audio ${id} in ${delay}ms`);
-
-            setTimeout(async () => {
-                try {
-                    this.log.debug(`Executing retry ${retryCount + 1} for pending audio ${id}`);
-                    await retryCallback(id);
-                } catch (error) {
-                    this.log.error(`Retry ${retryCount + 1} failed for pending audio ${id}:`, error);
-                    await this.incrementRetryCount(id, error.message);
-
-                    // Schedule next retry if not maxed out
-                    const updatedAudio = await this.getAudio(id);
-                    if (updatedAudio && updatedAudio.retryCount < this.maxAutoRetries) {
-                        await this.scheduleAutoRetry(id, retryCallback);
-                    }
+            // Part 2 owns restart/reconnect processing. Delegate timer retries
+            // to the same single-flight processor so one capture cannot be
+            // transcribed concurrently by the legacy callback and reconnect.
+            if (typeof window !== 'undefined' && window.offlineCaptureProcessor?.processPending) {
+                await window.offlineCaptureProcessor.processPending().catch((error) => {
+                    this.log.warn('Durable audio retry failed:', error);
+                });
+                const updated = await this.getAudio(id).catch(() => null);
+                if (updated && updated.disposable !== true && updated.retryCount < this.maxAutoRetries) {
+                    await this.scheduleAutoRetry(id, retryCallback);
                 }
-            }, delay);
-        } catch (error) {
-            this.log.error('Error scheduling auto retry:', error);
-        }
-    }
-
-    /**
-     * Check if audio can be automatically retried
-     * @param {number} id - Pending audio ID
-     * @returns {Promise<boolean>} - True if can retry
-     */
-    async canAutoRetry(id) {
-        try {
-            const audio = await this.getAudio(id);
-            if (!audio) return false;
-
-            // Can retry if status is failed and retry count is below max
-            return audio.status === 'failed' && audio.retryCount < this.maxAutoRetries;
-        } catch (error) {
-            this.log.error('Error checking auto retry eligibility:', error);
-            return false;
-        }
-    }
-
-    /**
-     * Delete pending audio record
-     * @param {number} id - Pending audio ID
-     * @returns {Promise<void>}
-     */
-    async deleteAudio(id) {
-        try {
-            await this.dataStorage.db.pendingAudio.delete(id);
-            this.log.debug(`Pending audio ${id} deleted`);
-        } catch (error) {
-            this.log.error('Error deleting pending audio:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Delete multiple pending audios by filter
-     * @param {Object} filter - Filter options (restaurantId, draftId, etc.)
-     * @returns {Promise<number>} - Number of deleted records
-     */
-    async deleteAudios(filter = {}) {
-        try {
-            const audios = await this.getAudios(filter);
-            const deletePromises = audios.map(audio => this.deleteAudio(audio.id));
-            await Promise.all(deletePromises);
-
-            this.log.debug(`Deleted ${audios.length} pending audio records`);
-            return audios.length;
-        } catch (error) {
-            this.log.error('Error deleting pending audios:', error);
-            return 0;
-        }
-    }
-
-    /**
-     * Mark audio as successfully transcribed
-     * @param {number} id - Pending audio ID
-     * @returns {Promise<void>}
-     */
-    async markAsTranscribed(id) {
-        try {
-            await this.updateAudio(id, {
-                status: 'transcribed',
-                lastError: null
-            });
-            this.log.debug(`Pending audio ${id} marked as transcribed`);
-        } catch (error) {
-            this.log.error('Error marking audio as transcribed:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Get count of pending audios by status
-     * @param {string} status - Status filter (optional)
-     * @returns {Promise<number>} - Count of matching records
-     */
-    async getCount(status = null) {
-        try {
-            if (status) {
-                return await this.dataStorage.db.pendingAudio.where('status').equals(status).count();
-            } else {
-                return await this.dataStorage.db.pendingAudio.count();
+                return;
             }
-        } catch (error) {
-            this.log.error('Error getting pending audio count:', error);
-            return 0;
-        }
+
+            try {
+                await retryCallback(id, latest);
+            } catch (error) {
+                await this.incrementRetryCount(id, error.message);
+                const updated = await this.getAudio(id);
+                if (updated && updated.retryCount < this.maxAutoRetries) {
+                    await this.scheduleAutoRetry(id, retryCallback);
+                }
+            }
+        }, delay);
     }
 
-    /**
-     * Get counts of pending audios by all statuses
-     * @returns {Promise<Object>} - Object with counts by status
-     */
+    async canAutoRetry(id) { const audio = await this.getAudio(id).catch(() => null); return Boolean(audio && audio.status === 'failed' && audio.retryCount < this.maxAutoRetries); }
+    async deleteAudio(id) { await this.dataStorage.db.pendingAudio.delete(id); }
+    async deleteAudios(filter = {}) { try { const audios = await this.getAudios(filter); await Promise.all(audios.map((audio) => this.deleteAudio(audio.id))); return audios.length; } catch (_) { return 0; } }
+    async markAsTranscribed(id, transcriptText = null) { await this.updateAudio(id, { status: 'transcribed', ...(transcriptText ? { transcriptText } : {}), lastError: null, transcriptPersisted: false, disposable: false }); }
+
+    async getCount(status = null) { try { return status ? await this.dataStorage.db.pendingAudio.where('status').equals(status).count() : await this.dataStorage.db.pendingAudio.count(); } catch (_) { return 0; } }
     async getAudioCounts() {
-        try {
-            const [pending, processing, failed, retrying, transcribed, completed] = await Promise.all([
-                this.dataStorage.db.pendingAudio.where('status').equals('pending').count(),
-                this.dataStorage.db.pendingAudio.where('status').equals('processing').count(),
-                this.dataStorage.db.pendingAudio.where('status').equals('failed').count(),
-                this.dataStorage.db.pendingAudio.where('status').equals('retrying').count(),
-                this.dataStorage.db.pendingAudio.where('status').equals('transcribed').count(),
-                this.dataStorage.db.pendingAudio.where('status').equals('completed').count()
-            ]);
-
-            return {
-                pending,
-                processing,
-                failed,
-                retrying,
-                transcribed,
-                completed,
-                total: pending + processing + failed + retrying + transcribed + completed
-            };
-        } catch (error) {
-            this.log.error('Error getting pending audio counts:', error);
-            return {
-                pending: 0,
-                processing: 0,
-                failed: 0,
-                retrying: 0,
-                transcribed: 0,
-                total: 0
-            };
-        }
+        try { const statuses = ['pending', 'processing', 'failed', 'retrying', 'transcribed', 'completed']; const values = await Promise.all(statuses.map((status) => this.dataStorage.db.pendingAudio.where('status').equals(status).count())); return { ...Object.fromEntries(statuses.map((status, i) => [status, values[i]])), total: values.reduce((a, b) => a + b, 0) }; }
+        catch (_) { return { pending: 0, processing: 0, failed: 0, retrying: 0, transcribed: 0, completed: 0, total: 0 }; }
     }
 
-    /**
-     * Clean up old transcribed audios (for maintenance)
-     * @param {number} daysOld - Days old to consider for cleanup
-     * @returns {Promise<number>} - Number of cleaned up records
-     */
     async cleanupOldTranscribed(daysOld = 7) {
-        try {
-            const cutoffDate = new Date();
-            cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-
-            // Clean up both 'transcribed' and 'completed' audios
-            const oldAudios = await this.dataStorage.db.pendingAudio
-                .where('status').anyOf(['transcribed', 'completed'])
-                .and(audio => new Date(audio.timestamp) < cutoffDate)
-                .toArray();
-
-            const deletePromises = oldAudios.map(audio => this.deleteAudio(audio.id));
-            await Promise.all(deletePromises);
-
-            this.log.debug(`Cleaned up ${oldAudios.length} old processed audios`);
-            return oldAudios.length;
-        } catch (error) {
-            this.log.error('Error cleaning up old processed audios:', error);
-            return 0;
-        }
+        try { const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - daysOld); const rows = await this.dataStorage.db.pendingAudio.where('status').anyOf(['transcribed', 'completed']).and((audio) => this.canDeleteAudio(audio) && new Date(audio.timestamp) < cutoff).toArray(); await Promise.all(rows.map((audio) => this.deleteAudio(audio.id))); return rows.length; }
+        catch (_) { return 0; }
     }
-
-    /**
-     * Purges all processed audio to free up space
-     * @returns {Promise<number>} - Number of deleted records
-     */
     async purgeProcessedAudio() {
-        try {
-            const processedAudios = await this.dataStorage.db.pendingAudio
-                .where('status').anyOf(['transcribed', 'completed'])
-                .toArray();
-
-            const deletePromises = processedAudios.map(audio => this.deleteAudio(audio.id));
-            await Promise.all(deletePromises);
-
-            this.log.info(`Purged ${processedAudios.length} processed audio records to free up space`);
-            return processedAudios.length;
-        } catch (error) {
-            this.log.error('Error purging processed audio:', error);
-            return 0;
-        }
+        try { const rows = await this.dataStorage.db.pendingAudio.where('status').anyOf(['transcribed', 'completed']).toArray(); const disposable = rows.filter((audio) => this.canDeleteAudio(audio)); await Promise.all(disposable.map((audio) => this.deleteAudio(audio.id))); return disposable.length; }
+        catch (_) { return 0; }
     }
 });
 
-// Create and expose global instance
 if (typeof window !== 'undefined') {
     window.PendingAudioManager = new PendingAudioManager();
+    if (typeof document !== 'undefined' && !document.querySelector('script[data-offline-durability]')) {
+        const script = document.createElement('script'); script.src = 'scripts/modules/offlineDurabilityModule.js?v=20260830-1'; script.async = false; script.dataset.offlineDurability = 'true'; document.head.appendChild(script);
+    }
 }

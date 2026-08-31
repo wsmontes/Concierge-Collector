@@ -30,7 +30,7 @@ from app.core.security import (
     verify_auth,
     require_role,
 )
-from app.services.entity_service import upsert_entity
+from app.services.entity_service import upsert_entity, refresh_linked_curation_projections
 from app.services.og_image_service import (
     get_og_image_bytes,
     get_restaurant_image_bytes,
@@ -295,6 +295,7 @@ def update_entity(
     if not result:
         raise HTTPException(status_code=409, detail="Version conflict or not found")
 
+    refresh_linked_curation_projections(db, result, requested_id=entity_id)
     return Entity(**result)
 
 
@@ -504,6 +505,8 @@ def bulk_upsert_entities(
                 doc.pop("createdBy", None)
 
                 db.entities.update_one({"_id": entity.entity_id}, {"$set": doc})
+                refreshed_entity = {**existing, **doc, "_id": entity.entity_id, "entity_id": entity.entity_id}
+                refresh_linked_curation_projections(db, refreshed_entity, requested_id=entity.entity_id)
                 updated += 1
             else:
                 doc = entity.model_dump()
@@ -518,6 +521,8 @@ def bulk_upsert_entities(
             # Unique index collision (e.g. duplicate place_id) — update existing
             try:
                 db.entities.update_one({"_id": entity.entity_id}, {"$set": doc})
+                refreshed_entity = {**(existing or {}), **doc, "_id": entity.entity_id, "entity_id": entity.entity_id}
+                refresh_linked_curation_projections(db, refreshed_entity, requested_id=entity.entity_id)
             except Exception:
                 pass
             updated += 1

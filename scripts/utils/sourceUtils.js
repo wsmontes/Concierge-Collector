@@ -1,180 +1,253 @@
 /**
- * SourceUtils - Standardized logic for Curation Sources
- * 
- * Centralizes the definition, detection, and UI mapping of data sources.
- * Prevents ad-hoc string usage and ensures consistent UI representation.
+ * SourceUtils - Standardized logic for Curation Sources and semantic truth.
+ *
+ * Provenance, linkage and authorship must come from explicit domain fields.
+ * Content and display context are never allowed to reconstruct those facts.
  */
-
 const SourceUtils = (() => {
-    // 1. Define Standard Source Constants (Backend Contract)
     const SCOPES = {
-        AUDIO: 'audio',
-        IMAGE: 'image',
-        TEXT: 'text',
-        GOOGLE: 'google_places',
-        IMPORT: 'import',
-        MANUAL: 'manual'
+        AUDIO: 'audio', IMAGE: 'image', TEXT: 'text', GOOGLE: 'google_places',
+        IMPORT: 'import', WEB_RESEARCH: 'web_research', MANUAL: 'manual'
     };
 
-    // 2. Define UI Mappings (Frontend Representation)
     const UI_CONFIG = {
-        [SCOPES.AUDIO]: {
-            label: 'Voice Note',
-            icon: 'mic',
-            className: 'chip chip--accent' // padrão único de chips
-        },
-        [SCOPES.IMAGE]: {
-            label: 'Photo',
-            icon: 'photo_camera',
-            className: 'chip chip--accent'
-        },
-        [SCOPES.TEXT]: {
-            label: 'Text Input',
-            icon: 'text_fields',
-            className: 'chip chip--info'
-        },
-        [SCOPES.GOOGLE]: {
-            label: 'Google Places',
-            icon: 'place',
-            className: 'chip chip--success'
-        },
-        [SCOPES.IMPORT]: {
-            label: 'Imported',
-            icon: 'file_upload',
-            className: 'chip chip--warning'
-        },
-        [SCOPES.MANUAL]: {
-            label: 'Manual Entry',
-            icon: 'edit',
-            className: 'chip chip--neutral'
-        }
+        [SCOPES.AUDIO]: { label: 'Voice Note', icon: 'mic', className: 'chip chip--accent' },
+        [SCOPES.IMAGE]: { label: 'Photo', icon: 'photo_camera', className: 'chip chip--accent' },
+        [SCOPES.TEXT]: { label: 'Text Input', icon: 'text_fields', className: 'chip chip--info' },
+        [SCOPES.GOOGLE]: { label: 'Google Places', icon: 'place', className: 'chip chip--success' },
+        [SCOPES.IMPORT]: { label: 'Imported', icon: 'file_upload', className: 'chip chip--warning' },
+        [SCOPES.WEB_RESEARCH]: { label: 'Web Research', icon: 'travel_explore', className: 'chip chip--info' },
+        [SCOPES.MANUAL]: { label: 'Manual Entry', icon: 'edit', className: 'chip chip--neutral' }
     };
 
-    /**
-     * Detects the primary source of a curation based on its data fields.
-     * Priority: Audio > Image > Text > Google > Import > Manual
-     * 
-     * @param {Object} curation - The curation object
-     * @param {Object} entity - The associated entity object (optional)
-     * @returns {Object} UI configuration object { label, icon, className }
-     */
+    function hasMeaningfulId(value) {
+        return value !== null && value !== undefined && String(value).trim() !== '';
+    }
+
+    function hasMeaningfulText(value) {
+        return value !== null && value !== undefined && String(value).trim() !== '';
+    }
+
+    function toIsoTimestamp(value, fallback) {
+        if (!value) return fallback;
+        try {
+            const date = value instanceof Date ? value : new Date(value);
+            if (!Number.isNaN(date.getTime())) return date.toISOString();
+        } catch (_) {}
+        return fallback;
+    }
+
+    function isLinkedCuration(curation) { return hasMeaningfulId(curation?.entity_id); }
+    function getCuratorType(curation) { return curation?.curator_type === 'synthetic' ? 'synthetic' : 'human'; }
+    function getCuratorIcon(curation) { return getCuratorType(curation) === 'synthetic' ? 'smart_toy' : 'person'; }
+
+    function getEntitySource(entity) {
+        const explicit = entity?.data?.source || entity?.source;
+        if (explicit && String(explicit).trim()) return String(explicit).trim();
+        if (hasMeaningfulId(entity?.data?.place_id) || hasMeaningfulId(entity?.data?.google_place_id) || hasMeaningfulId(entity?.place_id)) {
+            return SCOPES.GOOGLE;
+        }
+        return SCOPES.MANUAL;
+    }
+
     function detectSource(curation, entity) {
         const sources = curation.sources || [];
-
-        // Check explicit sources first (supports both legacy array and structured object)
         if (Array.isArray(sources) && sources.length > 0) {
-            if (sources.includes(SCOPES.AUDIO)) return UI_CONFIG[SCOPES.AUDIO];
-            if (sources.includes(SCOPES.IMAGE)) return UI_CONFIG[SCOPES.IMAGE];
-            if (sources.includes(SCOPES.TEXT)) return UI_CONFIG[SCOPES.TEXT];
-            if (sources.includes(SCOPES.GOOGLE)) return UI_CONFIG[SCOPES.GOOGLE];
-            if (sources.includes(SCOPES.IMPORT)) return UI_CONFIG[SCOPES.IMPORT];
-            if (sources.includes(SCOPES.MANUAL)) return UI_CONFIG[SCOPES.MANUAL];
+            for (const scope of [SCOPES.AUDIO, SCOPES.IMAGE, SCOPES.TEXT, SCOPES.GOOGLE, SCOPES.IMPORT, SCOPES.WEB_RESEARCH, SCOPES.MANUAL]) {
+                if (sources.includes(scope)) return UI_CONFIG[scope];
+            }
             return UI_CONFIG[SCOPES.MANUAL];
         }
-
         if (sources && typeof sources === 'object' && !Array.isArray(sources)) {
-            if (Array.isArray(sources.audio) && sources.audio.length > 0) return UI_CONFIG[SCOPES.AUDIO];
-            if (Array.isArray(sources.image) && sources.image.length > 0) return UI_CONFIG[SCOPES.IMAGE];
-            if (Array.isArray(sources.text) && sources.text.length > 0) return UI_CONFIG[SCOPES.TEXT];
-            if (Array.isArray(sources.google_places) && sources.google_places.length > 0) return UI_CONFIG[SCOPES.GOOGLE];
-            if (Array.isArray(sources.import) && sources.import.length > 0) return UI_CONFIG[SCOPES.IMPORT];
-            if (Array.isArray(sources.manual) && sources.manual.length > 0) return UI_CONFIG[SCOPES.MANUAL];
+            for (const scope of [SCOPES.AUDIO, SCOPES.IMAGE, SCOPES.TEXT, SCOPES.GOOGLE, SCOPES.IMPORT, SCOPES.WEB_RESEARCH, SCOPES.MANUAL]) {
+                if (Array.isArray(sources[scope]) && sources[scope].length > 0) return UI_CONFIG[scope];
+            }
+            if (Object.keys(sources).length > 0) return UI_CONFIG[SCOPES.MANUAL];
         }
-
-        // Heuristic fallback for legacy data (smart detection)
-        if ((curation.transcript || curation.unstructured_text || curation.transcription || '').trim().length > 0) {
-            return UI_CONFIG[SCOPES.AUDIO];
-        }
-
-        if (curation.photos && curation.photos.length > 0) {
-            return UI_CONFIG[SCOPES.IMAGE];
-        }
-
-        if (entity?.data?.place_id || entity?.place_id || curation.googlePlaceId) {
-            return UI_CONFIG[SCOPES.GOOGLE];
-        }
-
+        // Legacy compatibility only when NO explicit provenance exists.
+        if ((curation.transcript || curation.unstructured_text || curation.transcription || '').trim().length > 0) return UI_CONFIG[SCOPES.AUDIO];
+        if (curation.photos?.length > 0) return UI_CONFIG[SCOPES.IMAGE];
+        if (getEntitySource(entity) === SCOPES.GOOGLE || curation.googlePlaceId) return UI_CONFIG[SCOPES.GOOGLE];
         return UI_CONFIG[SCOPES.MANUAL];
     }
 
-    /**
-     * Gets the full source list for saving to backend
-     * @param {Object} context - Current editing context (hasAudio, hasPhotos, etc.)
-     * @returns {Array<string>} Array of source strings
-     */
     function determineSourcesFromContext(context) {
         const sources = [];
         if (context.hasAudio) sources.push(SCOPES.AUDIO);
         if (context.hasPhotos) sources.push(SCOPES.IMAGE);
         if (context.hasPlaceId) sources.push(SCOPES.GOOGLE);
         if (context.isImport) sources.push(SCOPES.IMPORT);
-
-        if (sources.length === 0) sources.push(SCOPES.MANUAL);
-
+        if (!sources.length) sources.push(SCOPES.MANUAL);
         return sources;
     }
 
+    function resolveAudioSourceId(context) {
+        if (context.audioSourceId !== undefined && context.audioSourceId !== null) return context.audioSourceId;
+        if (context.transcriptionId !== undefined && context.transcriptionId !== null) return context.transcriptionId;
+        const recorder = window.uiManager?.recordingModule;
+        const stableSourceId = recorder?.currentAudioSourceId;
+        if (stableSourceId !== undefined && stableSourceId !== null) return stableSourceId;
+        const runtimeAudioId = recorder?.currentAudioId;
+        return runtimeAudioId !== undefined && runtimeAudioId !== null ? runtimeAudioId : null;
+    }
+
+    function resolveCuratorId(context = {}) {
+        if (hasMeaningfulId(context.curatorId)) return String(context.curatorId);
+        try {
+            const profile = window.CuratorProfile?.getCurrentCurator?.();
+            if (hasMeaningfulId(profile?.curator_id)) return String(profile.curator_id);
+        } catch (_) {}
+        try {
+            const resolved = window.uiManager?.conceptModule?.resolveCuratorId?.();
+            if (hasMeaningfulId(resolved)) return String(resolved);
+        } catch (_) {}
+        const current = window.uiManager?.currentCurator || null;
+        const legacy = current?.id || current?.curator_id || current?.email || null;
+        return hasMeaningfulId(legacy) ? String(legacy) : null;
+    }
+
     /**
-     * Build structured source payload for curation persistence.
-     *
-     * Output shape example:
-     * {
-     *   audio: [{ source_id, transcript, language, model, duration_seconds, created_at }],
-     *   image: [{ created_at }],
-     *   google_places: [{ created_at }]
-     * }
+     * Build explicit provenance. `sources.audio[]` is intentionally retained as
+     * the compatibility bucket name, but every new entry represents durable
+     * VOICE-ORIGINATED TEXTUAL EVIDENCE. The raw audio Blob is ephemeral and
+     * is never referenced from the persisted Curation.
      */
-    function buildSourcesPayloadFromContext(context) {
+    function buildSourcesPayloadFromContext(context = {}) {
         const now = new Date().toISOString();
         const existing = (context.existingSources && typeof context.existingSources === 'object' && !Array.isArray(context.existingSources))
             ? { ...context.existingSources }
             : {};
-
         const sources = { ...existing };
 
         if (context.hasAudio) {
-            sources.audio = [{
-                source_id: context.transcriptionId || null,
-                transcript: context.transcript || null,
-                language: context.language || null,
-                model: context.model || null,
-                duration_seconds: context.durationSeconds || null,
-                created_at: now
-            }];
+            const sourceId = resolveAudioSourceId(context);
+            const transcriptText = hasMeaningfulText(context.transcript) ? String(context.transcript).trim() : null;
+            // A raw recording is NOT a durable source. Persist voice provenance
+            // only once the atomic transcript for this capture exists.
+            if (sourceId !== null && transcriptText) {
+                const currentAudio = Array.isArray(sources.audio) ? [...sources.audio] : [];
+                const alreadyRecorded = currentAudio.some((entry) => String(entry?.source_id ?? '') === String(sourceId));
+                if (!alreadyRecorded) {
+                    const capturedAt = toIsoTimestamp(
+                        context.capturedAt || context.timestamp || context.createdAt,
+                        now
+                    );
+                    const curatorId = resolveCuratorId(context);
+                    const transcriptionModel = context.transcriptionModel || context.model || null;
+                    currentAudio.push({
+                        source_id: sourceId,
+                        type: 'voice_transcript',
+                        text: transcriptText,
+                        // Compatibility aliases retained while older readers
+                        // still consume transcript/model/created_at.
+                        transcript: transcriptText,
+                        curator_id: curatorId,
+                        captured_at: capturedAt,
+                        created_at: capturedAt,
+                        language: context.language || null,
+                        duration_seconds: context.durationSeconds ?? null,
+                        transcription_model: transcriptionModel,
+                        model: transcriptionModel
+                    });
+                }
+                sources.audio = currentAudio;
+            }
         }
-
-        if (context.hasPhotos) {
-            sources.image = sources.image && Array.isArray(sources.image) && sources.image.length > 0
-                ? sources.image
-                : [{ created_at: now }];
-        }
-
-        if (context.hasPlaceId) {
-            sources.google_places = sources.google_places && Array.isArray(sources.google_places) && sources.google_places.length > 0
-                ? sources.google_places
-                : [{ created_at: now }];
-        }
-
-        if (context.isImport) {
-            sources.import = sources.import && Array.isArray(sources.import) && sources.import.length > 0
-                ? sources.import
-                : [{ created_at: now }];
-        }
-
-        if (Object.keys(sources).length === 0) {
-            sources.manual = [{ created_at: now }];
-        }
-
+        if (context.hasPhotos) sources.image = Array.isArray(sources.image) && sources.image.length ? sources.image : [{ created_at: now }];
+        if (context.hasPlaceId) sources.google_places = Array.isArray(sources.google_places) && sources.google_places.length ? sources.google_places : [{ created_at: now }];
+        if (context.isImport) sources.import = Array.isArray(sources.import) && sources.import.length ? sources.import : [{ created_at: now }];
+        if (!Object.keys(sources).length && context.suppressManualFallback !== true) sources.manual = [{ created_at: now }];
         return sources;
     }
 
+    function normalizeWorkflowStatus(status) {
+        if (status === undefined || status === null || status === '') return 'draft';
+        return String(status).toLowerCase() === 'linked' ? 'draft' : status;
+    }
+
+    /**
+     * Compatibility boundary for the legacy DataStore implementation, whose
+     * createCuration historically derived status=linked from entity_id.
+     * Linkage truth lives only in entity_id; workflow status remains editorial.
+     */
+    function patchDataStoreCreateCuration() {
+        const store = window.DataStore || window.dataStore;
+        if (!store?.createCuration || store.__semanticTruthCreateCurationInstalled) return;
+        const original = store.createCuration.bind(store);
+        store.__semanticTruthCreateCurationInstalled = true;
+        store.__semanticTruthOriginalCreateCuration = original;
+        store.createCuration = (curationData = {}) => original({
+            ...curationData,
+            status: normalizeWorkflowStatus(curationData.status)
+        });
+    }
+
+    function patchCardFactory() {
+        const factory = window.CardFactory;
+        if (!factory || factory.__semanticTruthGuardsInstalled) return;
+        factory.__semanticTruthGuardsInstalled = true;
+        if (typeof factory.createEntityCard === 'function') {
+            const original = factory.createEntityCard.bind(factory);
+            factory.createEntityCard = (entity, options = {}) => {
+                const card = original(entity, options);
+                const source = getEntitySource(entity);
+                const label = card?.querySelector?.('.collection-source-badge__label');
+                if (label) label.textContent = source.replace(/_/g, ' ');
+                const icon = card?.querySelector?.('.collection-source-badge .material-icons');
+                if (icon && source === SCOPES.GOOGLE) icon.textContent = 'place';
+                return card;
+            };
+        }
+        if (typeof factory.createCurationCard === 'function') {
+            const original = factory.createCurationCard.bind(factory);
+            factory.createCurationCard = (entity, curation, options = {}) => {
+                const card = original(entity, curation, options);
+                const icon = card?.querySelector?.('.collection-card__subtitle .material-icons');
+                if (icon) icon.textContent = getCuratorIcon(curation);
+                if (getCuratorType(curation) === 'synthetic') card?.classList?.add('collection-card--synthetic-curator');
+                return card;
+            };
+        }
+    }
+
+    function patchWorkspaceState() {
+        const Workspace = window.CurationWorkspaceModule;
+        if (!Workspace || Workspace.__semanticTruthStateInstalled) return;
+        Workspace.__semanticTruthStateInstalled = true;
+        Workspace.deriveState = (curation = null, entity = null) => {
+            const provisionalEntityId = !curation && window.uiManager?.importedEntityId ? window.uiManager.importedEntityId : null;
+            const entityId = isLinkedCuration(curation) ? curation.entity_id : provisionalEntityId;
+            const linked = hasMeaningfulId(entityId);
+            const synthetic = getCuratorType(curation) === 'synthetic';
+            const workingName = curation?.restaurant_name || curation?.name || '';
+            const canonicalName = linked ? (entity?.name || entity?.restaurant_name || '') : '';
+            return {
+                linkage: linked ? 'linked' : 'orphan',
+                authorship: synthetic ? 'synthetic' : 'human',
+                key: `${linked ? 'linked' : 'orphan'}-${synthetic ? 'synthetic' : 'human'}`,
+                displayName: linked ? (canonicalName || workingName) : workingName,
+                workingName,
+                canonicalName,
+                entityId: linked ? entityId : null,
+                isLinked: linked,
+                isSynthetic: synthetic
+            };
+        };
+    }
+
+    function installSemanticTruthGuards() {
+        patchDataStoreCreateCuration();
+        patchCardFactory();
+        patchWorkspaceState();
+    }
+
     return {
-        SCOPES,
-        detectSource,
-        determineSourcesFromContext,
-        buildSourcesPayloadFromContext
+        SCOPES, detectSource, determineSourcesFromContext, buildSourcesPayloadFromContext,
+        isLinkedCuration, getCuratorType, getCuratorIcon, getEntitySource, installSemanticTruthGuards
     };
 })();
 
-// Expose to window for global access
 window.SourceUtils = SourceUtils;
+SourceUtils.installSemanticTruthGuards();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => SourceUtils.installSemanticTruthGuards(), { once: true });
+else SourceUtils.installSemanticTruthGuards();

@@ -28,6 +28,7 @@ from openpyxl import load_workbook
 
 
 DEFAULT_CURATOR_ID = "curator-import-excel"
+DEFAULT_CURATOR_TYPE = "synthetic"
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,6 +38,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--apply", action="store_true", help="Send to API (default is dry-run)")
     parser.add_argument("--default-curator-id", default=DEFAULT_CURATOR_ID, help="Curator ID for imported curations")
     parser.add_argument("--default-curator-name", default="Excel Import Script", help="Curator name for imported curations")
+    parser.add_argument(
+        "--curator-type",
+        choices=("human", "synthetic"),
+        default=DEFAULT_CURATOR_TYPE,
+        help="Authorship nature of this import pipeline; never inferred from curator ID",
+    )
     parser.add_argument("--chunk-size", type=int, default=200, help="Curations per bulk request (default: 200)")
     return parser.parse_args()
 
@@ -62,9 +69,6 @@ def load_settings() -> Tuple[str, str]:
         or os.getenv("API_BASE_URL")
         or "https://concierge-collector.onrender.com/api/v3"
     ).rstrip("/")
-    # Convenção única do pipeline: base SEMPRE termina em /api/v3 (uma vez só)
-    # — API_V3_URL do .env local (http://localhost:8000) também é aceita e
-    # ganha o sufixo; um valor já com o sufixo não é duplicado (evita 404).
     api_base_url = raw_base if raw_base.endswith("/api/v3") else raw_base + "/api/v3"
 
     api_key = env_values.get("API_SECRET_KEY") or os.getenv("API_SECRET_KEY")
@@ -90,10 +94,6 @@ def normalize_value(value: Any) -> List[str]:
     return [part for part in parts if part]
 
 
-# Cabeçalhos de planilha que NÃO são categorias — espelho da exclusão de
-# chaves reservadas do import_curations.py (extract_categories_from_legacy).
-# Sem isto, TODO cabeçalho não-vazio virava uma categoria de curadoria
-# (ex.: uma coluna "status" ou "name" poluía as categorias).
 RESERVED_CATEGORY_KEYS = {
     'metadata', 'curation_id', '_id', 'curator_id', 'curator', 'status',
     'notes', 'sources', 'items', 'entity_id', 'restaurant_name', 'name',
@@ -142,7 +142,11 @@ def build_curation_document(
     categories: Dict[str, List[str]],
     curator_id: str,
     curator_name: str,
+    curator_type: str = DEFAULT_CURATOR_TYPE,
 ) -> Dict[str, Any]:
+    if curator_type not in ("human", "synthetic"):
+        raise ValueError("curator_type must be 'human' or 'synthetic'")
+
     base_id = f"excel::{excel_path.name}::{sheet_name}".lower()
     digest = hashlib.md5(base_id.encode("utf-8")).hexdigest()[:12]
     curation_id = f"curation-{digest}"
@@ -173,13 +177,16 @@ def build_curation_document(
             "name": curator_name,
             "email": None
         },
-        # curador sintético quando cai no default do script; curador real
-        # (email de curador humano passado via --curator-id) continua humano
-        "curator_type": "synthetic" if curator_id == DEFAULT_CURATOR_ID else "human"
+        "curator_type": curator_type,
     }
 
 
-def extract_from_excel(excel_path: Path, curator_id: str, curator_name: str) -> List[Dict[str, Any]]:
+def extract_from_excel(
+    excel_path: Path,
+    curator_id: str,
+    curator_name: str,
+    curator_type: str = DEFAULT_CURATOR_TYPE,
+) -> List[Dict[str, Any]]:
     workbook = load_workbook(excel_path, read_only=True, data_only=True)
     curations: List[Dict[str, Any]] = []
 
@@ -187,7 +194,14 @@ def extract_from_excel(excel_path: Path, curator_id: str, curator_name: str) -> 
         for sheet_name in workbook.sheetnames:
             sheet = workbook[sheet_name]
             categories = build_categories(sheet)
-            curation = build_curation_document(excel_path, sheet_name, categories, curator_id, curator_name)
+            curation = build_curation_document(
+                excel_path,
+                sheet_name,
+                categories,
+                curator_id,
+                curator_name,
+                curator_type=curator_type,
+            )
             curations.append(curation)
     finally:
         workbook.close()
@@ -247,7 +261,10 @@ def main() -> int:
         return 0
 
     print(f"Found {len(excel_files)} Excel file(s)")
-    print(f"Mode: {'APPLY' if args.apply else 'DRY-RUN'} | chunk-size={args.chunk_size}")
+    print(
+        f"Mode: {'APPLY' if args.apply else 'DRY-RUN'} | "
+        f"chunk-size={args.chunk_size} | curator-type={args.curator_type}"
+    )
 
     api_base_url: str = ""
     api_key: str = ""
@@ -259,14 +276,19 @@ def main() -> int:
             print(f"ERROR: {error}")
             return 1
 
-    api_bulk_url = f"{api_base_url}/curations/bulk"  # base já inclui /api/v3
+    api_bulk_url = f"{api_base_url}/curations/bulk"
 
     all_curations: List[Dict[str, Any]] = []
     failed_files = 0
 
     for index, excel_path in enumerate(excel_files, start=1):
         try:
-            curations = extract_from_excel(excel_path, args.default_curator_id, args.default_curator_name)
+            curations = extract_from_excel(
+                excel_path,
+                args.default_curator_id,
+                args.default_curator_name,
+                curator_type=args.curator_type,
+            )
             for curation in curations:
                 concepts_count = sum(len(v) for v in curation["categories"].values())
                 print(
@@ -285,7 +307,6 @@ def main() -> int:
         print("\nDry-run only. Use --apply to send to the API.")
         return 0
 
-    # Remove internal _id key — the API uses curation_id as the identifier
     payloads = [{k: v for k, v in c.items() if k != "_id"} for c in all_curations]
 
     print(f"\nSending {len(payloads)} curations to {api_bulk_url}…")

@@ -203,3 +203,70 @@ def test_confirm_capture_rejects_foreign_owner(client, test_db):
     assert "does not belong" in r.json()["detail"]
 
     test_db["capture_sessions"].delete_one({"_id": "test_cap_own"})
+
+
+@pytest.mark.mongo
+def test_confirm_capture_uses_entity_id_for_linkage_and_capture_id_for_audio_provenance(client, test_db):
+    """Confirm de voz liga via entity_id sem inventar status=linked e deixa
+    um identificador verificável da gravação em sources.audio."""
+    from datetime import datetime, timezone
+    from app.core.security import create_access_token
+
+    capture_id = "semantic_capture_001"
+    entity_id = "semantic_entity_001"
+    curator_id = "voice@example.com"
+    curation_id = f"cur_{capture_id[:16]}"
+
+    test_db.entities.insert_one(
+        {
+            "_id": entity_id,
+            "entity_id": entity_id,
+            "name": "Semantic Voice Place",
+            "type": "restaurant",
+            "status": "active",
+            "data": {"location": {"city": "Victoria"}},
+            "createdAt": datetime.now(timezone.utc),
+            "updatedAt": datetime.now(timezone.utc),
+        }
+    )
+    test_db["capture_sessions"].insert_one(
+        {
+            "_id": capture_id,
+            "capture_id": capture_id,
+            "curator_id": curator_id,
+            "curator": {"id": curator_id, "name": "Voice Curator"},
+            "transcription": "The noodles are excellent.",
+            "restaurant_name": "Semantic Voice Place",
+            "entities": [
+                {
+                    "entity_id": entity_id,
+                    "name": "Semantic Voice Place",
+                    "type": "restaurant",
+                    "location": {"city": "Victoria"},
+                    "score": 0.99,
+                    "source": "mongo",
+                }
+            ],
+            "concepts": {"cuisine": ["noodles"]},
+            "createdAt": datetime.now(timezone.utc),
+        }
+    )
+
+    try:
+        token = create_access_token(data={"sub": curator_id, "role": "curator"})
+        response = client.post(
+            f"/api/v3/capture/{capture_id}/confirm",
+            json={"entity_id": entity_id, "idempotency_key": "semantic-confirm-1"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200, response.text
+
+        stored = test_db.curations.find_one({"_id": curation_id})
+        assert stored is not None
+        assert stored["entity_id"] == entity_id
+        assert stored["status"] == "draft"
+        assert stored["sources"]["audio"][0]["source_id"] == capture_id
+    finally:
+        test_db.curations.delete_one({"_id": curation_id})
+        test_db["capture_sessions"].delete_one({"_id": capture_id})
+        test_db.entities.delete_one({"_id": entity_id})
