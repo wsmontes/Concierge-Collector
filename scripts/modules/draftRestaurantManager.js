@@ -12,9 +12,11 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
         this.autoSaveDelay = 3000;
         this.currentDraftId = null;
         this.currentSessionId = null;
-        // Autosave is keyed by durable draft identity. Independent drafts must
-        // never cancel or overwrite each other's pending writes.
+        // Debounce state and I/O ordering are both keyed by durable draft id.
+        // Independent drafts never cancel each other, while two writes for one
+        // draft can never complete out of order and resurrect stale content.
         this.pendingAutoSaves = new Map();
+        this.writeTails = new Map();
     }
 
     init(dataStorage) {
@@ -134,6 +136,20 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
         await this.dataStorage.db.draftRestaurants.update(draftId, updates);
     }
 
+    _enqueueDraftWrite(draftId, data) {
+        const previous = this.writeTails.get(draftId) || Promise.resolve();
+        // A failed earlier write must not permanently poison this draft's
+        // queue; its original caller still receives the rejection, but the next
+        // newer write is allowed to attempt persistence.
+        const run = previous.catch(() => undefined).then(() => this.updateDraft(draftId, data));
+        let tracked = null;
+        tracked = run.finally(() => {
+            if (this.writeTails.get(draftId) === tracked) this.writeTails.delete(draftId);
+        });
+        this.writeTails.set(draftId, tracked);
+        return tracked;
+    }
+
     async autoSaveDraft(draftId, data) {
         if (draftId === null || draftId === undefined) return false;
 
@@ -145,13 +161,13 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
         pending.timeout = setTimeout(async () => {
             const current = this.pendingAutoSaves.get(draftId);
             if (!current || current.token !== token) return;
+            // Remove the debounce entry before starting I/O. flushPendingSave()
+            // can still see/await the write through writeTails.
+            this.pendingAutoSaves.delete(draftId);
             try {
-                await this.updateDraft(current.draftId, current.data);
+                await this._enqueueDraftWrite(current.draftId, current.data);
             } catch (error) {
                 this.log.error('Error auto-saving draft:', error);
-            } finally {
-                const latest = this.pendingAutoSaves.get(draftId);
-                if (latest?.token === token) this.pendingAutoSaves.delete(draftId);
             }
         }, this.autoSaveDelay);
 
@@ -160,12 +176,12 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
     }
 
     async flushPendingSave(draftId = null) {
-        const entries = draftId === null || draftId === undefined
+        const allDrafts = draftId === null || draftId === undefined;
+        const entries = allDrafts
             ? [...this.pendingAutoSaves.entries()]
             : (this.pendingAutoSaves.has(draftId)
                 ? [[draftId, this.pendingAutoSaves.get(draftId)]]
                 : []);
-        if (!entries.length) return false;
 
         for (const [id, pending] of entries) {
             if (pending?.timeout) clearTimeout(pending.timeout);
@@ -174,11 +190,16 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
             if (this.pendingAutoSaves.get(id)?.token === pending.token) {
                 this.pendingAutoSaves.delete(id);
             }
+            this._enqueueDraftWrite(pending.draftId, pending.data);
         }
 
-        await Promise.all(entries.map(([, pending]) =>
-            this.updateDraft(pending.draftId, pending.data)
-        ));
+        const tails = allDrafts
+            ? [...this.writeTails.values()]
+            : (this.writeTails.has(draftId) ? [this.writeTails.get(draftId)] : []);
+        const uniqueTails = [...new Set(tails.filter(Boolean))];
+        if (!uniqueTails.length) return false;
+
+        await Promise.all(uniqueTails);
         return true;
     }
 
@@ -211,8 +232,8 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
     }
 
     async deleteDraft(draftId) {
-        // Flush only the draft being deleted. Other draft sessions retain
-        // their independent debounce state and can still be flushed later.
+        // Flush/await only this draft. Other draft sessions retain their
+        // independent debounce/write queues and can still be flushed later.
         await this.flushPendingSave(draftId).catch(() => {});
         await this.dataStorage.db.draftRestaurants.delete(draftId);
         if (this.currentDraftId === draftId) this.clearCurrentDraft();
