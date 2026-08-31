@@ -96,6 +96,7 @@ export function createReleasePlan(mode = 'standard', { env = process.env } = {})
     npmStep('Admin integration tests', 'test:admin:integration', { env: fullEnv }),
     pythonStep('API integration tests', ['-m', 'pytest', '-m', 'integration and not external_api and not openai', '-q'], { env: fullEnv }),
     pythonStep('API Mongo integration tests', ['-m', 'pytest', '-m', 'mongo and not external_api and not openai', '--run-mongo', '-q'], { env: fullEnv }),
+    pythonStep('API E2E seed', ['scripts/seed_e2e_curations.py'], { env: fullEnv }),
     npmStep('Admin browser E2E', 'test:e2e', { env: fullEnv }),
   ]
 }
