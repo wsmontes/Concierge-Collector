@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
+  computeShellGeneration,
   stampLocalAssetVersions,
   stampLocalScriptVersions,
   stampServiceWorkerGeneration,
@@ -27,9 +28,11 @@ async function fixture() {
   ['External', 'https://cdn.jsdelivr.net/npm/example.js'],
 ];\n`);
   await writeFile(join(root, 'styles', 'app.css'), 'body { display: block; }\n');
-  await writeFile(join(root, 'service-worker.js'), "const CACHE_NAME = 'concierge-collector-shell-__COLLECTOR_SHELL_VERSION__';\n");
+  await writeFile(join(root, 'service-worker.js'), `const SHELL_VERSION = '__COLLECTOR_SHELL_VERSION__';
+const CACHE_NAME = 'concierge-collector-shell-__COLLECTOR_SHELL_VERSION__';\n`);
   await writeFile(join(root, 'index.html'), `<!doctype html>
 <script src="scripts/app.js?v=20200101-1"></script>
+<script src="scripts/modules/bootstrap.js?v=20200101-1"></script>
 <link rel="stylesheet" href="styles/app.css">
 <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js"></script>
 `);
@@ -40,58 +43,87 @@ function hash(content) {
   return createHash('sha256').update(content).digest('hex').slice(0, 12);
 }
 
+async function stampBuild(root) {
+  const generation = await computeShellGeneration(root);
+  await stampLocalScriptVersions(root, generation);
+  await stampLocalAssetVersions(root);
+  await stampServiceWorkerGeneration(root, generation);
+  return generation;
+}
+
 describe('Collector build cache busting', () => {
-  test('replaces stale local v parameters with deterministic content hashes and leaves external URLs alone', async () => {
+  test('replaces stale local v parameters with deterministic final-content hashes and leaves external URLs alone', async () => {
     const root = await fixture();
-    await stampLocalAssetVersions(root);
+    await stampBuild(root);
     const html = await readFile(join(root, 'index.html'), 'utf8');
     const js = await readFile(join(root, 'scripts', 'app.js'));
+    const bootstrap = await readFile(join(root, 'scripts', 'modules', 'bootstrap.js'));
     const css = await readFile(join(root, 'styles', 'app.css'));
 
     expect(html).toContain(`scripts/app.js?v=${hash(js)}`);
+    // This catches the old ordering bug: bootstrap.js is modified by dynamic
+    // stamping, so index.html must hash its FINAL bytes, not its copied bytes.
+    expect(html).toContain(`scripts/modules/bootstrap.js?v=${hash(bootstrap)}`);
     expect(html).toContain(`styles/app.css?v=${hash(css)}`);
     expect(html).not.toContain('20200101-1');
     expect(html).toContain('https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js');
   });
 
-  test('content-addresses dynamic same-origin script references', async () => {
+  test('uses one stable shell generation for dynamic same-origin script references', async () => {
     const root = await fixture();
-    await stampLocalScriptVersions(root);
+    const generation = await computeShellGeneration(root);
+    await stampLocalScriptVersions(root, generation);
     const bootstrap = await readFile(join(root, 'scripts', 'modules', 'bootstrap.js'), 'utf8');
-    const worker = await readFile(join(root, 'scripts', 'modules', 'worker.js'));
 
-    expect(bootstrap).toContain(`scripts/modules/worker.js?v=${hash(worker)}`);
+    expect(bootstrap).toContain(`scripts/modules/worker.js?v=${generation}`);
     expect(bootstrap).not.toContain('20200101-1');
     expect(bootstrap).toContain('https://cdn.jsdelivr.net/npm/example.js');
   });
 
-  test('derives the Service Worker cache generation from shipped local bytes', async () => {
+  test('derives one Service Worker/cache generation from pristine shipped local bytes', async () => {
     const root = await fixture();
-    const firstVersion = await stampServiceWorkerGeneration(root);
+    const firstVersion = await computeShellGeneration(root);
+    await stampServiceWorkerGeneration(root, firstVersion);
     const first = await readFile(join(root, 'service-worker.js'), 'utf8');
 
     expect(firstVersion).toMatch(/^[a-f0-9]{12}$/);
+    expect(first).toContain(`const SHELL_VERSION = '${firstVersion}'`);
     expect(first).toContain(`concierge-collector-shell-${firstVersion}`);
     expect(first).not.toContain('__COLLECTOR_SHELL_VERSION__');
 
-    await writeFile(join(root, 'scripts', 'app.js'), 'console.log("changed app")\n');
-    await writeFile(join(root, 'service-worker.js'), "const CACHE_NAME = 'concierge-collector-shell-__COLLECTOR_SHELL_VERSION__';\n");
-    const secondVersion = await stampServiceWorkerGeneration(root);
+    const secondRoot = await fixture();
+    await writeFile(join(secondRoot, 'scripts', 'app.js'), 'console.log("changed app")\n');
+    const secondVersion = await computeShellGeneration(secondRoot);
 
     expect(secondVersion).not.toBe(firstVersion);
   });
 
-  test('stamping the same build twice is byte-for-byte deterministic', async () => {
+  test('one generation remains coherent when dynamic loaders reference files that are later rewritten', async () => {
     const root = await fixture();
-    await stampLocalAssetVersions(root);
-    await stampLocalScriptVersions(root);
-    const first = await readFile(join(root, 'index.html'), 'utf8');
+    await writeFile(join(root, 'scripts', 'modules', 'worker.js'), `const nested = 'scripts/app.js?v=old';\n`);
+    const generation = await stampBuild(root);
+    const bootstrap = await readFile(join(root, 'scripts', 'modules', 'bootstrap.js'), 'utf8');
+    const worker = await readFile(join(root, 'scripts', 'modules', 'worker.js'), 'utf8');
+    const html = await readFile(join(root, 'index.html'), 'utf8');
+
+    expect(bootstrap).toContain(`worker.js?v=${generation}`);
+    expect(worker).toContain(`scripts/app.js?v=${generation}`);
+    expect(html).toContain(`bootstrap.js?v=${hash(Buffer.from(bootstrap))}`);
+  });
+
+  test('reapplying stamps with the same generation is byte-for-byte deterministic', async () => {
+    const root = await fixture();
+    const generation = await stampBuild(root);
+    const firstHtml = await readFile(join(root, 'index.html'), 'utf8');
     const firstBootstrap = await readFile(join(root, 'scripts', 'modules', 'bootstrap.js'), 'utf8');
+    const firstSw = await readFile(join(root, 'service-worker.js'), 'utf8');
+
+    await stampLocalScriptVersions(root, generation);
     await stampLocalAssetVersions(root);
-    await stampLocalScriptVersions(root);
-    const second = await readFile(join(root, 'index.html'), 'utf8');
-    const secondBootstrap = await readFile(join(root, 'scripts', 'modules', 'bootstrap.js'), 'utf8');
-    expect(second).toBe(first);
-    expect(secondBootstrap).toBe(firstBootstrap);
+    await stampServiceWorkerGeneration(root, generation);
+
+    expect(await readFile(join(root, 'index.html'), 'utf8')).toBe(firstHtml);
+    expect(await readFile(join(root, 'scripts', 'modules', 'bootstrap.js'), 'utf8')).toBe(firstBootstrap);
+    expect(await readFile(join(root, 'service-worker.js'), 'utf8')).toBe(firstSw);
   });
 });
