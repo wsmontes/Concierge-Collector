@@ -60,6 +60,30 @@ async function listFiles(directory) {
   return files
 }
 
+/**
+ * Compute one build-generation identity from the pristine copied shell.
+ *
+ * Dynamic JS loaders cannot safely use their target's final content hash:
+ * loaders themselves are rewritten, and loader graphs may be cyclic. A single
+ * source-generation hash is deterministic, cycle-free, and changes whenever
+ * any shipped source byte/path changes. Static index.html references are still
+ * stamped later with the FINAL content hash of their target files.
+ */
+export async function computeShellGeneration(directory) {
+  const root = resolve(directory)
+  const digest = createHash('sha256')
+  const files = await listFiles(root)
+  for (const absolute of files) {
+    const path = relative(root, absolute).replaceAll(sep, '/')
+    if (path === '.manifest.json') continue
+    digest.update(path)
+    digest.update('\0')
+    digest.update(await readFile(absolute))
+    digest.update('\0')
+  }
+  return digest.digest('hex').slice(0, 12)
+}
+
 async function stampedReference(root, reference) {
   if (isSkippable(reference)) return reference
   const { pathname, query, fragment } = splitReference(reference)
@@ -78,9 +102,27 @@ async function stampedReference(root, reference) {
   }
 }
 
+async function generationStampedScriptReference(root, reference, generation) {
+  if (isSkippable(reference)) return reference
+  const { pathname, query, fragment } = splitReference(reference)
+  if (!pathname) return reference
+  const absolute = resolve(root, pathname)
+  if (!isInsideRoot(root, absolute)) return reference
+  try {
+    const info = await stat(absolute)
+    if (!info.isFile()) return reference
+  } catch (_) {
+    return reference
+  }
+  return withVersion(pathname, query, fragment, generation)
+}
+
 /**
- * Rewrite local src/href references in a built Collector index.html so their
- * `v=` parameter is derived from the referenced file contents.
+ * Rewrite local src/href references in the built Collector index.html so their
+ * `v=` parameter is derived from the FINAL referenced file contents.
+ *
+ * Call this after dynamic JS stamping; otherwise a loader changed later in the
+ * build would leave index.html pointing at a pre-rewrite hash.
  */
 export async function stampLocalAssetVersions(directory) {
   const root = resolve(directory)
@@ -90,12 +132,12 @@ export async function stampLocalAssetVersions(directory) {
 
   for (const match of original.matchAll(ATTR_RE)) {
     const [full, attribute, quote, reference] = match
-    const stampedReference = await stampedReference(root, reference)
-    if (stampedReference === reference) continue
+    const versioned = await stampedReference(root, reference)
+    if (versioned === reference) continue
     replacements.push({
       start: match.index,
       end: match.index + full.length,
-      value: `${attribute}=${quote}${stampedReference}${quote}`
+      value: `${attribute}=${quote}${versioned}${quote}`
     })
   }
 
@@ -112,11 +154,16 @@ export async function stampLocalAssetVersions(directory) {
 }
 
 /**
- * Content-address quoted same-origin `scripts/*.js` references used by the
- * legacy dynamic loaders. These references are invisible to index.html's
- * src/href pass but must have the same exact-URL cache identity.
+ * Stamp quoted same-origin `scripts/*.js` references used by legacy dynamic
+ * loaders with one immutable shell-generation id. This avoids recursive
+ * content-hash dependencies between loaders while still invalidating every
+ * dynamic URL whenever any shipped shell source changes.
  */
-export async function stampLocalScriptVersions(directory) {
+export async function stampLocalScriptVersions(directory, generation) {
+  if (!/^[a-f0-9]{12}$/i.test(String(generation || ''))) {
+    throw new Error('stampLocalScriptVersions requires a 12-character shell generation')
+  }
+
   const root = resolve(directory)
   const files = (await listFiles(root)).filter((absolute) => absolute.endsWith('.js'))
   let changed = 0
@@ -127,7 +174,7 @@ export async function stampLocalScriptVersions(directory) {
 
     for (const match of original.matchAll(QUOTED_LOCAL_SCRIPT_RE)) {
       const [full, quote, reference] = match
-      const versioned = await stampedReference(root, reference)
+      const versioned = await generationStampedScriptReference(root, reference, generation)
       if (versioned === reference) continue
       replacements.push({
         start: match.index,
@@ -151,31 +198,25 @@ export async function stampLocalScriptVersions(directory) {
 }
 
 /**
- * Replace the Service Worker cache-generation placeholder with a deterministic
- * hash of every other shipped local file. Excluding the Service Worker itself
- * avoids a recursive hash while still rotating the worker whenever the shell
- * it controls changes.
+ * Replace the Service Worker/cache-generation placeholder with the generation
+ * computed from the pristine copied shell. The same generation is also used by
+ * dynamic loaders, so the SW can precache those exact aliases without any
+ * recursive file-hash dependency.
  */
-export async function stampServiceWorkerGeneration(directory) {
+export async function stampServiceWorkerGeneration(directory, generation) {
+  if (!/^[a-f0-9]{12}$/i.test(String(generation || ''))) {
+    throw new Error('stampServiceWorkerGeneration requires a 12-character shell generation')
+  }
+
   const root = resolve(directory)
   const swPath = resolve(root, 'service-worker.js')
   const source = await readFile(swPath, 'utf8')
   if (!source.includes(SW_VERSION_PLACEHOLDER)) {
+    // Idempotent re-application with the same generation is allowed.
+    if (source.includes(generation)) return generation
     throw new Error(`service-worker.js is missing ${SW_VERSION_PLACEHOLDER}`)
   }
 
-  const digest = createHash('sha256')
-  const files = await listFiles(root)
-  for (const absolute of files) {
-    const path = relative(root, absolute).replaceAll(sep, '/')
-    if (path === 'service-worker.js' || path === '.manifest.json') continue
-    digest.update(path)
-    digest.update('\0')
-    digest.update(await readFile(absolute))
-    digest.update('\0')
-  }
-
-  const version = digest.digest('hex').slice(0, 12)
-  await writeFile(swPath, source.replaceAll(SW_VERSION_PLACEHOLDER, version))
-  return version
+  await writeFile(swPath, source.replaceAll(SW_VERSION_PLACEHOLDER, generation))
+  return generation
 }
