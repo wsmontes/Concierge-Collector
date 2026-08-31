@@ -14,15 +14,19 @@ describe('Collector offline app shell', () => {
   test('ships a content-addressed Service Worker generation as a build artifact', () => {
     expect(existsSync(swPath)).toBe(true);
     expect(buildSource).toContain("'service-worker.js'");
+    expect(buildSource).toContain('computeShellGeneration');
     expect(buildSource).toContain('stampServiceWorkerGeneration');
     const sw = readFileSync(swPath, 'utf8');
-    expect(sw).toContain('__COLLECTOR_SHELL_VERSION__');
+    expect(sw).toContain("const SHELL_VERSION = '__COLLECTOR_SHELL_VERSION__'");
+    expect(sw).toContain('concierge-collector-shell-__COLLECTOR_SHELL_VERSION__');
   });
 
-  test('precaches deterministic versioned aliases from the build manifest', () => {
+  test('precaches both final-content and shell-generation aliases from the build manifest', () => {
     const sw = readFileSync(swPath, 'utf8');
     expect(sw).toContain('.manifest.json');
     expect(sw).toContain('entry.sha256.slice(0, 12)');
+    expect(sw).toContain('?v=${SHELL_VERSION}');
+    expect(sw).toContain("entry.path?.endsWith('.js')");
     expect(sw).toContain('cache.addAll');
   });
 
@@ -32,8 +36,11 @@ describe('Collector offline app shell', () => {
     expect(sw).not.toContain('ignoreSearch: true');
   });
 
-  test('content-addresses dynamic Offline Part 2 script references during the build', () => {
-    expect(buildSource).toContain('stampLocalScriptVersions');
+  test('stamps dynamic Offline Part 2 script references before final index hashes', () => {
+    const dynamic = buildSource.indexOf('stampLocalScriptVersions');
+    const html = buildSource.indexOf('stampLocalAssetVersions');
+    expect(dynamic).toBeGreaterThan(-1);
+    expect(html).toBeGreaterThan(dynamic);
     expect(part2Source).toContain('scripts/services/syncSemanticPolicy.js');
   });
 
