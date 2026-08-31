@@ -48,8 +48,9 @@ describe('OfflineExplicitDiscardGuard', () => {
     const { guard, conceptModule, bulkCalls, deletedIds } = loadGuard();
     expect(guard.install()).toBe(true);
 
-    await conceptModule.discardRestaurant({ keepDraft: false });
+    const result = await conceptModule.discardRestaurant({ keepDraft: false });
 
+    expect(result.outcome).toBe('discardedCuration');
     expect(bulkCalls).toEqual([{ draftId: 42, force: true }]);
     expect(deletedIds).toEqual([9]);
     expect(bulkCalls).not.toContainEqual({ restaurantId: 'ent-1', force: true });
@@ -59,8 +60,9 @@ describe('OfflineExplicitDiscardGuard', () => {
     const { guard, conceptModule, bulkCalls, deletedIds } = loadGuard();
     expect(guard.install()).toBe(true);
 
-    await conceptModule.discardRestaurant({ keepDraft: true });
+    const result = await conceptModule.discardRestaurant({ keepDraft: true });
 
+    expect(result.outcome).toBe('keptDraft');
     expect(bulkCalls).toEqual([]);
     expect(deletedIds).toEqual([]);
   });
@@ -69,8 +71,9 @@ describe('OfflineExplicitDiscardGuard', () => {
     const { guard, runtime, conceptModule, bulkCalls, deletedIds } = loadGuard({ isEditingEntity: true });
     expect(guard.install()).toBe(true);
 
-    await conceptModule.discardRestaurant({ keepDraft: false });
+    const result = await conceptModule.discardRestaurant({ keepDraft: false });
 
+    expect(result.outcome).toBe('cancelledEntityEdit');
     expect(runtime.uiManager.isEditingEntity).toBe(false);
     expect(bulkCalls).toEqual([]);
     expect(deletedIds).toEqual([]);
