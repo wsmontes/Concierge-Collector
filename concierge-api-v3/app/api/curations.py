@@ -463,7 +463,9 @@ def update_curation(
             "email": current_curator.get("email"),
         }
 
-    update_data["createdBy"] = current.get("createdBy") or current.get("curator_id") or (current.get("curator") or {}).get("id")
+    update_data["createdBy"] = (
+        current.get("createdBy") or current.get("curator_id") or (current.get("curator") or {}).get("id")
+    )
     if "entity_id" in update_data and update_data["entity_id"]:
         entity = find_entity(db, update_data["entity_id"])
         if entity:
@@ -967,7 +969,9 @@ def bulk_upsert_curations(
     for idx, curation in enumerate(payload.curations):
         try:
             existing = existing_map.get(curation.curation_id)
-            entity_for_denorm = by_id.get(curation.entity_id) or by_slug.get(curation.entity_id) if curation.entity_id else None
+            entity_for_denorm = (
+                by_id.get(curation.entity_id) or by_slug.get(curation.entity_id) if curation.entity_id else None
+            )
             if existing:
                 stored_owner = stored_owner_identity(existing)
                 ownership_action = resolve_ownership_action(stored_owner, existing.get("curator_type"), auth)
@@ -986,7 +990,10 @@ def bulk_upsert_curations(
                         BulkItemError(
                             index=idx,
                             id=curation.curation_id,
-                            error=f"version conflict: server has v{existing.get('version', 1)}, payload expects v{expected_version}",
+                            error=(
+                                f"version conflict: server has v{existing.get('version', 1)}, "
+                                f"payload expects v{expected_version}"
+                            ),
                         )
                     )
                     continue

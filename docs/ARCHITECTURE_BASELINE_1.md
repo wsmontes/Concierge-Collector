@@ -1,6 +1,6 @@
 # Architecture Baseline 1
 
-**Status:** candidate — full local qualification pending
+**Status:** qualified — `npm run verify` e `npm run verify:full` passam integralmente (qualificação local completa em 2026-08-30/31; ver docs/CLAUDE_BASELINE_1_QUALIFICATION.md). Merge no main pendente de aprovação explícita do owner.
 
 Architecture Baseline 1 is the first explicit convergence point for the modern Concierge platform. It is not a claim that every historical subsystem has been rewritten; it defines the boundaries and invariants that future work must preserve.
 

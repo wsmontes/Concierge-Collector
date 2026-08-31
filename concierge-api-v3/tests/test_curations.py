@@ -65,8 +65,9 @@ class TestCurationEndpoints:
 
     def test_get_entity_curations(self, client, auth_headers):
         """Test getting curations for specific entity"""
-        # Use first entity from list
-        entities_response = client.get("/api/v3/entities?limit=1")
+        # Use first entity from list — leitura de entities exige auth
+        # (Baseline 1: hardening de leitura)
+        entities_response = client.get("/api/v3/entities?limit=1", headers=auth_headers)
         entities = entities_response.json()["items"]
 
         if entities:
@@ -1385,6 +1386,9 @@ def test_bulk_upsert_rejects_foreign_ownership(client, clean_test_curations, tes
     )
 
     # token do curator A (curator comum, NÃO admin)
+    # require_role revalida o usuário vivo — alice precisa existir no Mongo.
+    test_db.users.delete_many({"email": "alice@x.com"})
+    test_db.users.insert_one({"_id": "user-alice", "email": "alice@x.com", "authorized": True, "role": "curator"})
     token_a = create_access_token(data={"sub": "alice@x.com", "role": "curator"})
 
     payload = {
@@ -1412,6 +1416,7 @@ def test_bulk_upsert_rejects_foreign_ownership(client, clean_test_curations, tes
     stored = test_db.curations.find_one({"_id": "test_own_b"})
     assert stored["restaurant_name"] == "Do Bob"  # nada foi sobrescrito
     assert stored["version"] == 3
+    test_db.users.delete_one({"_id": "user-alice"})
 
 
 def test_bulk_upsert_expected_version_conflict_reports_error():
@@ -1514,12 +1519,14 @@ def test_filter_by_entity_types_aplica_o_filtro():
 
 
 def test_semantic_response_expõe_modo_e_parcialidade():
-    """A resposta informa search_mode/partial/candidate_count (contrato novo)."""
+    """A resposta informa search_mode/partial/candidate_count (contrato novo).
+    Default = fallback exaustivo: partial=False — nenhuma curadoria elegível
+    é omitida por janela de recência (Baseline 1, runbook §5)."""
     from app.models.schemas import SemanticSearchResponse
 
     r = SemanticSearchResponse(results=[], query="x", query_embedding_time=0.1, search_time=0.2, total_results=0)
-    assert r.search_mode == "fallback"
-    assert r.partial is True
+    assert r.search_mode == "fallback_exhaustive"
+    assert r.partial is False
     assert r.candidate_count == 0
 
     r2 = SemanticSearchResponse(

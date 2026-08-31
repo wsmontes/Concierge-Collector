@@ -22,6 +22,17 @@ def _bearer(role: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _seed_user(in_memory_db, role: str, *, authorized: bool = True) -> str:
+    """require_role revalida o usuário VIVO no Mongo (revogação imediata,
+    Baseline 1) — sem o seed, o JWT válido recebe 401 'User not found'."""
+    email = f"{role}@example.com"
+    in_memory_db.users.delete_many({"email": email})
+    in_memory_db.users.insert_one(
+        {"_id": f"user-{email}", "email": email, "name": email, "authorized": authorized, "role": role}
+    )
+    return email
+
+
 SNAPSHOT_OK = (
     {
         "place_id": "p1",
@@ -68,8 +79,9 @@ class TestLlmToolsRequireAuth:
         resp = client.get("/api/v3/llm/tools-manifest", headers=auth_headers)
         assert resp.status_code == 200
 
-    def test_tools_com_jwt_viewer_ok(self, client):
+    def test_tools_com_jwt_viewer_ok(self, client, in_memory_db):
         # leitura pura (sem escrita no Mongo) — verify_auth basta
+        _seed_user(in_memory_db, "viewer")
         resp = client.get("/api/v3/llm/tools", headers=_bearer("viewer"))
         assert resp.status_code == 200
 
@@ -78,7 +90,8 @@ class TestLlmGatewayRoleGate:
     """POST /llm/search-restaurants e /llm/get-restaurant-snapshot exigem
     role >= curator (viewer não escreve em entities)."""
 
-    def test_search_restaurants_viewer_rejected(self, client):
+    def test_search_restaurants_viewer_rejected(self, client, in_memory_db):
+        _seed_user(in_memory_db, "viewer")
         with patch.object(LLMPlaceService, "search_restaurants", return_value=[]) as svc:
             resp = client.post(
                 "/api/v3/llm/search-restaurants",
@@ -89,7 +102,8 @@ class TestLlmGatewayRoleGate:
         # fronteira: serviço (que gravaria no Mongo) nunca é executado
         svc.assert_not_called()
 
-    def test_search_restaurants_curator_allowed(self, client):
+    def test_search_restaurants_curator_allowed(self, client, in_memory_db):
+        _seed_user(in_memory_db, "curator")
         with patch.object(LLMPlaceService, "search_restaurants", return_value=[]) as svc:
             resp = client.post(
                 "/api/v3/llm/search-restaurants",
@@ -109,7 +123,8 @@ class TestLlmGatewayRoleGate:
         assert resp.status_code == 200
         svc.assert_called_once()
 
-    def test_snapshot_viewer_rejected(self, client):
+    def test_snapshot_viewer_rejected(self, client, in_memory_db):
+        _seed_user(in_memory_db, "viewer")
         with patch.object(LLMPlaceService, "get_restaurant_snapshot", return_value=SNAPSHOT_OK) as svc:
             resp = client.post(
                 "/api/v3/llm/get-restaurant-snapshot",
@@ -119,7 +134,8 @@ class TestLlmGatewayRoleGate:
         assert resp.status_code == 403
         svc.assert_not_called()
 
-    def test_snapshot_curator_allowed(self, client):
+    def test_snapshot_curator_allowed(self, client, in_memory_db):
+        _seed_user(in_memory_db, "curator")
         with patch.object(LLMPlaceService, "get_restaurant_snapshot", return_value=SNAPSHOT_OK) as svc:
             resp = client.post(
                 "/api/v3/llm/get-restaurant-snapshot",

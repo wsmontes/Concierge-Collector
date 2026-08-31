@@ -34,24 +34,24 @@ class TestIntegrationWorkflows:
         # TestClient may not support OPTIONS or CORS
         assert response.status_code in [200, 204, 405]
 
-    def test_error_handling(self, client):
+    def test_error_handling(self, client, auth_headers):
         """Test that errors are handled gracefully"""
         # 404
         response = client.get("/api/v3/nonexistent")
         assert response.status_code == 404
 
-        # 422 - validation error
-        response = client.get("/api/v3/entities?limit=invalid")
+        # 422 - validation error (leitura de entities exige auth — Baseline 1)
+        response = client.get("/api/v3/entities?limit=invalid", headers=auth_headers)
         assert response.status_code == 422
 
-    def test_pagination_consistency(self, client):
+    def test_pagination_consistency(self, client, auth_headers):
         """Test pagination returns consistent results"""
         # Get first page
-        response1 = client.get("/api/v3/entities?limit=10&offset=0")
+        response1 = client.get("/api/v3/entities?limit=10&offset=0", headers=auth_headers)
         page1 = response1.json()
 
         # Get second page
-        response2 = client.get("/api/v3/entities?limit=10&offset=10")
+        response2 = client.get("/api/v3/entities?limit=10&offset=10", headers=auth_headers)
         page2 = response2.json()
 
         assert response1.status_code == 200
@@ -117,7 +117,13 @@ def test_full_capture_journey_with_auth(client, auth_headers, test_db):
     test_id = "test_jny_capture"
     idempotency_key = f"{test_id}_001"
     entity_id = f"{test_id}_entity"
-    curation_id = f"cur_{idempotency_key[:16]}"
+    # Contrato Baseline 1: capture_id é canônico (cap_<sha256(curator\0key)>),
+    # owner-scoped — NÃO ecoa o idempotency_key. A curation deriva dele.
+    from app.api.capture import _capture_session_id, _curation_id_for_capture
+
+    capture_id = _capture_session_id("test_curator", idempotency_key)
+    curation_id = _curation_id_for_capture(capture_id)
+    confirm_key = None
 
     # Pre-create an entity in MongoDB for the journey
     test_db.entities.insert_one(
@@ -166,7 +172,7 @@ def test_full_capture_journey_with_auth(client, auth_headers, test_db):
             pytest.skip(f"Capture non-200 ({resp.status_code}): {resp.text}")
 
         data = resp.json()
-        assert data["capture_id"] == idempotency_key
+        assert data["capture_id"] == capture_id
         assert "transcription" in data
         assert "entities" in data
 
@@ -174,10 +180,10 @@ def test_full_capture_journey_with_auth(client, auth_headers, test_db):
         entity_ids_in_response = [e["entity_id"] for e in data["entities"]]
         assert entity_id in entity_ids_in_response, f"Expected {entity_id} in matches, got {entity_ids_in_response}"
 
-        # ── Step 2: Confirm capture ──
+        # ── Step 2: Confirm capture (path usa o capture_id canônico) ──
         confirm_key = f"confirm:{idempotency_key}"
         resp = client.post(
-            f"/api/v3/capture/{idempotency_key}/confirm",
+            f"/api/v3/capture/{capture_id}/confirm",
             json={
                 "entity_id": entity_id,
                 "idempotency_key": confirm_key,
@@ -196,8 +202,8 @@ def test_full_capture_journey_with_auth(client, auth_headers, test_db):
         assert confirm_data["entity_id"] == entity_id
         assert confirm_data["status"] == "created"
 
-        # ── Step 3: Verify curation exists ──
-        resp = client.get(f"/api/v3/curations/{curation_id}")
+        # ── Step 3: Verify curation exists (leitura exige auth — Baseline 1) ──
+        resp = client.get(f"/api/v3/curations/{curation_id}", headers=auth_headers)
         assert resp.status_code == 200, f"GET curation returned {resp.status_code}: {resp.text}"
         curation = resp.json()
         assert curation["curation_id"] == curation_id
@@ -207,12 +213,13 @@ def test_full_capture_journey_with_auth(client, auth_headers, test_db):
         # Clean up all artifacts from this journey
         test_db.entities.delete_one({"_id": entity_id})
         test_db.curations.delete_one({"_id": curation_id})
-        test_db["capture_sessions"].delete_one({"_id": idempotency_key})
+        test_db["capture_sessions"].delete_one({"_id": capture_id})
         # Also clear the in-memory cache entries for this test
         from app.api.capture import _idempotency_cache
 
-        _idempotency_cache._data.pop(idempotency_key, None)
-        _idempotency_cache._data.pop(confirm_key, None)
+        _idempotency_cache._data.pop(f"capture:{capture_id}", None)
+        if confirm_key:
+            _idempotency_cache._data.pop(f"confirm:{capture_id}:{confirm_key}", None)
 
 
 def test_openai_client_journey(client, auth_headers):

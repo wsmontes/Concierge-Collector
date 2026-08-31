@@ -1,7 +1,5 @@
 """Unique user identity indexes must never be installed over ambiguous data."""
 
-from types import SimpleNamespace
-
 import pytest
 
 from scripts import ensure_user_identity_indexes as migration

@@ -203,11 +203,15 @@ class TestPhotoProxy:
         assert response.status_code == 502
 
 
-def test_orchestrate_place_ids_max_20(client):
+def test_orchestrate_place_ids_max_20(client, in_memory_db):
     """Fan-out de custo: 1 request do concierge não pode gerar 500 chamadas
     Google — place_ids limita a 20 (auditoria ago/2026)."""
     from app.core.security import create_access_token
 
+    # require_role("viewer") revalida o usuário vivo no Mongo — sem o seed,
+    # o JWT válido recebe 401 'User not found' antes da validação do schema.
+    in_memory_db.users.delete_many({"email": "t@x.com"})
+    in_memory_db.users.insert_one({"_id": "user-t", "email": "t@x.com", "authorized": True, "role": "curator"})
     token = create_access_token(data={"sub": "t@x.com", "role": "curator"})
     r = client.post(
         "/api/v3/places/orchestrate",
@@ -217,10 +221,12 @@ def test_orchestrate_place_ids_max_20(client):
     assert r.status_code == 422
 
 
-def test_orchestrate_operations_max_10(client):
+def test_orchestrate_operations_max_10(client, in_memory_db):
     """operations limita a 10 itens no schema."""
     from app.core.security import create_access_token
 
+    in_memory_db.users.delete_many({"email": "t@x.com"})
+    in_memory_db.users.insert_one({"_id": "user-t", "email": "t@x.com", "authorized": True, "role": "curator"})
     token = create_access_token(data={"sub": "t@x.com", "role": "curator"})
     r = client.post(
         "/api/v3/places/orchestrate",

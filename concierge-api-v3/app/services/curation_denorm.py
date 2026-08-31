@@ -32,19 +32,38 @@ def denormalize_curation_location(entity: Dict[str, Any]) -> Dict[str, Any]:
     Cadeia de fallback de city (os shapes de entity divergem por origem):
     data.location.city (bulk OSM/Overture) → data.address.city (v3 Places) →
     parse de data.address.street → parse de data.formatted_address.
+
+    `location`/`address` podem ser strings em shapes legados (address
+    completo em um único campo); nesses casos o parse "Cidade - UF" é
+    aplicado direto no valor — nunca quebrar o PATCH da entity por shape.
     """
     if not isinstance(entity, dict):
         return {"city": None, "type": None}
     etype = entity.get("type")
     type_val = etype.strip() if isinstance(etype, str) and etype.strip() else None
 
-    data = entity.get("data") or {}
-    location = data.get("location") or {}
-    address = data.get("address") or {}
+    data = entity.get("data")
+    data = data if isinstance(data, dict) else {}
+
+    location = data.get("location")
+    address = data.get("address")
+
+    location_city = None
+    if isinstance(location, dict):
+        location_city = location.get("city")
+
+    address_city = None
+    street_source = None
+    if isinstance(address, dict):
+        address_city = address.get("city")
+        street_source = address.get("street")
+    elif isinstance(address, str):
+        street_source = address
+
     city = (
-        location.get("city")
-        or address.get("city")
-        or city_from_address_string(address.get("street"))
+        location_city
+        or address_city
+        or city_from_address_string(street_source)
         or city_from_address_string(data.get("formatted_address"))
     )
     city_val = city.strip() if isinstance(city, str) and city.strip() else None

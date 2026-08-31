@@ -57,7 +57,9 @@ class CatalogCursorError(ValueError):
 def _encode_token(value: dict, secret: str) -> str:
     body = json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8")
     signature = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).digest()
-    return f"{base64.urlsafe_b64encode(body).decode().rstrip('=')}.{base64.urlsafe_b64encode(signature).decode().rstrip('=')}"
+    body_b64 = base64.urlsafe_b64encode(body).decode().rstrip("=")
+    signature_b64 = base64.urlsafe_b64encode(signature).decode().rstrip("=")
+    return f"{body_b64}.{signature_b64}"
 
 
 def _decode_token(token: str, secret: str) -> dict:

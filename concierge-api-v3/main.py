@@ -147,7 +147,10 @@ app.include_router(internal_consumer_usage.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")
 app.include_router(entities.router, prefix="/api/v3")
 app.include_router(curations.router, prefix="/api/v3", dependencies=_live_viewer)
-app.include_router(places.router, prefix="/api/v3", dependencies=_live_viewer)
+# O gate de live auth em places é POR ROTA (places.py), não no mount: o
+# proxy /places/photo é sem-auth POR DESIGN (tags <img> não enviam headers;
+# o rate limit protege o custo) — gate no mount quebrava o proxy inteiro.
+app.include_router(places.router, prefix="/api/v3")
 app.include_router(ai.router, prefix="/api/v3")
 app.include_router(concepts.router, prefix="/api/v3")
 app.include_router(llm_gateway.router, prefix="/api/v3")

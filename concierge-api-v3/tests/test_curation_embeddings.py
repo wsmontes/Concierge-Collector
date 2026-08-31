@@ -228,9 +228,10 @@ def test_semantic_search_falls_back_with_warning(caplog, monkeypatch):
     )
     assert response.total_results >= 1
     assert any("vectorSearch" in r.getMessage() for r in caplog.records)
-    # o viés de recência do fallback faz parte do contrato — remover o sort
-    # deve quebrar o teste, não passar idêntico
-    assert curation_find.sorted_by == [("updatedAt", -1)]
+    # Baseline 1: o fallback é EXAUSTIVO — nenhuma curadoria elegível é
+    # omitida por janela de recência, então a query NÃO ordena por
+    # updatedAt (runbook §5: não restaurar fallback limitado por recência).
+    assert curation_find.sorted_by == []
 
 
 def test_hybrid_search_falls_back_with_warning(caplog, monkeypatch):
@@ -261,7 +262,8 @@ def test_hybrid_search_falls_back_with_warning(caplog, monkeypatch):
     )
     assert response.total_results >= 1
     assert any("vectorSearch" in r.getMessage() for r in caplog.records)
-    assert curation_find.sorted_by == [("updatedAt", -1)]
+    # Fallback exaustivo (Baseline 1): sem sort de recência na query.
+    assert curation_find.sorted_by == []
 
 
 # ── Regra única da flag backfill_needed ─────────────────────────────────

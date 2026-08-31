@@ -330,8 +330,14 @@ def test_db(hermetic_test_database, monkeypatch):
 
 
 @pytest.fixture(scope="session")
-def client(in_memory_db):
-    """Client global com lifecycle e banco em memória — sem Atlas no gate unitário."""
+def client(in_memory_db, pytestconfig):
+    """Client global com lifecycle e banco em memória — sem Atlas no gate unitário.
+
+    Com --run-mongo (suíte @mongo isolada em processo próprio), o cliente
+    aponta para o Mongo hermético MONGODB_TEST_URL: os testes semeiam via
+    test_db e o app DEVE ler o mesmo banco — sem isso, app lê o banco em
+    memória e os inserts no hermético ficam invisíveis (18 falhas no gate).
+    """
     from app.core import database
     from app.api.ai import get_ai_orchestrator
 
@@ -340,8 +346,13 @@ def client(in_memory_db):
     sentinel = object()
     previous_orchestrator_override = app.dependency_overrides.get(get_ai_orchestrator, sentinel)
 
+    use_hermetic_mongo = bool(pytestconfig.getoption("--run-mongo")) and bool(os.environ.get("MONGODB_TEST_URL"))
+
     def connect_in_memory():
-        database._client = InMemoryMongoClient(in_memory_db)
+        if use_hermetic_mongo:
+            database._client = MongoClient(os.environ["MONGODB_TEST_URL"])
+        else:
+            database._client = InMemoryMongoClient(in_memory_db)
 
     database.connect_to_mongo = connect_in_memory
     app.dependency_overrides[get_ai_orchestrator] = UnavailableAIOrchestrator

@@ -1,7 +1,7 @@
 """Tests for shared verify_auth dependency."""
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from fastapi import HTTPException
 from starlette.requests import Request
 
@@ -394,29 +394,43 @@ class TestSecretSeparation:
 class TestRequireRole:
     """Dependency de role mínima (auditoria ago/2026): viewer não escreve."""
 
+    @staticmethod
+    def _live_db(role, authorized=True):
+        """require_role revalida o usuário VIVO no Mongo — o db fake precisa
+        devolver o doc em db.users.find_one (revogação ao vivo, Baseline 1)."""
+        db = MagicMock()
+        db.users.find_one.return_value = {
+            "email": "v@x.com",
+            "authorized": authorized,
+            "role": role,
+        }
+        return db
+
     def test_viewer_rejected(self):
         from app.core.security import require_role
 
         dep = require_role("curator")
         with pytest.raises(HTTPException) as exc:
-            dep(auth={"method": "jwt", "user": "v@x.com", "role": "viewer", "authenticated": True})
+            dep(
+                auth={"method": "jwt", "user": "v@x.com", "role": "viewer", "authenticated": True},
+                db=self._live_db("viewer"),
+            )
         assert exc.value.status_code == 403
 
     def test_curator_admin_apikey_pass(self):
         from app.core.security import require_role
 
         dep = require_role("curator")
-        for auth in (
-            {"method": "jwt", "role": "curator"},
-            {"method": "jwt", "role": "admin"},
-            {"method": "api_key"},
-        ):
-            result = dep(auth=auth)
-            assert result is auth
+        # API key segue credencial administrativa (não revalida usuário).
+        assert dep(auth={"method": "api_key"})["method"] == "api_key"
+        for role in ("curator", "admin"):
+            result = dep(auth={"method": "jwt", "user": "v@x.com", "role": role}, db=self._live_db(role))
+            assert result["method"] == "jwt"
+            assert result["role"] == role
 
     def test_role_ausente_tratado_como_viewer(self):
         from app.core.security import require_role
 
         dep = require_role("curator")
         with pytest.raises(HTTPException):
-            dep(auth={"method": "jwt", "user": "x@x.com"})
+            dep(auth={"method": "jwt", "user": "x@x.com"}, db=self._live_db(None))

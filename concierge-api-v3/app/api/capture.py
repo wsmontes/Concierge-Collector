@@ -276,7 +276,9 @@ def _match_entities(db: Database, restaurant_name: Optional[str]) -> List[Dict[s
     for i, ent in enumerate(entities):
         score = 0.97 - (i * 0.1) if ent.get("source") != "google_places" else ent.get("score", 0.7) - (i * 0.1)
         score = max(0.2, round(score, 2))
-        loc_data = ent.get("data", {}).get("location", {}) if isinstance(ent.get("data"), dict) else ent.get("location", {})
+        loc_data = (
+            ent.get("data", {}).get("location", {}) if isinstance(ent.get("data"), dict) else ent.get("location", {})
+        )
         results.append(
             {
                 "entity_id": ent.get("entity_id") or ent.get("_id"),

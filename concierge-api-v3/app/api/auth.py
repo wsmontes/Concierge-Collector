@@ -547,9 +547,7 @@ async def refresh_access_token(
     if token_data.get("jti"):
         revoke_session(db, token_data["jti"])
 
-    new_access_token = create_access_token(
-        data={"sub": user.email, "role": getattr(user, "role", "curator")}
-    )
+    new_access_token = create_access_token(data={"sub": user.email, "role": getattr(user, "role", "curator")})
     new_refresh_token = _issue_refresh(db, user.email)
     _set_access_cookie(response, new_access_token)
     _set_refresh_cookie(response, new_refresh_token)

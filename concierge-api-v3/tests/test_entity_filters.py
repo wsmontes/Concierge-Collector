@@ -48,6 +48,18 @@ class FindChain:
         self.last_query = query
         return len(self.docs)
 
+    def aggregate(self, pipeline):
+        """Caminho offset usa $facet (count+page no mesmo snapshot). Registra
+        o $match como last_query e aplica skip/limit do $facet na seleção —
+        mesma granularidade do find fake (filtros não-_id não selecionam)."""
+        self.last_query = (pipeline[0] or {}).get("$match", {})
+        facet = pipeline[-1].get("$facet", {})
+        page_stages = facet.get("page", [])
+        skip = next((s["$skip"] for s in page_stages if "$skip" in s), 0)
+        limit = next((s["$limit"] for s in page_stages if "$limit" in s), len(self.docs))
+        page = self.docs[skip : skip + limit]
+        return iter([{"total": [{"count": len(self.docs)}], "page": page}])
+
     def sort(self, *args, **kwargs):
         return self
 
