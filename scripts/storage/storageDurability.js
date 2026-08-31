@@ -174,8 +174,10 @@
             if (uiManager?.recordingModule && uiManager?.conceptModule) {
                 this.installCaptureCapacityGuards(uiManager);
                 this.installAudioQuotaWriteGuard();
-                this.policy.requestPersistentStorage().catch(() => false);
-                return;
+                if (this._captureGuardsInstalled && this._audioWriteGuardInstalled) {
+                    this.policy.requestPersistentStorage().catch(() => false);
+                    return;
+                }
             }
             if (attempt >= 300) return;
             clearTimeout(this._pollTimer);
@@ -262,7 +264,9 @@
          */
         installAudioQuotaWriteGuard() {
             const manager = global.PendingAudioManager;
-            if (!manager?.saveAudio || this._audioWriteGuardInstalled || manager.__storageDurabilitySaveAudioInstalled) {
+            if (!manager?.saveAudio || this._audioWriteGuardInstalled) return;
+            if (manager.__storageDurabilitySaveAudioInstalled) {
+                this._audioWriteGuardInstalled = true;
                 return;
             }
 
