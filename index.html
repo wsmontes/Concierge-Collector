@@ -52,6 +52,10 @@
     <!-- 1. Design System Foundation (FIRST - design tokens, base styles) -->
     <link rel="stylesheet" href="styles/design-system.css?v=20260816-2">
 
+    <!-- 1b. Shared brand tokens (generated from @concierge/design-tokens;
+         must load before components.css, which resolves --cms-* vars) -->
+    <link rel="stylesheet" href="styles/tokens.generated.css?v=20260820-1">
+
     <!-- 2. Component Library (reusable components) -->
     <link rel="stylesheet" href="styles/components.css?v=20260818-3">
 

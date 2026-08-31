@@ -20,6 +20,8 @@
     "lint:fix": "eslint scripts/ tests/ eslint.config.mjs --fix",
     "build:collector": "node scripts/build-collector.mjs",
     "build:collector:check": "node scripts/build-collector.mjs --check",
+    "generate:collector-tokens": "node scripts/build-collector.mjs --tokens-only",
+    "check:collector-tokens": "node scripts/build-collector.mjs --tokens-check",
     "dev:admin": "npm run dev --workspace=@concierge/admin",
     "build:admin": "npm run build --workspace=@concierge/admin",
     "start:admin": "npm run start --workspace=@concierge/admin",

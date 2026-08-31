@@ -5,6 +5,11 @@ import { describe, test, expect, afterEach, vi } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/** The modal reads the role from AuthService on every open. */
+function authAs(role) {
+  window.AuthService = { getCurrentUser: () => ({ role, authorized: true }) };
+}
+
 function loadModal() {
   const source = readFileSync(path.resolve(__dirname, '..', 'scripts/ui/collectionsModal.js'), 'utf8');
   new Function('window', `${source}\n;`)(window); // eslint-disable-line no-new-func
@@ -16,6 +21,7 @@ afterEach(() => {
   delete window.CollectionsModal;
   delete window.CollectionsService;
   delete window.ModalManager;
+  delete window.AuthService;
   vi.restoreAllMocks();
 });
 
@@ -28,6 +34,7 @@ describe('CollectionsModal', () => {
       getDraftOptions: vi.fn().mockResolvedValue({ items: [{ collectionId: 'c1', title: 'Brazil', slug: 'brazil', draftRevision: 4, draftState: 'dirty', desiredState: 'add', locked: false }] })
     };
 
+    authAs('admin');
     const modal = loadModal();
     expect(modal.open({ curation_id: 'curation-1', restaurant_name: 'Bistro' })).toBe('modal-1');
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -48,10 +55,33 @@ describe('CollectionsModal', () => {
       getDraftOptions: vi.fn().mockRejectedValue({ status: 403 })
     };
 
+    authAs('admin');
+    loadModal().open({ curation_id: 'curation-1' });
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // The server is the authority: the request was made and its 403 is what
+    // removed the controls, not the client-side hint.
+    expect(window.CollectionsService.getDraftOptions).toHaveBeenCalledWith('curation-1');
+    expect(opened[0].content.textContent).toContain('São Paulo');
+    expect(opened[0].content.textContent).toContain('requires an administrator role');
+    expect(opened[0].content.querySelector('[data-collection-id]')).toBeNull();
+  });
+
+  test.each([['viewer'], ['curator']])('%s vê publicado e nunca pede opções de draft', async (role) => {
+    const opened = [];
+    window.ModalManager = { open: vi.fn((options) => { opened.push(options); return 'modal-1'; }) };
+    window.CollectionsService = {
+      getPublishedAssociations: vi.fn().mockResolvedValue({ items: [{ title: 'São Paulo', slug: 'sao-paulo', current_published_version: 3 }] }),
+      getDraftOptions: vi.fn()
+    };
+
+    authAs(role);
     loadModal().open({ curation_id: 'curation-1' });
     await new Promise(resolve => setTimeout(resolve, 0));
 
     expect(opened[0].content.textContent).toContain('São Paulo');
-    expect(opened[0].content.textContent).toContain('requires an administrator role');
+    // No guaranteed 403 round-trip for a non-admin.
+    expect(window.CollectionsService.getDraftOptions).not.toHaveBeenCalled();
+    expect(opened[0].content.querySelector('.collections-modal__action')).toBeNull();
   });
 });

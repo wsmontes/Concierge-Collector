@@ -1,0 +1,33 @@
+/**
+ * Concierge brand tokens — the limestone/olive ramp.
+ *
+ * Purpose: the single source of truth for the brand colors shared by the
+ * Admin (Payload/Next) and the Collector. Every value here was extracted
+ * verbatim from `apps/admin/src/styles/admin.css`, so adopting this file
+ * changes no Admin pixel.
+ *
+ * Responsibilities: declare brand colors only. Product-specific mappings
+ * (Payload's `--theme-*`, the Collector's `--color-*`/`--spacing-*` ramps)
+ * belong to their own stylesheets and must not be declared here.
+ *
+ * Dependencies: none. This file is plain CSS so both a bundler (`@import
+ * '@concierge/design-tokens/css'`) and a byte-for-byte generator can read it.
+ *
+ * Consumers must not hand-edit the Collector's generated copy
+ * (`styles/tokens.generated.css`); run `npm run generate:collector-tokens`.
+ */
+
+:root {
+  /* Limestone: warm paper surfaces, from lightest to the border tone. */
+  --cms-limestone-50: #f8f6ee;
+  --cms-limestone-100: #efeadb;
+  --cms-limestone-200: #ded4bb;
+  --cms-limestone-400: #a99f86;
+
+  /* Olive: functional foreground, from the brightest accent to near-black. */
+  --cms-olive-500: #596f42;
+  --cms-olive-600: #4a5143;
+  --cms-olive-700: #374636;
+  --cms-olive-800: #273626;
+  --cms-olive-900: #182618;
+}

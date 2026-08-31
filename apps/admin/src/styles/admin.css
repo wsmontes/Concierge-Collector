@@ -1,17 +1,16 @@
+/* The limestone/olive ramp lives in @concierge/design-tokens so the
+   Collector can project the same values into styles/tokens.generated.css.
+   Only Payload's --theme-* mapping stays product-specific. */
+@import '@concierge/design-tokens/css';
+
 :root {
-  --cms-limestone-50: #f8f6ee;
-  --cms-limestone-100: #efeadb;
-  --cms-limestone-200: #ded4bb;
-  --cms-olive-700: #374636;
-  --cms-olive-800: #273626;
-  --cms-olive-900: #182618;
   --theme-elevation-0: var(--cms-limestone-50);
   --theme-elevation-50: var(--cms-limestone-100);
   --theme-elevation-100: var(--cms-limestone-200);
   --theme-text: var(--cms-olive-900);
   --theme-elevation-900: var(--cms-olive-900);
   --theme-success-500: var(--cms-olive-700);
-  --theme-border-color: #a99f86;
+  --theme-border-color: var(--cms-limestone-400);
 }
 
 .cms-brand {
@@ -35,7 +34,7 @@
 }
 
 .cms-nav-group p {
-  color: #4a5143;
+  color: var(--cms-olive-600);
   font-size: 0.875rem;
   line-height: 1.4;
   margin: 0;
@@ -241,7 +240,7 @@
 }
 
 .selection-toolbar__hint {
-  color: #4a5143;
+  color: var(--cms-olive-600);
   font-size: 0.875rem;
 }
 
@@ -277,12 +276,12 @@
 }
 
 .curation-table:focus-visible {
-  outline: 2px solid #596f42;
+  outline: 2px solid var(--cms-olive-500);
   outline-offset: -2px;
 }
 
 :where(a, button, input, select, textarea):focus-visible {
-  outline: 2px solid #596f42;
+  outline: 2px solid var(--cms-olive-500);
   outline-offset: 2px;
 }
 
@@ -351,7 +350,7 @@
 
 .job-row__progress,
 .job-row__summary {
-  color: #4a5143;
+  color: var(--cms-olive-600);
   font-size: 0.875rem;
 }
 
@@ -394,7 +393,7 @@
 }
 
 .bulk-dialog__hint {
-  color: #4a5143;
+  color: var(--cms-olive-600);
   font-size: 0.875rem;
   margin: 0;
 }
@@ -426,7 +425,7 @@
 }
 
 .bulk-dialog__collection-meta {
-  color: #4a5143;
+  color: var(--cms-olive-600);
   font-size: 0.8125rem;
   grid-column: 2;
 }

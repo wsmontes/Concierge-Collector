@@ -51,13 +51,18 @@ const CuratorProfile = (function() {
             log.debug(`  Picture: ${user.picture ? 'Yes' : 'No'}`);
             log.debug(`  Authorized: ${user.authorized}`);
 
-            // Map user data to curator format
+            // Map user data to curator format. `role` is mirrored straight
+            // from the server (`users.role`) for presentation only — never a
+            // derived capability flag, so nothing downstream can mistake this
+            // object for authorization. The Collections modal re-reads
+            // AuthService.getCurrentUser().role on every open.
             _currentCurator = {
                 curator_id: user.email,
                 name: user.name,
                 email: user.email,
                 picture: user.picture,
-                authorized: user.authorized
+                authorized: user.authorized,
+                role: user.role
             };
 
             // Verify/create curator in MongoDB

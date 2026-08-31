@@ -156,6 +156,15 @@ window.CollectionsModal = (function() {
         }
     }
 
+    /**
+     * Reads the role from AuthService on every call. This is a hint used only
+     * to avoid asking the admin-only endpoint for a guaranteed 403; the real
+     * authority is the server, which still removes the controls on 403.
+     */
+    function isAdminHint() {
+        return window.AuthService?.getCurrentUser?.()?.role === 'admin';
+    }
+
     async function load(curation, shell) {
         const service = window.CollectionsService;
         if (!service) {
@@ -168,6 +177,11 @@ window.CollectionsModal = (function() {
             renderPublished(shell.published, Array.isArray(response?.items) ? response.items : []);
         } catch (error) {
             shell.published.replaceChildren(makeText('p', 'collections-modal__notice', errorMessage(error)));
+        }
+        if (!isAdminHint()) {
+            // Published rows stay visible; no draft control is even requested.
+            shell.drafts.replaceChildren(makeText('p', 'collections-modal__notice', 'Changing a Collection draft requires an administrator role.'));
+            return;
         }
         await loadDrafts(service, curation, shell);
     }

@@ -2,6 +2,7 @@ import { cp, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
+import { TOKENS_GENERATED_PATH, checkCollectorTokens, writeCollectorTokens } from './design-tokens.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const outputDir = join(root, 'dist', 'collector')
@@ -59,13 +60,26 @@ async function build(destination) {
   return manifest
 }
 
-const primary = await build(outputDir)
-if (process.argv.includes('--check')) {
-  const temporary = await mkdtemp(join(tmpdir(), 'concierge-collector-build-'))
-  try {
-    const secondary = await build(join(temporary, 'collector'))
-    if (JSON.stringify(primary) !== JSON.stringify(secondary)) throw new Error('Collector build is not deterministic')
-  } finally {
-    await rm(temporary, { force: true, recursive: true })
+// Token modes exit before any copying: they only project the shared package
+// into styles/tokens.generated.css, which the full build then treats as a
+// normal source file.
+if (process.argv.includes('--tokens-only')) {
+  const result = await writeCollectorTokens()
+  console.log(`${result.changed ? 'Regenerated' : 'Already current'}: ${relative(root, result.path)}`)
+} else if (process.argv.includes('--tokens-check')) {
+  await checkCollectorTokens()
+  console.log(`Already current: ${relative(root, TOKENS_GENERATED_PATH)}`)
+} else {
+  // A release must never ship a stale projection of the brand ramp.
+  await checkCollectorTokens()
+  const primary = await build(outputDir)
+  if (process.argv.includes('--check')) {
+    const temporary = await mkdtemp(join(tmpdir(), 'concierge-collector-build-'))
+    try {
+      const secondary = await build(join(temporary, 'collector'))
+      if (JSON.stringify(primary) !== JSON.stringify(secondary)) throw new Error('Collector build is not deterministic')
+    } finally {
+      await rm(temporary, { force: true, recursive: true })
+    }
   }
 }
