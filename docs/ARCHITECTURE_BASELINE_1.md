@@ -68,7 +68,8 @@ Baseline rules:
 - lease heartbeat while blocking provider work runs off the event loop;
 - duplicate active processing fails/reuses state rather than paying twice;
 - Entity and Curation confirmation writes delegate to canonical services;
-- modern Curation draft/linkage/provenance semantics are preserved.
+- modern Curation draft/linkage/provenance semantics are preserved;
+- concept extraction preserves the established Curation category shape and price vocabulary.
 
 ### Payload/Admin
 
@@ -81,9 +82,28 @@ Baseline rules:
 - expired leases can be taken over without duplicate promotion;
 - a published version remains stable while a later draft changes;
 - archive/restore preserves the exact published version;
-- consumer credentials and distribution are separate from human authoring auth.
+- consumer credentials and distribution are separate from human authoring auth;
+- Collector reads and draft mutations can be rolled back independently at the server boundary.
 
 Existing integration coverage includes a forced publish lease expiry/takeover and asserts a single published version, fencing-token advancement and one publish audit event.
+
+## Staged rollout policy
+
+Collections rollout flags are enforced server-side in both FastAPI and Payload/Admin. Browser/UI state is never authoritative for enabling a capability.
+
+In staging and production, and when the environment is not classified, an absent flag is **disabled**. Development/test environments remain enabled by default so local workflows work without production rollout configuration.
+
+Versioned ownership metadata lives in `config/collections-feature-flags.json` for:
+
+- `cms_auth`
+- `catalog_scan`
+- `collections_admin`
+- `collector_association_read`
+- `collector_draft_mutation`
+- `consumer_credentials`
+- `collections_distribution`
+
+Before deploying Baseline 1, the operator must explicitly choose the production value for the corresponding environment variables rather than relying on defaults.
 
 ## Semantic retrieval policy
 
@@ -91,7 +111,7 @@ Atlas Vector Search is the preferred fast path. The operational database current
 
 If native vector search cannot execute, the baseline fallback scans every eligible Curation. It may be slower, but an older Curation cannot disappear merely because it falls outside a recent-candidate window.
 
-Responses identify the mode as `atlas_vector` or `fallback_exhaustive`; exhaustive fallback is not marked partial.
+Responses identify the mode as `atlas_vector` or `fallback_exhaustive`; exhaustive fallback is not marked partial. The Pydantic/OpenAPI response contract uses the same terminology and defaults.
 
 A future migration to a natively indexable vector representation is encouraged, but must not reintroduce silent recall loss.
 
@@ -124,7 +144,9 @@ The full stack must include:
 - Playwright browser;
 - the deterministic seed data expected by the Explorer/publish E2E suites.
 
-`verify:full` enables the live auth-handoff, Explorer and publish Playwright suites. Remote E2E targets are rejected unless `CONCIERGE_ALLOW_REMOTE_E2E=1` explicitly opts into a disposable remote test environment.
+`verify:full` executes both API integration tests and the real-Mongo `@mongo` suite with `--run-mongo`. It validates both `CMS_MONGODB_DB_NAME` and `MONGODB_TEST_DB_NAME` before execution and refuses names that do not end in `-test`.
+
+`verify:full` also enables the live auth-handoff, Explorer and publish Playwright suites. Remote E2E targets are rejected unless `CONCIERGE_ALLOW_REMOTE_E2E=1` explicitly opts into a disposable remote test environment.
 
 ## Identity migration qualification
 
