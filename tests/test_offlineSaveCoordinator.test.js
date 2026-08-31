@@ -24,6 +24,10 @@ afterEach(() => {
   delete window.OfflineSaveCoordinator;
   delete window.offlineSaveCoordinator;
   delete window.uiManager;
+  delete window.offlineCaptureProcessor;
+  delete window.offlinePhotoProcessor;
+  delete window.SyncManager;
+  delete window.importManager;
 });
 
 describe('OfflineSaveCoordinator', () => {
@@ -84,5 +88,132 @@ describe('OfflineSaveCoordinator', () => {
     await expect(first).rejects.toThrow('save failed');
     await expect(second).resolves.toBe('saved');
     expect(events).toEqual(['enter-1', 'enter-2']);
+  });
+
+  test('keeps a background Curation writer outside an active save monkeypatch', async () => {
+    const saveGate = deferred();
+    const events = [];
+    let capturedBySave = null;
+
+    const table = {
+      put: async (curation) => {
+        events.push(`base-put:${curation.curation_id}`);
+        return curation.curation_id;
+      }
+    };
+
+    window.uiManager = {
+      conceptModule: {
+        saveRestaurant: async () => {
+          const originalPut = table.put;
+          table.put = async (curation) => {
+            capturedBySave = curation.curation_id;
+            events.push(`patched-put:${curation.curation_id}`);
+            return originalPut(curation);
+          };
+          events.push('save-patched');
+          try {
+            await saveGate.promise;
+            await table.put({ curation_id: 'save-target' });
+            return true;
+          } finally {
+            table.put = originalPut;
+            events.push('save-restored');
+          }
+        }
+      }
+    };
+
+    const Coordinator = loadClass();
+    const coordinator = new Coordinator(window);
+    coordinator.install();
+
+    const save = window.uiManager.conceptModule.saveRestaurant();
+    await Promise.resolve();
+    expect(events).toEqual(['save-patched']);
+
+    const background = coordinator.runCurationMutation(
+      () => table.put({ curation_id: 'background-target' })
+    );
+    await Promise.resolve();
+    expect(events).toEqual(['save-patched']);
+
+    saveGate.resolve();
+    await expect(save).resolves.toBe(true);
+    await expect(background).resolves.toBe('background-target');
+
+    expect(capturedBySave).toBe('save-target');
+    expect(events).toEqual([
+      'save-patched',
+      'patched-put:save-target',
+      'base-put:save-target',
+      'save-restored',
+      'base-put:background-target'
+    ]);
+  });
+
+  test('wraps every independent runtime Curation writer in the same FIFO boundary', async () => {
+    const saveGate = deferred();
+    const events = [];
+
+    window.uiManager = {
+      conceptModule: {
+        saveRestaurant: async () => {
+          events.push('save-enter');
+          await saveGate.promise;
+          events.push('save-exit');
+          return true;
+        }
+      },
+      updateCurationStatus: async () => events.push('ui-status'),
+      linkReviewToEntity: async () => events.push('ui-link'),
+      unlinkCurationFromEntity: async () => events.push('ui-unlink'),
+      restaurantModule: {
+        handleSave: async () => events.push('legacy-save')
+      }
+    };
+    window.offlineCaptureProcessor = {
+      materializeIntoCuration: async () => events.push('audio-materialize')
+    };
+    window.offlinePhotoProcessor = {
+      materialize: async () => events.push('photo-materialize')
+    };
+    window.SyncManager = {
+      processServerCuration: async () => events.push('sync-pull')
+    };
+    window.importManager = {
+      importV3Data: async () => events.push('import-v3')
+    };
+
+    const Coordinator = loadClass();
+    const coordinator = new Coordinator(window);
+    coordinator.install();
+    expect(coordinator.installKnownCurationWriters()).toBeGreaterThanOrEqual(8);
+
+    const save = window.uiManager.conceptModule.saveRestaurant();
+    await Promise.resolve();
+
+    const writers = [
+      window.offlineCaptureProcessor.materializeIntoCuration(),
+      window.offlinePhotoProcessor.materialize(),
+      window.SyncManager.processServerCuration(),
+      window.uiManager.updateCurationStatus(),
+      window.uiManager.linkReviewToEntity(),
+      window.uiManager.unlinkCurationFromEntity(),
+      window.uiManager.restaurantModule.handleSave(),
+      window.importManager.importV3Data()
+    ];
+    await Promise.resolve();
+
+    expect(events).toEqual(['save-enter']);
+    saveGate.resolve();
+    await save;
+    await Promise.all(writers);
+
+    expect(events).toEqual([
+      'save-enter', 'save-exit',
+      'audio-materialize', 'photo-materialize', 'sync-pull',
+      'ui-status', 'ui-link', 'ui-unlink', 'legacy-save', 'import-v3'
+    ]);
   });
 });
