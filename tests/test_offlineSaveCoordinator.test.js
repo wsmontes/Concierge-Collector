@@ -27,7 +27,10 @@ afterEach(() => {
   delete window.offlineCaptureProcessor;
   delete window.offlinePhotoProcessor;
   delete window.SyncManager;
+  delete window.ImportManager;
   delete window.importManager;
+  delete window.DataStore;
+  delete window.dataStorage;
 });
 
 describe('OfflineSaveCoordinator', () => {
@@ -179,16 +182,25 @@ describe('OfflineSaveCoordinator', () => {
       materialize: async () => events.push('photo-materialize')
     };
     window.SyncManager = {
-      processServerCuration: async () => events.push('sync-pull')
+      processServerCuration: async () => events.push('sync-pull'),
+      pushCurations: async () => events.push('sync-push')
     };
-    window.importManager = {
+    window.ImportManager = {
       importV3Data: async () => events.push('import-v3')
+    };
+    window.DataStore = {
+      importConciergeData: async () => events.push('import-legacy'),
+      deleteEntity: async () => events.push('delete-entity'),
+      deleteCuration: async () => events.push('delete-curation')
+    };
+    window.dataStorage = {
+      saveRestaurantWithAutoSync: async () => events.push('compat-save')
     };
 
     const Coordinator = loadClass();
     const coordinator = new Coordinator(window);
     coordinator.install();
-    expect(coordinator.installKnownCurationWriters()).toBeGreaterThanOrEqual(8);
+    expect(coordinator.installKnownCurationWriters()).toBe(13);
 
     const save = window.uiManager.conceptModule.saveRestaurant();
     await Promise.resolve();
@@ -197,11 +209,16 @@ describe('OfflineSaveCoordinator', () => {
       window.offlineCaptureProcessor.materializeIntoCuration(),
       window.offlinePhotoProcessor.materialize(),
       window.SyncManager.processServerCuration(),
+      window.SyncManager.pushCurations(),
       window.uiManager.updateCurationStatus(),
       window.uiManager.linkReviewToEntity(),
       window.uiManager.unlinkCurationFromEntity(),
       window.uiManager.restaurantModule.handleSave(),
-      window.importManager.importV3Data()
+      window.ImportManager.importV3Data(),
+      window.DataStore.importConciergeData(),
+      window.DataStore.deleteEntity(),
+      window.DataStore.deleteCuration(),
+      window.dataStorage.saveRestaurantWithAutoSync()
     ];
     await Promise.resolve();
 
@@ -212,8 +229,39 @@ describe('OfflineSaveCoordinator', () => {
 
     expect(events).toEqual([
       'save-enter', 'save-exit',
-      'audio-materialize', 'photo-materialize', 'sync-pull',
-      'ui-status', 'ui-link', 'ui-unlink', 'legacy-save', 'import-v3'
+      'audio-materialize', 'photo-materialize', 'sync-pull', 'sync-push',
+      'ui-status', 'ui-link', 'ui-unlink', 'legacy-save', 'import-v3',
+      'import-legacy', 'delete-entity', 'delete-curation', 'compat-save'
     ]);
+  });
+
+  test('writer registration is idempotent and does not wrap saveRestaurant twice', async () => {
+    const events = [];
+    window.uiManager = {
+      conceptModule: { saveRestaurant: async () => events.push('save') },
+      updateCurationStatus: async () => events.push('status'),
+      linkReviewToEntity: async () => events.push('link'),
+      unlinkCurationFromEntity: async () => events.push('unlink')
+    };
+    window.offlineCaptureProcessor = { materializeIntoCuration: async () => events.push('audio') };
+    window.offlinePhotoProcessor = { materialize: async () => events.push('photo') };
+    window.SyncManager = {
+      processServerCuration: async () => events.push('pull'),
+      pushCurations: async () => events.push('push')
+    };
+
+    const Coordinator = loadClass();
+    const coordinator = new Coordinator(window);
+    const originalSave = window.uiManager.conceptModule.saveRestaurant;
+    coordinator.install();
+    const coordinatedSave = window.uiManager.conceptModule.saveRestaurant;
+
+    expect(coordinator.installKnownCurationWriters()).toBe(7);
+    expect(coordinator.installKnownCurationWriters()).toBe(0);
+    expect(window.uiManager.conceptModule.saveRestaurant).toBe(coordinatedSave);
+    expect(coordinatedSave).not.toBe(originalSave);
+
+    await window.uiManager.conceptModule.saveRestaurant();
+    expect(events).toEqual(['save']);
   });
 });
