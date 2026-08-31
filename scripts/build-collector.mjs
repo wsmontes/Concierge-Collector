@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
 import { TOKENS_GENERATED_PATH, checkCollectorTokens, writeCollectorTokens } from './design-tokens.mjs'
 import {
+  computeShellGeneration,
   stampLocalAssetVersions,
   stampLocalScriptVersions,
   stampServiceWorkerGeneration,
@@ -60,14 +61,14 @@ async function build(destination) {
   await mkdir(destination, { recursive: true })
   for (const input of inputs) await cp(join(root, input), join(destination, basename(input)), { recursive: true })
 
-  // Production cache-busting is content-addressed. Both static index.html
-  // references and legacy dynamic script loaders receive the exact referenced
-  // file hash. The Service Worker generation is then derived from those final
-  // shell bytes so every shipped shell change rotates Cache Storage without a
-  // hand-maintained version bump.
+  // One generation is computed from the pristine copied shell. Dynamic loader
+  // graphs use that stable generation (no recursive content-hash dependency).
+  // Once those JS bytes are final, index.html receives exact final-file hashes.
+  // The Service Worker uses the same generation and precaches both identities.
+  const shellGeneration = await computeShellGeneration(destination)
+  await stampLocalScriptVersions(destination, shellGeneration)
   await stampLocalAssetVersions(destination)
-  await stampLocalScriptVersions(destination)
-  await stampServiceWorkerGeneration(destination)
+  await stampServiceWorkerGeneration(destination, shellGeneration)
   await validateHtml(destination)
 
   const manifest = await fileManifest(destination)
