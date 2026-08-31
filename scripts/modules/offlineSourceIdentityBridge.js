@@ -51,7 +51,7 @@
                 if (!active) return originalBuild(context);
 
                 if (active.transcriptText) {
-                    return originalBuild({
+                    const built = originalBuild({
                         ...context,
                         hasAudio: true,
                         audioSourceId: active.sourceId,
@@ -60,9 +60,25 @@
                         curatorId: active.curatorId || context.curatorId || null,
                         capturedAt: active.capturedAt || context.capturedAt || null,
                         language: active.language || context.language || null,
+                        sourceLanguage: active.sourceLanguage || context.sourceLanguage || null,
                         durationSeconds: active.durationSeconds ?? context.durationSeconds ?? null,
                         transcriptionModel: active.transcriptionModel || context.transcriptionModel || context.model || null
                     });
+
+                    // SourceUtils predates the canonical-English/source-language
+                    // split. Add the spoken-language provenance at this narrow
+                    // compatibility boundary without changing its broader API.
+                    if (active.sourceLanguage && Array.isArray(built?.audio)) {
+                        return {
+                            ...built,
+                            audio: built.audio.map((entry) =>
+                                String(entry?.source_id ?? '') === String(active.sourceId)
+                                    ? { ...entry, source_language: active.sourceLanguage }
+                                    : entry
+                            )
+                        };
+                    }
+                    return built;
                 }
 
                 // Raw capture exists but there is no durable textual source
@@ -136,6 +152,7 @@
                         curatorId: audio.curatorId || null,
                         capturedAt: audio.capturedAt || audio.timestamp || null,
                         language: audio.language || null,
+                        sourceLanguage: audio.sourceLanguage || audio.source_language || null,
                         durationSeconds: audio.durationSeconds ?? null,
                         transcriptionModel: audio.transcriptionModel || audio.model || null
                     };
