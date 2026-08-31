@@ -4,8 +4,8 @@
  * OfflinePhotoProcessor historically used an in-memory single-flight flag and
  * read/modify/write updates of draft.photoProcessing. IndexedDB is shared by
  * tabs, so those guarantees were process-local only. This focused guard adds
- * persistent per-source leases and transactional state updates without
- * rewriting the photo materialization pipeline.
+ * persistent per-source leases and transactional state/materialization updates
+ * without rewriting the photo analysis pipeline.
  */
 (function exposeOfflinePhotoLeaseGuard(global) {
     'use strict';
@@ -52,6 +52,36 @@
             if (!table) throw new Error('Draft storage is not available for photo processing');
             if (typeof db.transaction === 'function') return db.transaction('rw', table, task);
             return task();
+        }
+
+        async _withMaterializationTransaction(task) {
+            const db = this.runtime.DataStore?.db;
+            const drafts = db?.draftRestaurants;
+            const curations = db?.curations;
+            if (!drafts) throw new Error('Draft storage is not available for photo materialization');
+            // A write transaction touching both stores is deliberately broad:
+            // two different photos may own different source leases yet still
+            // target the same draft/Curation. IndexedDB serializes overlapping
+            // RW transactions, preventing read-modify-write lost updates.
+            if (typeof db.transaction === 'function' && curations) {
+                return db.transaction('rw', drafts, curations, task);
+            }
+            if (typeof db.transaction === 'function') return db.transaction('rw', drafts, task);
+            return task();
+        }
+
+        _stateForLease(row, lease) {
+            return row?.photoProcessing?.[lease?.sourceId] || null;
+        }
+
+        async _assertLeaseDirect(lease) {
+            if (!lease) throw this._leaseLostError();
+            const row = await this.runtime.DataStore.db.draftRestaurants.get(lease.draftId);
+            const state = this._stateForLease(row, lease);
+            if (!state || state.processingLeaseToken !== lease.token || !this._leaseIsActive(state)) {
+                throw this._leaseLostError();
+            }
+            return true;
         }
 
         async _transactionalUpdate(draftId, updater, activeLease = null) {
@@ -109,15 +139,7 @@
         }
 
         async assertLease(lease) {
-            if (!lease) throw this._leaseLostError();
-            return this._withDraftTransaction(async () => {
-                const row = await this.runtime.DataStore.db.draftRestaurants.get(lease.draftId);
-                const state = row?.photoProcessing?.[lease.sourceId];
-                if (!state || state.processingLeaseToken !== lease.token || !this._leaseIsActive(state)) {
-                    throw this._leaseLostError();
-                }
-                return true;
-            });
+            return this._withDraftTransaction(() => this._assertLeaseDirect(lease));
         }
 
         async release(lease) {
@@ -151,11 +173,15 @@
             const guard = this;
             const originalProcessPhoto = processor.processPhoto.bind(processor);
             const originalMaterialize = processor.materialize.bind(processor);
+            const originalRunPending = typeof processor._runPending === 'function'
+                ? processor._runPending.bind(processor)
+                : null;
 
             processor.__offlinePhotoLeaseGuardInstalled = true;
             processor.__offlinePhotoLeaseOriginalUpdate = processor._updatePhotoProcessing.bind(processor);
             processor.__offlinePhotoLeaseOriginalProcessPhoto = originalProcessPhoto;
             processor.__offlinePhotoLeaseOriginalMaterialize = originalMaterialize;
+            if (originalRunPending) processor.__offlinePhotoLeaseOriginalRunPending = originalRunPending;
 
             processor._updatePhotoProcessing = (draftId, updater) => guard._transactionalUpdate(
                 draftId,
@@ -163,21 +189,36 @@
                 processor.__offlinePhotoActiveLease || null
             );
 
-            processor.materialize = async (...args) => {
+            processor.materialize = async (...args) => guard._withMaterializationTransaction(async () => {
                 const active = processor.__offlinePhotoActiveLease || null;
-                if (active) await guard.assertLease(active);
-                return originalMaterialize(...args);
-            };
+                if (active) await guard._assertLeaseDirect(active);
+
+                // The processor receives a draft snapshot collected before any
+                // photo in this reconnect pass is analyzed. Reload inside the
+                // same RW transaction so a second photo sees concepts/name
+                // materialized by the first instead of overwriting them.
+                const draft = args[0];
+                let callArgs = args;
+                if (draft?.id && guard.runtime.DraftRestaurantManager?.getDraft) {
+                    const freshDraft = await guard.runtime.DraftRestaurantManager.getDraft(draft.id).catch(() => null);
+                    if (freshDraft) callArgs = [freshDraft, ...args.slice(1)];
+                }
+                return originalMaterialize(...callArgs);
+            });
 
             processor.processPhoto = async (draft, photo, sourceId, state) => {
                 const lease = await guard.claim(draft?.id, sourceId);
-                if (!lease) return { status: 'skipped', sourceId };
+                if (!lease) {
+                    processor.__offlinePhotoLeaseSkipCount = (processor.__offlinePhotoLeaseSkipCount || 0) + 1;
+                    return { status: 'skipped', sourceId };
+                }
                 const previous = processor.__offlinePhotoActiveLease || null;
                 processor.__offlinePhotoActiveLease = lease;
                 try {
                     return await originalProcessPhoto(draft, photo, sourceId, state);
                 } catch (error) {
                     if (error?.name === 'ProcessingLeaseLostError') {
+                        processor.__offlinePhotoLeaseSkipCount = (processor.__offlinePhotoLeaseSkipCount || 0) + 1;
                         guard.log.warn(`Photo lease lost for ${sourceId}; stale worker skipped`);
                         return { status: 'skipped', sourceId, error };
                     }
@@ -187,6 +228,24 @@
                     processor.__offlinePhotoActiveLease = previous;
                 }
             };
+
+            if (originalRunPending) {
+                processor._runPending = async (...args) => {
+                    const previousSkipCount = processor.__offlinePhotoLeaseSkipCount || 0;
+                    processor.__offlinePhotoLeaseSkipCount = 0;
+                    try {
+                        const summary = await originalRunPending(...args);
+                        const leaseSkips = processor.__offlinePhotoLeaseSkipCount || 0;
+                        if (summary && leaseSkips > 0) {
+                            summary.failed = Math.max(0, Number(summary.failed || 0) - leaseSkips);
+                            summary.skipped = Number(summary.skipped || 0) + leaseSkips;
+                        }
+                        return summary;
+                    } finally {
+                        processor.__offlinePhotoLeaseSkipCount = previousSkipCount;
+                    }
+                };
+            }
 
             this._installed = true;
             return true;
