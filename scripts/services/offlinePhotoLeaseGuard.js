@@ -16,7 +16,8 @@
             this.log = runtime.Logger?.module?.('OfflinePhotoLeaseGuard') || console;
             this.processingLeaseMs = 5 * 60 * 1000;
             this.processingOwnerId = this._newOwnerId();
-            this._installed = false;
+            this._installedProcessor = null;
+            this._assignmentHookInstalled = false;
             this._timer = null;
         }
 
@@ -165,8 +166,8 @@
 
         install(processor = this.runtime.offlinePhotoProcessor) {
             if (!processor?._updatePhotoProcessing || !processor?.processPhoto || !processor?.materialize) return false;
-            if (this._installed || processor.__offlinePhotoLeaseGuardInstalled) {
-                this._installed = true;
+            if (processor.__offlinePhotoLeaseGuardInstalled) {
+                this._installedProcessor = processor;
                 return true;
             }
 
@@ -247,7 +248,30 @@
                 };
             }
 
-            this._installed = true;
+            this._installedProcessor = processor;
+            return true;
+        }
+
+        installAssignmentHook() {
+            if (this._assignmentHookInstalled) return true;
+            const runtime = this.runtime;
+            const name = 'offlinePhotoProcessor';
+            const descriptor = Object.getOwnPropertyDescriptor(runtime, name);
+            if (descriptor && descriptor.configurable === false) return false;
+
+            let value = runtime[name] || null;
+            const guard = this;
+            Object.defineProperty(runtime, name, {
+                configurable: true,
+                enumerable: true,
+                get() { return value; },
+                set(next) {
+                    value = next;
+                    if (next) guard.install(next);
+                }
+            });
+            this._assignmentHookInstalled = true;
+            if (value) this.install(value);
             return true;
         }
 
@@ -262,6 +286,10 @@
         }
 
         start() {
+            // Bootstrap loads this guard before OfflinePhotoProcessor. The
+            // assignment hook installs synchronously after processor.start()
+            // returns, before its setTimeout(0) reconnect processing can run.
+            this.installAssignmentHook();
             this._pollInstall();
             return this;
         }
