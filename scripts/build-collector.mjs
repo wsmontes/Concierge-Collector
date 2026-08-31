@@ -3,7 +3,11 @@ import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
 import { TOKENS_GENERATED_PATH, checkCollectorTokens, writeCollectorTokens } from './design-tokens.mjs'
-import { stampLocalAssetVersions } from './build/cacheBustLocalAssets.mjs'
+import {
+  stampLocalAssetVersions,
+  stampLocalScriptVersions,
+  stampServiceWorkerGeneration,
+} from './build/cacheBustLocalAssets.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const outputDir = join(root, 'dist', 'collector')
@@ -56,10 +60,14 @@ async function build(destination) {
   await mkdir(destination, { recursive: true })
   for (const input of inputs) await cp(join(root, input), join(destination, basename(input)), { recursive: true })
 
-  // Production cache-busting is content-addressed. The source index may keep
-  // legacy/manual ?v values for development, but dist always ships hashes of
-  // the exact local asset bytes copied above.
+  // Production cache-busting is content-addressed. Both static index.html
+  // references and legacy dynamic script loaders receive the exact referenced
+  // file hash. The Service Worker generation is then derived from those final
+  // shell bytes so every shipped shell change rotates Cache Storage without a
+  // hand-maintained version bump.
   await stampLocalAssetVersions(destination)
+  await stampLocalScriptVersions(destination)
+  await stampServiceWorkerGeneration(destination)
   await validateHtml(destination)
 
   const manifest = await fileManifest(destination)
