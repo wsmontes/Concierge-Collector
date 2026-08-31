@@ -23,7 +23,10 @@
         ['OfflineSourceIdentityBridge', 'scripts/modules/offlineSourceIdentityBridge.js?v=20260830-1'],
         ['OfflineKnownLinkageGuard', 'scripts/modules/offlineKnownLinkageGuard.js?v=20260830-1'],
         ['OfflineExplicitDiscardGuard', 'scripts/modules/offlineExplicitDiscardGuard.js?v=20260830-1'],
-        ['OfflineCuratorIdentityGuard', 'scripts/modules/offlineCuratorIdentityGuard.js?v=20260830-1']
+        ['OfflineCuratorIdentityGuard', 'scripts/modules/offlineCuratorIdentityGuard.js?v=20260830-1'],
+        // Loaded last on purpose. It waits for the save compatibility wrappers
+        // above to attach, then becomes the outermost serialized save boundary.
+        ['OfflineSaveCoordinator', 'scripts/services/offlineSaveCoordinator.js?v=20260831-1']
     ];
 
     function loadScript(globalName, src) {
