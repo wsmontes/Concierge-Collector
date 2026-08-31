@@ -163,7 +163,13 @@
 
         _pollInstall(attempt = 0) {
             const conceptModule = this.runtime.uiManager?.conceptModule;
-            if (this.wrappersReady(conceptModule) && this.install()) return;
+            if (this.wrappersReady(conceptModule) && this.install()) {
+                // Do not expose coordinated external writers before the save
+                // itself owns this same FIFO. Otherwise an early writer could
+                // be queued while saveRestaurant is still entering unguarded.
+                this._pollWriterInstall();
+                return;
+            }
             if (attempt >= 300) {
                 this.log.warn('Save coordinator could not attach after all compatibility wrappers');
                 return;
@@ -174,7 +180,6 @@
 
         start() {
             this._pollInstall();
-            this._pollWriterInstall();
             return this;
         }
     }
