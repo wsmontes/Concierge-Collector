@@ -28,10 +28,16 @@ describe('Offline Part 2 production wiring', () => {
     expect(part2).toContain("'SyncOwnershipFailureGuard'");
   });
 
-  test('fresh Service Worker generation precaches new dynamic modules and serves versioned local requests offline', () => {
-    expect(serviceWorker).toContain("concierge-collector-shell-v3");
-    expect(serviceWorker).toContain('ignoreSearch: true');
+  test('loads the save coordinator last so it owns the outermost save boundary', () => {
+    const coordinator = part2.lastIndexOf("'OfflineSaveCoordinator'");
+    const identity = part2.indexOf("'OfflineCuratorIdentityGuard'");
+    expect(coordinator).toBeGreaterThan(identity);
+  });
+
+  test('fresh Service Worker generation precaches exact versioned aliases', () => {
+    expect(serviceWorker).toContain('__COLLECTOR_SHELL_VERSION__');
+    expect(serviceWorker).not.toContain('ignoreSearch: true');
+    expect(serviceWorker).toContain('entry.sha256.slice(0, 12)');
     expect(serviceWorker).toContain('url.origin === self.location.origin');
-    expect(serviceWorker).toContain('manifest.map');
   });
 });
