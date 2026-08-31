@@ -47,11 +47,20 @@ export function createReleasePlan(mode = 'standard') {
 
   if (mode === 'standard') return standard
 
+  const fullEnv = {
+    CMS_E2E_AUTH_HANDOFF: '1',
+    CMS_E2E_PUBLISH: '1',
+    CMS_E2E_EXPLORER: '1',
+    CMS_E2E_BASE_URL: 'http://127.0.0.1:3000',
+    CMS_E2E_FASTAPI_URL: 'http://127.0.0.1:8000',
+    ...adminEnv,
+  }
+
   return [
     ...standard,
-    npmStep('Admin integration tests', 'test:admin:integration', { env: adminEnv }),
-    pythonStep('API integration tests', ['-m', 'pytest', '-m', 'integration and not external_api and not openai', '-q'], { env: adminEnv }),
-    npmStep('Admin browser E2E', 'test:e2e', { env: adminEnv }),
+    npmStep('Admin integration tests', 'test:admin:integration', { env: fullEnv }),
+    pythonStep('API integration tests', ['-m', 'pytest', '-m', 'integration and not external_api and not openai', '-q'], { env: fullEnv }),
+    npmStep('Admin browser E2E', 'test:e2e', { env: fullEnv }),
   ]
 }
 
