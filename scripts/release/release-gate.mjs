@@ -39,6 +39,16 @@ function assertSafeE2ETarget(value, name, env) {
   }
 }
 
+function assertSafeTestDatabase(env) {
+  const dbName = String(env.CMS_MONGODB_DB_NAME || '').trim()
+  if (!dbName.endsWith('-test')) {
+    throw new Error(
+      `Refusing full release gate with CMS_MONGODB_DB_NAME=${dbName || '<empty>'}. ` +
+        'Integration/E2E databases must end with -test.',
+    )
+  }
+}
+
 export function createReleasePlan(mode = 'standard', { env = process.env } = {}) {
   if (!['standard', 'full'].includes(mode)) throw new Error(`Unknown release gate mode: ${mode}`)
 
@@ -67,6 +77,7 @@ export function createReleasePlan(mode = 'standard', { env = process.env } = {})
     CMS_E2E_FASTAPI_URL: env.CMS_E2E_FASTAPI_URL || 'http://127.0.0.1:8000',
   }
 
+  assertSafeTestDatabase(fullEnv)
   assertSafeE2ETarget(fullEnv.CMS_E2E_BASE_URL, 'CMS_E2E_BASE_URL', env)
   assertSafeE2ETarget(fullEnv.CMS_E2E_FASTAPI_URL, 'CMS_E2E_FASTAPI_URL', env)
 
