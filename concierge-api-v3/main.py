@@ -3,7 +3,7 @@ Concierge Collector API V3 - Professional FastAPI Implementation
 Main application entry point with PyMongo (sync) support
 """
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -12,6 +12,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
+from app.core.http_error_contract import http_exception_content
 from app.core.lifespan import lifespan
 from app.core.rate_limit import limiter
 from app.core.observability import install_log_redaction, request_context_middleware
@@ -92,6 +93,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Preserve status/headers while exposing stable domain error codes."""
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=http_exception_content(exc),
+        headers=exc.headers,
+    )
 
 
 # Global exception handler: log the exception, return a generic 500 message.
