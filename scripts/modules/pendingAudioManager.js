@@ -10,6 +10,8 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         this.dataStorage = null;
         this.maxAutoRetries = 2;
         this.retryDelays = [5000, 15000];
+        this.processingLeaseMs = 5 * 60 * 1000;
+        this.processingOwnerId = this._newLeaseOwnerId();
     }
 
     init(dataStorage) { this.dataStorage = dataStorage; this.prune().catch((error) => this.log.warn('prune no init falhou:', error)); }
@@ -28,6 +30,49 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     _newSourceId() {
         try { if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID(); } catch (_) {}
         return `src_voice_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }
+
+    _newLeaseOwnerId() {
+        try { if (typeof crypto !== 'undefined' && crypto.randomUUID) return `tab_${crypto.randomUUID()}`; } catch (_) {}
+        return `tab_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }
+
+    _newLeaseToken() {
+        try { if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID(); } catch (_) {}
+        return `lease_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }
+
+    _leaseExpiryMs(audio) {
+        if (!audio?.processingLeaseExpiresAt) return 0;
+        const value = new Date(audio.processingLeaseExpiresAt).getTime();
+        return Number.isFinite(value) ? value : 0;
+    }
+
+    _leaseIsActive(audio, now = Date.now()) {
+        return Boolean(audio?.processingLeaseToken && this._leaseExpiryMs(audio) > now);
+    }
+
+    _assertLease(audio, leaseToken) {
+        // Legacy/manual callers that do not participate in the durable
+        // processor contract remain compatible. Once a worker supplies a
+        // token, however, only the current unexpired owner may mutate state.
+        if (!leaseToken) return true;
+        if (!audio?.processingLeaseToken || audio.processingLeaseToken !== leaseToken || !this._leaseIsActive(audio)) {
+            const error = new Error('Pending audio processing lease was lost');
+            error.name = 'ProcessingLeaseLostError';
+            throw error;
+        }
+        return true;
+    }
+
+    async _withPendingAudioTransaction(task) {
+        const db = this.dataStorage?.db;
+        const table = db?.pendingAudio;
+        if (!table) throw new Error('Pending audio storage is not initialized');
+        if (typeof db.transaction === 'function') {
+            return db.transaction('rw', table, task);
+        }
+        return task();
     }
 
     _currentCuratorId(options = {}) {
@@ -71,7 +116,10 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             isAdditional: opts.isAdditional || false,
             transcriptText: opts.transcriptText || null,
             transcriptPersisted: false,
-            disposable: false
+            disposable: false,
+            processingLeaseToken: null,
+            processingLeaseOwner: null,
+            processingLeaseExpiresAt: null
         };
         const id = await this.dataStorage.db.pendingAudio.add(row); this.prune().catch(() => {}); return id;
     }
@@ -127,41 +175,70 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
 
     async updateAudio(id, updates) { await this.dataStorage.db.pendingAudio.update(id, updates); }
 
-    async claimForProcessing(idOrSourceId) {
-        const audio = await this.resolveAudio(idOrSourceId);
-        if (!audio?.audioBlob || audio.id == null || audio.disposable === true) return null;
-        const sourceId = audio.sourceId || this._newSourceId();
-        const capturedAt = audio.capturedAt || audio.timestamp || new Date();
-        const curatorId = audio.curatorId || this._currentCuratorId();
-        await this.updateAudio(audio.id, {
-            sourceId,
-            capturedAt,
-            curatorId,
-            status: 'processing',
-            processingStartedAt: new Date(),
-            lastError: null
+    async claimForProcessing(idOrSourceId, { ownerId = this.processingOwnerId, leaseMs = this.processingLeaseMs } = {}) {
+        return this._withPendingAudioTransaction(async () => {
+            const audio = await this.resolveAudio(idOrSourceId);
+            if (!audio?.audioBlob || audio.id == null || audio.disposable === true) return null;
+
+            const now = Date.now();
+            if (this._leaseIsActive(audio, now)) return null;
+
+            const sourceId = audio.sourceId || this._newSourceId();
+            const capturedAt = audio.capturedAt || audio.timestamp || new Date();
+            const curatorId = audio.curatorId || this._currentCuratorId();
+            const processingLeaseToken = this._newLeaseToken();
+            const processingLeaseOwner = String(ownerId || this.processingOwnerId);
+            const processingLeaseExpiresAt = new Date(now + Math.max(1000, Number(leaseMs) || this.processingLeaseMs)).toISOString();
+            const updates = {
+                sourceId,
+                capturedAt,
+                curatorId,
+                status: 'processing',
+                processingStartedAt: new Date(now),
+                processingLeaseToken,
+                processingLeaseOwner,
+                processingLeaseExpiresAt,
+                lastError: null
+            };
+            await this.updateAudio(audio.id, updates);
+            return { ...audio, ...updates };
         });
-        return { ...audio, sourceId, capturedAt, curatorId, status: 'processing' };
     }
 
-    async markProcessingFailed(idOrSourceId, errorMessage) {
-        const audio = await this.resolveAudio(idOrSourceId); if (!audio || audio.id == null) return false;
-        await this.updateAudio(audio.id, { retryCount: (audio.retryCount || 0) + 1, status: 'failed', lastError: String(errorMessage?.message || errorMessage || 'Processing failed'), processingStartedAt: null }); return true;
+    async markProcessingFailed(idOrSourceId, errorMessage, { leaseToken = null } = {}) {
+        return this._withPendingAudioTransaction(async () => {
+            const audio = await this.resolveAudio(idOrSourceId); if (!audio || audio.id == null) return false;
+            this._assertLease(audio, leaseToken);
+            await this.updateAudio(audio.id, {
+                retryCount: (audio.retryCount || 0) + 1,
+                status: 'failed',
+                lastError: String(errorMessage?.message || errorMessage || 'Processing failed'),
+                processingStartedAt: null,
+                processingLeaseToken: null,
+                processingLeaseOwner: null,
+                processingLeaseExpiresAt: null
+            });
+            return true;
+        });
     }
 
     async storeTranscript(idOrSourceId, transcriptText, metadata = {}) {
-        const audio = await this.resolveAudio(idOrSourceId); if (!audio || audio.id == null) throw new Error(`Pending audio ${idOrSourceId} not found`);
-        await this.updateAudio(audio.id, {
-            transcriptText: transcriptText || null,
-            status: transcriptText ? 'transcribed' : audio.status,
-            transcriptPersisted: false,
-            disposable: false,
-            lastError: null,
-            ...(metadata.language ? { language: metadata.language } : {}),
-            ...(metadata.durationSeconds !== undefined ? { durationSeconds: metadata.durationSeconds } : {}),
-            ...((metadata.transcriptionModel || metadata.model) ? { transcriptionModel: metadata.transcriptionModel || metadata.model } : {})
+        return this._withPendingAudioTransaction(async () => {
+            const audio = await this.resolveAudio(idOrSourceId); if (!audio || audio.id == null) throw new Error(`Pending audio ${idOrSourceId} not found`);
+            this._assertLease(audio, metadata.leaseToken || null);
+            const updates = {
+                transcriptText: transcriptText || null,
+                status: transcriptText ? 'transcribed' : audio.status,
+                transcriptPersisted: false,
+                disposable: false,
+                lastError: null,
+                ...(metadata.language ? { language: metadata.language } : {}),
+                ...(metadata.durationSeconds !== undefined ? { durationSeconds: metadata.durationSeconds } : {}),
+                ...((metadata.transcriptionModel || metadata.model) ? { transcriptionModel: metadata.transcriptionModel || metadata.model } : {})
+            };
+            await this.updateAudio(audio.id, updates);
+            return { ...audio, ...updates, ...metadata };
         });
-        return { ...audio, transcriptText: transcriptText || null, ...metadata };
     }
 
     async associateWithCuration(filter, curationId) {
@@ -170,15 +247,39 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     }
 
     /** Two-phase commit: durable transcript first, then raw blob deletion. */
-    async markTranscriptPersisted(idOrSourceId, { curationId = null, draftId = null } = {}) {
-        const audio = await this.resolveAudio(idOrSourceId); if (!audio || audio.id == null) throw new Error(`Pending audio ${idOrSourceId} not found`);
-        await this.updateAudio(audio.id, { ...(curationId ? { curationId } : {}), ...(draftId ? { draftId } : {}), transcriptPersisted: true, disposable: true, status: 'completed', processingStartedAt: null, lastError: null });
-        await this.deleteAudio(audio.id);
+    async markTranscriptPersisted(idOrSourceId, { curationId = null, draftId = null, leaseToken = null } = {}) {
+        return this._withPendingAudioTransaction(async () => {
+            const audio = await this.resolveAudio(idOrSourceId); if (!audio || audio.id == null) throw new Error(`Pending audio ${idOrSourceId} not found`);
+            this._assertLease(audio, leaseToken);
+            await this.updateAudio(audio.id, {
+                ...(curationId ? { curationId } : {}),
+                ...(draftId ? { draftId } : {}),
+                transcriptPersisted: true,
+                disposable: true,
+                status: 'completed',
+                processingStartedAt: null,
+                processingLeaseToken: null,
+                processingLeaseOwner: null,
+                processingLeaseExpiresAt: null,
+                lastError: null
+            });
+            await this.deleteAudio(audio.id);
+            return true;
+        });
     }
 
     async incrementRetryCount(id, errorMessage) {
         const audio = await this.getAudio(id); if (!audio) throw new Error(`Pending audio ${id} not found`);
-        const retryCount = (audio.retryCount || 0) + 1; await this.updateAudio(id, { retryCount, lastError: errorMessage, status: retryCount >= this.maxAutoRetries ? 'failed' : 'retrying' }); return retryCount;
+        const retryCount = (audio.retryCount || 0) + 1;
+        await this.updateAudio(id, {
+            retryCount,
+            lastError: errorMessage,
+            status: retryCount >= this.maxAutoRetries ? 'failed' : 'retrying',
+            processingLeaseToken: null,
+            processingLeaseOwner: null,
+            processingLeaseExpiresAt: null
+        });
+        return retryCount;
     }
 
     async scheduleAutoRetry(id, retryCallback) {
@@ -190,8 +291,8 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             if (!latest || latest.disposable === true) return;
 
             // Part 2 owns restart/reconnect processing. Delegate timer retries
-            // to the same single-flight processor so one capture cannot be
-            // transcribed concurrently by the legacy callback and reconnect.
+            // to the same persistent-lease processor so one capture cannot be
+            // transcribed concurrently by another tab or the legacy callback.
             if (typeof window !== 'undefined' && window.offlineCaptureProcessor?.processPending) {
                 await window.offlineCaptureProcessor.processPending().catch((error) => {
                     this.log.warn('Durable audio retry failed:', error);
