@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from app.api.curations import _vector_search_or_fallback
+from app.models.schemas import SemanticSearchResponse
 
 
 class ExhaustiveCursor(list):
@@ -59,3 +60,12 @@ def test_semantic_fallback_does_not_claim_partial_recall_contract():
     source = inspect.getsource(curations.semantic_search_curations)
     assert 'search_mode="atlas_vector" if used_atlas else "fallback_exhaustive"' in source
     assert "partial=False" in source
+
+
+def test_semantic_response_schema_documents_the_exhaustive_contract():
+    fields = SemanticSearchResponse.model_fields
+
+    assert fields["search_mode"].default == "fallback_exhaustive"
+    assert "fallback_exhaustive" in (fields["search_mode"].description or "")
+    assert fields["partial"].default is False
+    assert "exhaust" in (fields["partial"].description or "").lower()
