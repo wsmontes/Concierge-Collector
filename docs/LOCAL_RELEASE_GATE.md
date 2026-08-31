@@ -33,7 +33,8 @@ O gate completo roda todo o gate padrão e acrescenta:
 
 1. Admin integration tests
 2. API integration tests (sem APIs externas/OpenAI)
-3. Playwright E2E
+3. API Mongo integration tests com `--run-mongo`
+4. Playwright E2E
 
 O modo completo habilita obrigatoriamente as suites live do CMS:
 
@@ -43,16 +44,27 @@ O modo completo habilita obrigatoriamente as suites live do CMS:
 
 Por isso, `verify:full` exige o stack local de integração disponível: MongoDB de teste, FastAPI em development, Admin CMS, CMS worker e os dados de teste esperados pelas suites E2E. Ele é intencionalmente um release qualification gate; se o stack não estiver pronto, o comando deve falhar em vez de produzir um falso verde.
 
+Os defaults locais seguros são:
+
+- `CMS_MONGODB_URL=mongodb://127.0.0.1:27017`
+- `CMS_MONGODB_DB_NAME=concierge-cms-test`
+- `MONGODB_TEST_URL=mongodb://127.0.0.1:27017`
+- `MONGODB_TEST_DB_NAME=concierge-collector-test`
+
+Tanto `CMS_MONGODB_DB_NAME` quanto `MONGODB_TEST_DB_NAME` são validados pelo gate e **precisam terminar em `-test`**. Isso é adicional aos guards dos próprios fixtures. Um shell poluído com nome de banco de produção falha antes de iniciar as suites; não pode transformá-las em skip silencioso.
+
 Por segurança, os alvos E2E (`CMS_E2E_BASE_URL` e `CMS_E2E_FASTAPI_URL`) precisam apontar para loopback (`localhost`, `127.0.0.1` ou `::1`). Um stack remoto descartável só pode ser usado com opt-in explícito:
 
 ```bash
 CONCIERGE_ALLOW_REMOTE_E2E=1 \
 CMS_E2E_BASE_URL=https://admin.staging.example \
 CMS_E2E_FASTAPI_URL=https://api.staging.example \
+CMS_MONGODB_DB_NAME=concierge-cms-staging-test \
+MONGODB_TEST_DB_NAME=concierge-collector-staging-test \
 npm run verify:full
 ```
 
-Nunca use esse override contra produção. Nunca aponte as variáveis de banco usadas por integração para bancos de produção. Os bancos de teste devem manter o sufixo `-test` previsto pelos fixtures e pelas proteções existentes.
+Nunca use esse override contra produção. Nunca aponte as variáveis de banco usadas por integração para bancos de produção.
 
 ## Python portátil
 
