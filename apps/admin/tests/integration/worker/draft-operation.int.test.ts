@@ -82,7 +82,7 @@ integrationSuite('draft operation worker', () => {
       collectionId: collection.id, action: 'add' as const, baseDraftRevision: 0,
       curationIds: ['c1'], idempotencyKey: 'restart-key', actorId: 'admin-1', requestId: 'restart-request',
     }
-    const operation = await enqueueDraftOperation(payload, command, { resolve: resolver })
+    const operation = await enqueueDraftOperation(payload, command, { resolve: resolver, createWorkerJob: false })
 
     await operations.updateOne({ _id: operation.id }, {
       $set: {
@@ -151,7 +151,7 @@ integrationSuite('draft operation worker', () => {
     const staged = await enqueueDraftOperation(payload, {
       collectionId: collection.id, action: 'add', baseDraftRevision: 0,
       curationIds: ['c1'], idempotencyKey: 'isolated-staging-first', actorId: 'admin-1', requestId: 'isolated-staging-first-request',
-    }, { resolve: resolver })
+    }, { resolve: resolver, createWorkerJob: false })
     await applyDraftOperation(payload, staged.id, 'worker-a', revokedAfterStaging)
     await expect(operations.findById(staged.id).lean()).resolves.toMatchObject({ status: 'authorization_revoked' })
     await expect(changes.countDocuments({ operationId: staged.id, stageState: 'staged' })).resolves.toBe(0)
@@ -159,7 +159,7 @@ integrationSuite('draft operation worker', () => {
     const later = await enqueueDraftOperation(payload, {
       collectionId: collection.id, action: 'add', baseDraftRevision: 0,
       curationIds: ['c1'], idempotencyKey: 'isolated-staging-later', actorId: 'admin-1', requestId: 'isolated-staging-later-request',
-    }, { resolve: resolver })
+    }, { resolve: resolver, createWorkerJob: false })
     await applyDraftOperation(payload, later.id, 'worker-b', resolver)
 
     const database = payload.db.connection.db
@@ -173,7 +173,7 @@ integrationSuite('draft operation worker', () => {
     const first = await enqueueDraftOperation(payload, {
       collectionId: collection.id, action: 'add', baseDraftRevision: 0,
       curationIds: ['c1'], idempotencyKey: 'committed-delta-first', actorId: 'admin-1', requestId: 'committed-delta-first-request',
-    }, { resolve: resolver })
+    }, { resolve: resolver, createWorkerJob: false })
     await applyDraftOperation(payload, first.id, 'worker-a', resolver)
 
     let introspections = 0
@@ -190,13 +190,13 @@ integrationSuite('draft operation worker', () => {
     const failed = await enqueueDraftOperation(payload, {
       collectionId: collection.id, action: 'remove', baseDraftRevision: 1,
       curationIds: ['c1'], idempotencyKey: 'committed-delta-failed', actorId: 'admin-1', requestId: 'committed-delta-failed-request',
-    }, { resolve: resolver })
+    }, { resolve: resolver, createWorkerJob: false })
     await applyDraftOperation(payload, failed.id, 'worker-a', revokedAfterStaging)
 
     const later = await enqueueDraftOperation(payload, {
       collectionId: collection.id, action: 'add', baseDraftRevision: 1,
       curationIds: ['c2'], idempotencyKey: 'committed-delta-later', actorId: 'admin-1', requestId: 'committed-delta-later-request',
-    }, { resolve: resolver })
+    }, { resolve: resolver, createWorkerJob: false })
     await applyDraftOperation(payload, later.id, 'worker-b', resolver)
 
     const database = payload.db.connection.db
@@ -213,7 +213,7 @@ integrationSuite('draft operation worker', () => {
     const operation = await enqueueDraftOperation(payload, {
       collectionId: collection.id, action: 'add', baseDraftRevision: 0,
       curationIds: ['c1'], idempotencyKey: 'cancel-fence', actorId: 'admin-1', requestId: 'cancel-fence-request',
-    }, { resolve: resolver })
+    }, { resolve: resolver, createWorkerJob: false })
     const { cancelDraftOperation } = await import('../../../src/operations/apply-draft-operation')
 
     await applyDraftOperation(payload, operation.id, 'worker-a', resolver, {
@@ -230,7 +230,7 @@ integrationSuite('draft operation worker', () => {
     const operation = await enqueueDraftOperation(payload, {
       collectionId: collection.id, action: 'add', baseDraftRevision: 0,
       curationIds: ['c1'], idempotencyKey: 'retryable-operation', actorId: 'admin-1', requestId: 'retryable-operation-request',
-    }, { resolve: resolver })
+    }, { resolve: resolver, createWorkerJob: false })
     const { AdminHttpError } = await import('../../../src/http/errors')
     const unavailable = {
       resolveCurations: resolver.resolveCurations,

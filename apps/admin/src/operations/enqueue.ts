@@ -50,6 +50,10 @@ async function inTransaction<T>(payload: Payload, work: (session: ClientSession)
 
 export interface EnqueueDependencies {
   resolve: CatalogResolver
+  /** Testes de integração dirigem apply/cancel direto; sem o job, o worker
+   * vivo do stack de qualificação roubaria a operação entre o enqueue e o
+   * apply manual (corrida observada no gate). Produção usa o default true. */
+  createWorkerJob?: boolean
 }
 
 function defaultDependencies(): EnqueueDependencies {
@@ -283,17 +287,19 @@ export async function enqueueDraftOperation(
         ]
         if (operationItems.length) await items.insertMany(operationItems, { session })
       }
-      await jobs.create([{
-        _id: jobId,
-        input: { operationId },
-        taskSlug: 'apply-draft-operation',
-        queue: 'collection-mutations',
-        processing: false,
-        totalTried: 0,
-        hasError: false,
-        createdAt: now,
-        updatedAt: now,
-      }], { session })
+      if (dependencies.createWorkerJob !== false) {
+        await jobs.create([{
+          _id: jobId,
+          input: { operationId },
+          taskSlug: 'apply-draft-operation',
+          queue: 'collection-mutations',
+          processing: false,
+          totalTried: 0,
+          hasError: false,
+          createdAt: now,
+          updatedAt: now,
+        }], { session })
+      }
       return operationDocument
     })
     return record(operation)

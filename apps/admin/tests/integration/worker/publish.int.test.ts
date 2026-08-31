@@ -43,7 +43,11 @@ integrationSuite('collection publish worker', () => {
     ])
     payload = await getPayload({ config })
     repository = repositoryModule.createCollectionRepository(payload)
-    enqueueDraftOperation = operationModule.enqueueDraftOperation
+    enqueueDraftOperation = ((payload, command, deps = {}) =>
+      // O worker vivo do stack de qualificação roda payload-jobs a cada
+      // minuto; sem suprimir o job, ele roubaria a operação entre o enqueue
+      // e o apply manual destes testes (corrida observada no gate).
+      operationModule.enqueueDraftOperation(payload, command, { ...deps, createWorkerJob: false })) as typeof operationModule.enqueueDraftOperation
     applyDraftOperation = applyModule.applyDraftOperation
     enqueuePublish = publishModule.enqueuePublish
     runPublishJob = publishModule.runPublishJob

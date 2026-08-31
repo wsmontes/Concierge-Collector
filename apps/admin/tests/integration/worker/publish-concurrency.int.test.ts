@@ -69,7 +69,11 @@ integrationSuite('collection publish concurrency', () => {
     const repositoryModule = await import('../../../src/collections/repository')
     repository = repositoryModule.createCollectionRepository(payload)
     const operationModule = await import('../../../src/operations/enqueue')
-    enqueueDraftOperation = operationModule.enqueueDraftOperation
+    enqueueDraftOperation = ((payload, command, deps = {}) =>
+      // O worker vivo do stack de qualificação roda payload-jobs a cada
+      // minuto; sem suprimir o job, ele roubaria a operação entre o enqueue
+      // e o apply manual destes testes (corrida observada no gate).
+      operationModule.enqueueDraftOperation(payload, command, { ...deps, createWorkerJob: false })) as typeof operationModule.enqueueDraftOperation
     const applyModule = await import('../../../src/operations/apply-draft-operation')
     applyDraftOperation = applyModule.applyDraftOperation
     const publishModule = await import('../../../src/publishing/publish-collection')
