@@ -24,7 +24,9 @@ _FLAG_ENVS = {
 
 
 def _environment() -> str:
-    return os.getenv("ENVIRONMENT", "development").strip().lower()
+    # Match app.core.config.Settings: a missing environment must fail safe as
+    # production, never silently enable staged production capabilities.
+    return os.getenv("ENVIRONMENT", "production").strip().lower()
 
 
 def enabled(name: str) -> bool:
