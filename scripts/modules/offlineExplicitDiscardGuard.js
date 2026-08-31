@@ -47,11 +47,15 @@
 
             conceptModule.discardRestaurant = async (options = {}, ...args) => {
                 const keepDraft = options?.keepDraft === true;
+                const wasEditingEntity = guard.runtime.uiManager?.isEditingEntity === true;
                 const draftId = guard.runtime.DraftRestaurantManager?.currentDraftId || null;
                 const currentAudioId = guard.runtime.uiManager?.recordingModule?.currentAudioId ?? null;
 
                 const result = await original(options, ...args);
-                if (keepDraft) return result;
+                // ConceptModule uses discardRestaurant as the Cancel action for
+                // Entity edit too. That path never means "abandon the Curation";
+                // do not reinterpret it as permission to delete draft media.
+                if (keepDraft || wasEditingEntity) return result;
 
                 const manager = guard.runtime.PendingAudioManager;
                 try {
