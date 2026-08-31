@@ -22,12 +22,28 @@ function createTable(seed = []) {
   };
 }
 
-function loadManager(seed = []) {
+function createDb(seed = []) {
+  const pendingAudio = createTable(seed);
+  let transactionTail = Promise.resolve();
+  return {
+    pendingAudio,
+    transaction(_mode, _table, task) {
+      const run = transactionTail.then(() => task());
+      transactionTail = run.catch(() => undefined);
+      return run;
+    }
+  };
+}
+
+function loadManager(seed = [], sharedDb = null) {
   delete window.PendingAudioManager;
   const ModuleWrapper = { defineClass(_name, klass) { return klass; } };
   const Logger = { module() { return { debug() {}, info() {}, warn() {}, error() {} }; } };
   const fn = new Function('window', 'ModuleWrapper', 'Logger', `${src}\nreturn window.PendingAudioManager;`); // eslint-disable-line no-new-func
-  const manager = fn(window, ModuleWrapper, Logger); const pendingAudio = createTable(seed); manager.dataStorage = { db: { pendingAudio } }; return { manager, pendingAudio };
+  const manager = fn(window, ModuleWrapper, Logger);
+  const db = sharedDb || createDb(seed);
+  manager.dataStorage = { db };
+  return { manager, pendingAudio: db.pendingAudio, db };
 }
 
 beforeEach(() => {
@@ -79,6 +95,39 @@ describe('PendingAudioManager offline durability', () => {
     const claimed = await manager.claimForProcessing(6);
     expect(claimed.sourceId).toBeTruthy();
     expect((await pendingAudio.get(6)).sourceId).toBe(claimed.sourceId);
+  });
+
+  test('allows only one tab to claim the same recording before lease expiry', async () => {
+    const db = createDb([{ id: 6, sourceId: 'src-6', audioBlob: new Blob(['voice']), status: 'pending', disposable: false }]);
+    const { manager: first } = loadManager([], db);
+    const { manager: second } = loadManager([], db);
+
+    const [a, b] = await Promise.all([
+      first.claimForProcessing(6, { ownerId: 'tab-a', leaseMs: 60_000 }),
+      second.claimForProcessing(6, { ownerId: 'tab-b', leaseMs: 60_000 })
+    ]);
+
+    expect([a, b].filter(Boolean)).toHaveLength(1);
+    const claimed = a || b;
+    expect(claimed.processingLeaseToken).toBeTruthy();
+    expect(claimed.processingLeaseOwner).toMatch(/^tab-/);
+    expect(new Date(claimed.processingLeaseExpiresAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  test('rejects transcript writes from a worker that lost its processing lease', async () => {
+    const { manager, pendingAudio } = loadManager([{ id: 8, sourceId: 'src-8', audioBlob: new Blob(['voice']), status: 'pending', disposable: false }]);
+    const claimed = await manager.claimForProcessing(8, { ownerId: 'tab-a', leaseMs: 60_000 });
+    await pendingAudio.update(8, {
+      processingLeaseToken: 'new-owner-token',
+      processingLeaseOwner: 'tab-b',
+      processingLeaseExpiresAt: new Date(Date.now() + 60_000).toISOString()
+    });
+
+    await expect(manager.storeTranscript(8, 'English text', {
+      leaseToken: claimed.processingLeaseToken,
+      language: 'en'
+    })).rejects.toThrow(/lease/i);
+    expect((await pendingAudio.get(8)).transcriptText).toBeFalsy();
   });
 
   test('deletes raw audio immediately after transcript persistence is confirmed', async () => {
