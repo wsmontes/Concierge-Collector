@@ -34,7 +34,8 @@ O gate completo roda todo o gate padrão e acrescenta:
 1. Admin integration tests
 2. API integration tests (sem APIs externas/OpenAI)
 3. API Mongo integration tests com `--run-mongo`
-4. Playwright E2E
+4. seed idempotente de três Curations ativas para Explorer/publish E2E
+5. Playwright E2E
 
 O modo completo habilita obrigatoriamente as suites live do CMS:
 
@@ -43,6 +44,8 @@ O modo completo habilita obrigatoriamente as suites live do CMS:
 - `CMS_E2E_EXPLORER=1`
 
 Por isso, `verify:full` exige o stack local de integração disponível: MongoDB de teste, FastAPI em development, Admin CMS, CMS worker e os dados de teste esperados pelas suites E2E. Ele é intencionalmente um release qualification gate; se o stack não estiver pronto, o comando deve falhar em vez de produzir um falso verde.
+
+O seed `concierge-api-v3/scripts/seed_e2e_curations.py` roda depois da suite Mongo e antes do Playwright. Ele cria/repara três fixtures estáveis com `catalog_sequence`, é idempotente e recusa qualquer banco cujo nome não termine em `-test`.
 
 Os defaults locais seguros são:
 
