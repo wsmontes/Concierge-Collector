@@ -6,12 +6,16 @@ import { describe, expect, test } from 'vitest';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sourcePath = path.resolve(__dirname, '../scripts/modules/offlineExplicitDiscardGuard.js');
 
-function loadGuard({ draftId = 42, currentAudioId = 9 } = {}) {
+function loadGuard({ draftId = 42, currentAudioId = 9, isEditingEntity = false } = {}) {
   const src = readFileSync(sourcePath, 'utf8');
   const bulkCalls = [];
   const deletedIds = [];
   const conceptModule = {
     async discardRestaurant({ keepDraft = false } = {}) {
+      if (runtime.uiManager.isEditingEntity) {
+        await runtime.uiManager.entityModule.cancelEntityEdit();
+        return;
+      }
       return { keepDraft };
     }
   };
@@ -25,6 +29,10 @@ function loadGuard({ draftId = 42, currentAudioId = 9 } = {}) {
     },
     uiManager: {
       editingRestaurantId: 'ent-1',
+      isEditingEntity,
+      entityModule: {
+        async cancelEntityEdit() { runtime.uiManager.isEditingEntity = false; }
+      },
       recordingModule: { currentAudioId },
       conceptModule
     }
@@ -53,6 +61,17 @@ describe('OfflineExplicitDiscardGuard', () => {
 
     await conceptModule.discardRestaurant({ keepDraft: true });
 
+    expect(bulkCalls).toEqual([]);
+    expect(deletedIds).toEqual([]);
+  });
+
+  test('cancelling entity edit does not discard curation draft media', async () => {
+    const { guard, runtime, conceptModule, bulkCalls, deletedIds } = loadGuard({ isEditingEntity: true });
+    expect(guard.install()).toBe(true);
+
+    await conceptModule.discardRestaurant({ keepDraft: false });
+
+    expect(runtime.uiManager.isEditingEntity).toBe(false);
     expect(bulkCalls).toEqual([]);
     expect(deletedIds).toEqual([]);
   });
