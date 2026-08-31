@@ -28,10 +28,21 @@ function pythonStep(name, args, { env = process.env } = {}) {
   return { name, kind: 'python', args, cwd: API_DIR, env }
 }
 
-export function createReleasePlan(mode = 'standard') {
+function assertSafeE2ETarget(value, name, env) {
+  const url = new URL(value)
+  const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1'])
+  if (!loopbackHosts.has(url.hostname) && env.CONCIERGE_ALLOW_REMOTE_E2E !== '1') {
+    throw new Error(
+      `Refusing remote E2E target for ${name}: ${value}. ` +
+        'Set CONCIERGE_ALLOW_REMOTE_E2E=1 only for an explicitly disposable remote test stack.',
+    )
+  }
+}
+
+export function createReleasePlan(mode = 'standard', { env = process.env } = {}) {
   if (!['standard', 'full'].includes(mode)) throw new Error(`Unknown release gate mode: ${mode}`)
 
-  const adminEnv = withAdminTestEnv(process.env)
+  const adminEnv = withAdminTestEnv(env)
   const standard = [
     npmStep('Collector build freshness', 'build:collector:check'),
     npmStep('Collector lint', 'lint:collector'),
@@ -48,13 +59,16 @@ export function createReleasePlan(mode = 'standard') {
   if (mode === 'standard') return standard
 
   const fullEnv = {
+    ...adminEnv,
     CMS_E2E_AUTH_HANDOFF: '1',
     CMS_E2E_PUBLISH: '1',
     CMS_E2E_EXPLORER: '1',
-    CMS_E2E_BASE_URL: 'http://127.0.0.1:3000',
-    CMS_E2E_FASTAPI_URL: 'http://127.0.0.1:8000',
-    ...adminEnv,
+    CMS_E2E_BASE_URL: env.CMS_E2E_BASE_URL || 'http://127.0.0.1:3000',
+    CMS_E2E_FASTAPI_URL: env.CMS_E2E_FASTAPI_URL || 'http://127.0.0.1:8000',
   }
+
+  assertSafeE2ETarget(fullEnv.CMS_E2E_BASE_URL, 'CMS_E2E_BASE_URL', env)
+  assertSafeE2ETarget(fullEnv.CMS_E2E_FASTAPI_URL, 'CMS_E2E_FASTAPI_URL', env)
 
   return [
     ...standard,
