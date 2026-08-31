@@ -20,7 +20,7 @@ describe('Local release gate', () => {
     ])
   })
 
-  test('full gate extends standard with integration, real Mongo and browser coverage', () => {
+  test('full gate extends standard with integration, real Mongo, seed and browser coverage', () => {
     const standard = createReleasePlan('standard').map((step) => step.name)
     const full = createReleasePlan('full').map((step) => step.name)
 
@@ -29,6 +29,7 @@ describe('Local release gate', () => {
       'Admin integration tests',
       'API integration tests',
       'API Mongo integration tests',
+      'API E2E seed',
       'Admin browser E2E',
     ])
   })
@@ -104,10 +105,13 @@ describe('Local release gate', () => {
     })
     const adminIntegration = plan.find((step) => step.name === 'Admin integration tests')
     const apiMongo = plan.find((step) => step.name === 'API Mongo integration tests')
+    const seed = plan.find((step) => step.name === 'API E2E seed')
 
     expect(adminIntegration.env.CMS_MONGODB_DB_NAME).toBe('concierge-cms-integration-test')
     expect(apiMongo.env.MONGODB_TEST_DB_NAME).toBe('concierge-collector-integration-test')
     expect(apiMongo.args).toContain('--run-mongo')
+    expect(seed.args).toEqual(['scripts/seed_e2e_curations.py'])
+    expect(seed.env.MONGODB_TEST_DB_NAME).toBe('concierge-collector-integration-test')
   })
 
   test('full gate forces live E2E flags even when caller tries to disable them', () => {
