@@ -75,9 +75,33 @@
             return failure;
         }
 
+        installErrorCodeBridge(api) {
+            if (!api?.handleErrorResponse || api.__syncOwnershipErrorCodeBridgeInstalled) return Boolean(api?.__syncOwnershipErrorCodeBridgeInstalled);
+            const originalHandle = api.handleErrorResponse.bind(api);
+            api.__syncOwnershipErrorCodeBridgeInstalled = true;
+            api.__syncOwnershipOriginalHandleErrorResponse = originalHandle;
+
+            api.handleErrorResponse = async (response, ...args) => {
+                let code = null;
+                try {
+                    const body = response?.clone ? await response.clone().json() : null;
+                    code = this.errorCode(body?.detail || body);
+                } catch (_) {}
+
+                try {
+                    return await originalHandle(response, ...args);
+                } catch (error) {
+                    if (code) error.code = code;
+                    throw error;
+                }
+            };
+            return true;
+        }
+
         installApiGuards() {
             const api = this.runtime.ApiService;
             if (!api?.updateCuration || !api?.bulkUpsertCurations) return false;
+            this.installErrorCodeBridge(api);
             if (api.__syncOwnershipFailureGuardInstalled) return true;
 
             const guard = this;
