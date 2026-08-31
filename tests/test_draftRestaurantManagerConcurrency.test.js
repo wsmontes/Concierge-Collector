@@ -68,6 +68,39 @@ describe('DraftRestaurantManager concurrent autosaves', () => {
     expect((await draftRestaurants.get(2)).name).toBe('B edit');
   });
 
+  test('overlapping flushes for one draft cannot let an older slow write win', async () => {
+    const { manager, draftRestaurants } = loadManager([
+      { id: 1, curatorId: 'u', name: 'A', metadata: '{}' }
+    ]);
+
+    const originalUpdate = draftRestaurants.update.bind(draftRestaurants);
+    let releaseOld;
+    let oldStartedResolve;
+    const oldStarted = new Promise((resolve) => { oldStartedResolve = resolve; });
+    const oldGate = new Promise((resolve) => { releaseOld = resolve; });
+    draftRestaurants.update = async (id, changes) => {
+      if (changes.name === 'old edit') {
+        oldStartedResolve();
+        await oldGate;
+      }
+      return originalUpdate(id, changes);
+    };
+
+    await manager.autoSaveDraft(1, { name: 'old edit' });
+    const oldFlush = manager.flushPendingSave(1);
+    await oldStarted;
+
+    await manager.autoSaveDraft(1, { name: 'new edit' });
+    const newFlush = manager.flushPendingSave(1);
+    // If writes are not serialized, the new write can complete now and the
+    // released old write will overwrite it afterwards.
+    await Promise.resolve();
+    releaseOld();
+    await Promise.all([oldFlush, newFlush]);
+
+    expect((await draftRestaurants.get(1)).name).toBe('new edit');
+  });
+
   test('deleting one draft flushes only its own pending save', async () => {
     const { manager, draftRestaurants } = loadManager([
       { id: 1, curatorId: 'u', name: 'A', metadata: '{}' },
