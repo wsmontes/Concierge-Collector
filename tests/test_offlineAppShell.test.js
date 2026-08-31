@@ -14,7 +14,7 @@ describe('Collector offline app shell', () => {
     expect(existsSync(swPath)).toBe(true);
     expect(buildSource).toContain("'service-worker.js'");
     const sw = readFileSync(swPath, 'utf8');
-    expect(sw).toContain('concierge-collector-shell-v2');
+    expect(sw).toContain('concierge-collector-shell-v3');
   });
 
   test('precaches the deterministic build manifest instead of a hand-maintained partial local list', () => {
@@ -33,7 +33,7 @@ describe('Collector offline app shell', () => {
     const sw = readFileSync(swPath, 'utf8');
     expect(sw).toContain("url.pathname.startsWith('/api/')");
     expect(sw).toContain("request.method !== 'GET'");
-    expect(sw).toContain('return fetch(request)');
+    expect(sw).toContain('event.respondWith(fetch(request))');
   });
 
   test('uses cached index.html as the navigation fallback while offline', () => {

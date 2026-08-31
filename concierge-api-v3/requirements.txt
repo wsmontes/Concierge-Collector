@@ -42,6 +42,9 @@ httpx==0.28.1
 # Timezone
 pytz==2025.2
 
+# Pipeline tools (scripts/python-tools)
+openpyxl==3.1.5
+
 # Testing
 pytest==8.3.4
 pytest-asyncio==0.24.0

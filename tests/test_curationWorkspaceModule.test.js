@@ -268,7 +268,13 @@ describe('CurationWorkspaceModule — authoring surface', () => {
     expect(capture.querySelector('#curation-record-review')).toBeTruthy();
     expect(capture.querySelector('#take-photo')).toBeTruthy();
     expect(capture.querySelector('#gallery-photo')).toBeTruthy();
-    expect(capture.textContent).not.toContain('Record Additional Review');
+    // O recorder legado permanece no capture como fallback funcional
+    // (syncRecorderIntoCapture), mas com heading/copy escondidos — a
+    // superfície nova é primária. textContent não serve: inclui texto hidden.
+    const legacyRecorder = capture.querySelector('#additional-recording-section');
+    expect(legacyRecorder).toBeTruthy();
+    expect(legacyRecorder.querySelector('h3').classList.contains('hidden')).toBe(true);
+    expect(legacyRecorder.querySelector('p').classList.contains('hidden')).toBe(true);
 
     capture.querySelector('#curation-record-review').click();
     expect(uiManager.conceptModule.startAdditionalRecording).toHaveBeenCalledTimes(1);

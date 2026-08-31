@@ -114,7 +114,12 @@ describe('PendingAudioManager offline durability', () => {
     let processorCalls = 0;
     let legacyCalls = 0;
     window.offlineCaptureProcessor = {
-      async processPending() { processorCalls += 1; }
+      async processPending() {
+        processorCalls += 1;
+        // Simula o processador real em sucesso: a linha vira disposable
+        // (markTranscriptPersisted) e o re-agendamento legado para.
+        await manager.updateAudio(9, { status: 'processed', disposable: true });
+      }
     };
 
     await manager.scheduleAutoRetry(9, async () => { legacyCalls += 1; });

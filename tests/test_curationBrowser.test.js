@@ -9,6 +9,9 @@ function fakeApi(pages) {
       const idx = after_id == null ? 0 : pages.findIndex(p => p.some(i => i._id === after_id)) + 1;
       return { items: pages[idx] || [] };
     }),
+    // _loadCanonicalSearchSet (busca por q) também consulta entities —
+    // sem entidades locais não há curadorias vinculadas a fundir.
+    listEntities: vi.fn(async () => ({ items: [] })),
   };
 }
 
@@ -78,11 +81,13 @@ describe('CurationBrowser', () => {
   });
 
   test('openScope propaga city/type/q para a API', async () => {
-    const api = { listCurations: vi.fn(async () => ({ items: [] })) };
+    const api = { listCurations: vi.fn(async () => ({ items: [] })), listEntities: vi.fn(async () => ({ items: [] })) };
     const br = new CurationBrowser({ apiService: api, pageSize: 25 });
     br.openScope({ city: 'São Paulo', type: 'bar', q: 'pizza' });
     await br.nextPage();
-    expect(api.listCurations).toHaveBeenCalledWith(expect.objectContaining({ city: 'São Paulo', type: 'bar', q: 'pizza', limit: 25 }));
+    // Busca por q usa o conjunto canônico (limit alto, paginação client-side) —
+    // o que importa aqui é a propagação dos filtros de escopo.
+    expect(api.listCurations).toHaveBeenCalledWith(expect.objectContaining({ city: 'São Paulo', type: 'bar', q: 'pizza' }));
   });
 });
 

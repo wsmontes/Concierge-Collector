@@ -263,7 +263,7 @@ describe('Draft voice source persistence', () => {
 describe('Reconnect bootstrap', () => {
   const src = readFileSync(processorPath, 'utf8');
   test('runs on startup and online with a single in-flight processor', () => {
-    expect(src).toContain("addEventListener('online'");
+    expect(src).toContain("addEventListener?.('online'");
     expect(src).toContain('_inFlight');
     expect(src).toContain('processPending');
   });

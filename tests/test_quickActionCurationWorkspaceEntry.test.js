@@ -10,9 +10,17 @@ const src = readFileSync(
 );
 
 function methodBody(name, nextName = null) {
-  const start = src.indexOf(`    ${name}(`);
+  // Métodos async (ex.: async quickLocation()) não batem com o literal
+  // '    nome(' — procura as duas formas.
+  const find = (n, from = 0) => {
+    const plain = src.indexOf(`    ${n}(`, from);
+    const asyncIdx = src.indexOf(`    async ${n}(`, from);
+    const hits = [plain, asyncIdx].filter((i) => i !== -1);
+    return hits.length ? Math.min(...hits) : -1;
+  };
+  const start = find(name);
   expect(start).toBeGreaterThanOrEqual(0);
-  const end = nextName ? src.indexOf(`    ${nextName}(`, start + 1) : src.length;
+  const end = nextName ? find(nextName, start + 1) : src.length;
   expect(end).toBeGreaterThan(start);
   return src.slice(start, end);
 }

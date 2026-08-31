@@ -55,13 +55,13 @@ describe('OfflineLinkingModule integration', () => {
   test('selecting a cached Entity calls the selection callback directly, without Places/createEntity', () => {
     const src = readFileSync(linkingPath, 'utf8');
     expect(src).toContain('selectLocalEntity');
-    expect(src).toContain('onEntitySelected(entity)');
+    expect(src).toContain('modal.onEntitySelected');
     expect(src).not.toMatch(/selectLocalEntity[\s\S]{0,1000}(createEntity|getPlaceDetails)/);
   });
 
   test('selection-mode search is local-first and becomes local-only while offline', () => {
     const src = readFileSync(linkingPath, 'utf8');
-    expect(src).toContain('navigator.onLine === false');
+    expect(src).toContain('navigator?.onLine === false');
     expect(src).toContain('searchLocalFirst');
     expect(src).toContain('Local only');
   });
