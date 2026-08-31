@@ -313,8 +313,15 @@ def _extract_concepts(text: str, restaurant_name: Optional[str]) -> Dict[str, An
                     "role": "system",
                     "content": (
                         "Você é um assistente que extrai categorias de restaurantes a partir de avaliações. "
-                        "Retorne APENAS JSON com cuisine, price_range, mood, suitable_for e special_features; "
-                        "omita chaves sem evidência."
+                        "Analise o texto sobre um restaurante e retorne APENAS um objeto JSON com as seguintes "
+                        "chaves (use listas apenas para cuisine, mood, suitable_for, special_features):\n"
+                        '- cuisine: lista de tipos de cozinha (ex: ["italian", "japanese"])\n'
+                        '- price_range: "unexpensive", "mid-range" ou "expensive"\n'
+                        '- mood: lista de atmosferas (ex: ["romantic", "elegant"])\n'
+                        '- suitable_for: lista (ex: ["business_lunch", "date_night"])\n'
+                        '- special_features: lista (ex: ["outdoor_seating", "live_music"])\n'
+                        "Se não tiver informação suficiente para uma chave, omita a chave. "
+                        "Responda SOMENTE o JSON, sem markdown, sem explicação."
                     ),
                 },
                 {"role": "user", "content": f"Texto{name_context}:\n\n{text}"},
