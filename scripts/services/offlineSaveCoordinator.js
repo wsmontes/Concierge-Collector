@@ -87,6 +87,8 @@
 
         _knownCurationWriterSpecs() {
             const uiManager = this.runtime.uiManager;
+            const syncManager = this.runtime.SyncManager;
+            const dataStore = this.runtime.DataStore;
             return [
                 [this.runtime.offlineCaptureProcessor, 'materializeIntoCuration', 'audio materialization'],
                 // OfflinePhotoLeaseGuard is installed before this module. By
@@ -94,10 +96,15 @@
                 // outside its Dexie RW transaction: never wait for the save
                 // queue while holding an IndexedDB write transaction.
                 [this.runtime.offlinePhotoProcessor, 'materialize', 'photo materialization'],
-                // processServerCuration performs local reads/writes only. The
-                // network page fetch happens in pullCurations before this call,
-                // so the Curation gate is never held across HTTP.
-                [this.runtime.SyncManager, 'processServerCuration', 'sync pull materialization'],
+                // Pull: network paging happens before processServerCuration;
+                // the wrapped method itself is local reads/writes only.
+                [syncManager, 'processServerCuration', 'sync pull materialization'],
+                // Push does contain HTTP. Keeping the whole push behind the
+                // compatibility gate is deliberately conservative: its local
+                // status/_lastSyncedState writes otherwise race an editor put.
+                // This can be narrowed when SyncManager exposes explicit local
+                // commit callbacks instead of writing Dexie inline.
+                [syncManager, 'pushCurations', 'sync push reconciliation'],
                 [uiManager, 'updateCurationStatus', 'workflow status mutation'],
                 [uiManager, 'linkReviewToEntity', 'entity link mutation'],
                 [uiManager, 'unlinkCurationFromEntity', 'entity unlink mutation'],
@@ -109,9 +116,16 @@
                 // integrations expose the same object under importManager.
                 [this.runtime.importManager || this.runtime.ImportManager, 'importV3Data', 'v3 bulk import'],
                 // Legacy Concierge-format import writes many local Curations
-                // through DataStore. Serialize the whole local import method;
-                // its caller performs file IO and post-import sync outside it.
-                [this.runtime.DataStore, 'importConciergeData', 'legacy bulk import']
+                // through DataStore.createCuration. Serialize the outer import,
+                // not createCuration itself, because wrapping both would make
+                // this non-reentrant FIFO self-deadlock.
+                [dataStore, 'importConciergeData', 'legacy bulk import'],
+                // Entity deletion soft-deletes linked Curations locally.
+                [dataStore, 'deleteEntity', 'entity cascade curation mutation'],
+                [dataStore, 'deleteCuration', 'curation soft delete'],
+                // Old Places/UI compatibility flow creates a Curation through
+                // DataStore.createCuration; protect the top-level caller only.
+                [this.runtime.dataStorage, 'saveRestaurantWithAutoSync', 'legacy compatibility save']
             ];
         }
 
@@ -125,14 +139,15 @@
 
         _allKnownWritersAvailable() {
             const specs = this._knownCurationWriterSpecs();
-            // Optional legacy/import paths may legitimately be absent in a
-            // stripped build. The five always-live boundaries below are the
-            // ones that can race automatically with an editor save.
-            const required = specs.slice(0, 6);
-            return required.every(([target, methodName]) =>
-                typeof target?.[methodName] === 'function' &&
-                target[methodName].__offlineSaveCoordinatorOwner === this
-            );
+            // These are the always-live runtime boundaries that can be kicked
+            // by reconnect/background work or normal editor/list UI. Import and
+            // legacy compatibility writers remain opportunistically wrapped.
+            const requiredIndexes = [0, 1, 2, 3, 4, 5, 6];
+            return requiredIndexes.every((index) => {
+                const [target, methodName] = specs[index];
+                return typeof target?.[methodName] === 'function' &&
+                    target[methodName].__offlineSaveCoordinatorOwner === this;
+            });
         }
 
         _pollWriterInstall(attempt = 0) {
