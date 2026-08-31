@@ -78,6 +78,22 @@ describe('Local release gate', () => {
     ).toThrow(/Refusing remote E2E target/)
   })
 
+  test('full gate refuses a CMS database that is not explicitly a test database', () => {
+    expect(() =>
+      createReleasePlan('full', {
+        env: { CMS_MONGODB_DB_NAME: 'concierge-cms' },
+      }),
+    ).toThrow(/CMS_MONGODB_DB_NAME.*-test/)
+  })
+
+  test('full gate accepts an explicitly named CMS test database', () => {
+    const integration = createReleasePlan('full', {
+      env: { CMS_MONGODB_DB_NAME: 'concierge-cms-integration-test' },
+    }).find((step) => step.name === 'Admin integration tests')
+
+    expect(integration.env.CMS_MONGODB_DB_NAME).toBe('concierge-cms-integration-test')
+  })
+
   test('full gate forces live E2E flags even when caller tries to disable them', () => {
     const e2e = createReleasePlan('full', {
       env: {
