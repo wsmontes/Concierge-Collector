@@ -70,6 +70,28 @@ describe('Local release gate', () => {
     expect(e2e.env.CMS_E2E_EXPLORER).toBe('1')
   })
 
+  test('full gate refuses remote E2E targets unless explicitly allowed', () => {
+    expect(() =>
+      createReleasePlan('full', {
+        env: { CMS_E2E_BASE_URL: 'https://admin.production.example' },
+      }),
+    ).toThrow(/Refusing remote E2E target/)
+  })
+
+  test('full gate forces live E2E flags even when caller tries to disable them', () => {
+    const e2e = createReleasePlan('full', {
+      env: {
+        CMS_E2E_AUTH_HANDOFF: '0',
+        CMS_E2E_PUBLISH: '0',
+        CMS_E2E_EXPLORER: '0',
+      },
+    }).find((step) => step.name === 'Admin browser E2E')
+
+    expect(e2e.env.CMS_E2E_AUTH_HANDOFF).toBe('1')
+    expect(e2e.env.CMS_E2E_PUBLISH).toBe('1')
+    expect(e2e.env.CMS_E2E_EXPLORER).toBe('1')
+  })
+
   test('admin test environment supplies safe defaults without overriding caller values', () => {
     const env = withAdminTestEnv({ CMS_MONGODB_URL: 'mongodb://custom:27017' })
 
