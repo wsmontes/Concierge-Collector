@@ -137,9 +137,15 @@ window.CollectionsModal = (function() {
                     });
                     shell.status.textContent = 'Draft change queued.';
                     const finalOperation = await waitForOperation(service, operation.id);
-                    if (finalOperation.status === 'completed' || finalOperation.status === 'completed_with_skips') {
+                    if (finalOperation.status === 'completed') {
                         shell.status.textContent = 'Draft updated.';
                         await loadDrafts(service, curation, shell);
+                    } else if (finalOperation.status === 'completed_with_skips') {
+                        const reason = finalOperation.reasonCode || finalOperation.errorCode || 'one or more requested changes were skipped';
+                        // Reload authoritative draft state because a skipped
+                        // operation may have applied only part of the request.
+                        await loadDrafts(service, curation, shell);
+                        shell.status.textContent = `Draft change completed with skips: ${reason}.`;
                     } else if (finalOperation.status === 'queued') {
                         shell.status.textContent = 'Draft change is still processing. You can close this modal.';
                     } else {
