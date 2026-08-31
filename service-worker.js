@@ -17,7 +17,7 @@ const CRITICAL_EXTERNAL_ASSETS = [
   'https://cdn.jsdelivr.net/npm/toastify-js',
   'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css',
   'https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css',
-  'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap',
+  'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap',
   'https://fonts.googleapis.com/icon?family=Material+Icons'
 ];
 
