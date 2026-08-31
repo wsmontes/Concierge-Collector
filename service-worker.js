@@ -1,7 +1,8 @@
 /* Concierge Collector offline authoring shell */
 // The production build replaces this placeholder with a deterministic hash of
-// the shipped local shell. Any local byte change therefore creates a new SW
-// script and Cache Storage generation without a manual version bump.
+// the pristine shipped local shell. Any source byte change therefore creates a
+// new SW script, dynamic-loader URL generation, and Cache Storage generation.
+const SHELL_VERSION = '__COLLECTOR_SHELL_VERSION__';
 const CACHE_NAME = 'concierge-collector-shell-__COLLECTOR_SHELL_VERSION__';
 const MANIFEST_URL = './.manifest.json';
 const INDEX_URL = './index.html';
@@ -16,7 +17,7 @@ const CRITICAL_EXTERNAL_ASSETS = [
   'https://cdn.jsdelivr.net/npm/toastify-js',
   'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css',
   'https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css',
-  'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap',
+  'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap',
   'https://fonts.googleapis.com/icon?family=Material+Icons'
 ];
 
@@ -65,8 +66,13 @@ async function precacheLocalBuild(cache) {
   const manifest = await manifestResponse.json();
   const manifestUrls = manifest.flatMap((entry) => {
     const bare = `./${entry.path}`;
-    if (!entry.sha256) return [bare];
-    return [bare, `${bare}?v=${entry.sha256.slice(0, 12)}`];
+    const aliases = [bare];
+    // Static index.html references use the FINAL file hash.
+    if (entry.sha256) aliases.push(`${bare}?v=${entry.sha256.slice(0, 12)}`);
+    // Dynamic JS loaders use one cycle-free shell generation. Precache that
+    // exact identity too; cacheFirst never ignores query strings.
+    if (entry.path?.endsWith('.js')) aliases.push(`${bare}?v=${SHELL_VERSION}`);
+    return aliases;
   });
   const localUrls = [...new Set([
     './',
