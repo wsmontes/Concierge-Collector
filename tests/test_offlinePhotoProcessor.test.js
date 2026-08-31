@@ -206,6 +206,23 @@ describe('OfflinePhotoProcessor', () => {
     expect(JSON.parse(after.metadata).photos).toHaveLength(1);
   });
 
+  test('leased work owned by another tab is counted as skipped, not failed', async () => {
+    const draft = photoDraft();
+    const { processor, draftTable } = loadProcessor({ online: true, drafts: [draft] });
+    const sourceId = await processor.sourceIdForPhoto('data:image/jpeg;base64,QUJD');
+    await draftTable.update(1, {
+      photoProcessing: {
+        [sourceId]: { sourceId, status: 'processing', capturedAt: '2026-08-30T18:00:00.000Z', retryCount: 0 }
+      }
+    });
+    processor.processPhoto = vi.fn(async () => ({ status: 'skipped', sourceId }));
+
+    const result = await processor.processPending();
+
+    expect(result).toMatchObject({ processed: 0, failed: 0, skipped: 1 });
+    expect(processor.processPhoto).toHaveBeenCalledTimes(1);
+  });
+
   test('photos not registered for AI are never analyzed merely because they exist in a draft', async () => {
     const { processor, analyzeImage } = loadProcessor({ online: true, drafts: [photoDraft()] });
     const result = await processor.processPending();
