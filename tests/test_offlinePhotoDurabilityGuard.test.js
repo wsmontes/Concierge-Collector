@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -15,6 +16,7 @@ describe('OfflinePhotoDurabilityGuard', () => {
   test('does not resolve accepted photo until the draft autosave is flushed', async () => {
     const events = [];
     const runtime = {
+      document,
       Logger: { module: () => ({ warn() {}, error() {}, debug() {} }) },
       DraftRestaurantManager: {
         dataStorage: { db: {} },
@@ -36,8 +38,59 @@ describe('OfflinePhotoDurabilityGuard', () => {
     expect(events).toEqual(['accept', 'autosave', 'flush']);
   });
 
+  test('Accept All waits for every durable add before allowing the legacy close/AI handler', async () => {
+    document.body.innerHTML = '';
+    const events = [];
+    const runtime = {
+      document,
+      Logger: { module: () => ({ warn() {}, error() {}, debug() {} }) },
+      DraftRestaurantManager: {
+        dataStorage: { db: {} },
+        currentDraftId: 7,
+        async flushPendingSave() { events.push('flush'); return true; }
+      },
+      uiUtils: { showNotification(message) { events.push(`notify:${message}`); } },
+      uiManager: { conceptModule: null }
+    };
+    const conceptModule = {
+      addPhotoToCollection(photo) { events.push(`base-add:${photo}`); return true; },
+      async autoSaveDraft() { events.push('autosave'); },
+      showMultiImagePreviewModal(photoDataArray) {
+        const button = document.createElement('button');
+        button.id = 'accept-photos';
+        document.body.appendChild(button);
+        button.addEventListener('click', async () => {
+          events.push('legacy-handler');
+          photoDataArray.forEach((item) => this.addPhotoToCollection(item.photoData));
+          events.push('legacy-close');
+        });
+      }
+    };
+    runtime.uiManager.conceptModule = conceptModule;
+
+    const Guard = load(runtime);
+    const guard = new Guard(runtime);
+    expect(guard.install()).toBe(true);
+    await conceptModule.showMultiImagePreviewModal([
+      { photoData: 'photo-1' },
+      { photoData: 'photo-2' }
+    ]);
+
+    const button = document.getElementById('accept-photos');
+    button.click();
+    await button.__offlinePhotoDurabilityPromise;
+
+    expect(events.filter((event) => event.startsWith('base-add:'))).toEqual([
+      'base-add:photo-1',
+      'base-add:photo-2'
+    ]);
+    expect(events.indexOf('legacy-handler')).toBeGreaterThan(events.lastIndexOf('flush'));
+    expect(events.at(-1)).toBe('legacy-close');
+  });
+
   test('propagates durable flush failure instead of reporting photo acceptance as complete', async () => {
     const runtime = {
+      document,
       Logger: { module: () => ({ warn() {}, error() {}, debug() {} }) },
       DraftRestaurantManager: {
         dataStorage: { db: {} },
@@ -60,6 +113,7 @@ describe('OfflinePhotoDurabilityGuard', () => {
 
   test('keeps degraded mode usable when no durable draft store exists', async () => {
     const runtime = {
+      document,
       Logger: { module: () => ({ warn() {}, error() {}, debug() {} }) },
       DraftRestaurantManager: { dataStorage: null },
       uiManager: {
