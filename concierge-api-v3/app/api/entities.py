@@ -446,11 +446,28 @@ def list_entities(
             items.append(Entity(**doc))
         return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
 
-    total = db.entities.count_documents(query)
-    cursor = db.entities.find(query).sort("_id", 1).skip(offset).limit(limit)
+    # count + página no MESMO snapshot via $facet: count_documents separado
+    # do find permite total < items.length quando um insert concorrente cai
+    # entre as duas consultas (corrida observada nos testes de paginação).
+    facet = list(
+        db.entities.aggregate(
+            [
+                {"$match": query},
+                {"$sort": {"_id": 1}},
+                {
+                    "$facet": {
+                        "total": [{"$count": "count"}],
+                        "page": [{"$skip": offset}, {"$limit": limit}],
+                    }
+                },
+            ]
+        )
+    )
+    total = facet[0]["total"][0]["count"] if facet and facet[0]["total"] else 0
+    docs = facet[0]["page"] if facet else []
 
     items = []
-    for doc in cursor:
+    for doc in docs:
         try:
             doc["_id"] = str(doc["_id"])
             items.append(Entity(**doc))

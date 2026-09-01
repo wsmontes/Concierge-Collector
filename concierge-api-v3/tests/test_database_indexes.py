@@ -5,9 +5,9 @@ individual. Incidente 2026-08-12: o primeiro índice único que falhava
 em produção entities ficou com 4 de 10 índices e curations só com _id_.
 Sem MongoDB — get_database() é monkeypatched.
 
-Contagens são DERIVADAS de INDEX_SPECS (fonte única, 30 specs): números mágicos
-hardcoded já envelheceram duas vezes (catalog_sequence, cms_auth_codes,
-consumer_rate_limit_windows). FakeDb cobre TODAS as collections referenciadas.
+Contagens são DERIVADAS de INDEX_SPECS (fonte única): números mágicos
+hardcoded já envelheceram várias vezes. FakeDb cobre TODAS as collections
+referenciadas.
 """
 
 from collections import Counter
@@ -32,7 +32,6 @@ class FakeCol:
         hashable = tuple(keys) if isinstance(keys, list) else keys
         if hashable in self.fail_keys:
             # qualquer falha conta (unique/duplicata, cota, rede...) —
-            # nenhuma spec é mais unique (dados reais têm duplicatas), mas a
             # garantia de isolamento por índice continua obrigatória
             raise Exception("E11000 duplicate key error collection (simulado)")
         self.created.append((keys, kwargs))
@@ -65,7 +64,13 @@ def test_ensure_indexes_continues_after_index_failure(monkeypatch, caplog):
     assert "externalId" not in [k for k, _ in fake.entities.created]
     # ...mas todos os demais, em TODAS as coleções da spec, foram
     assert len(fake.entities.created) == _SPEC_COUNTS["entities"] - 1
-    for coll in ("curations", "auth_sessions", "cms_auth_codes", "consumer_rate_limit_windows"):
+    for coll in (
+        "curations",
+        "auth_sessions",
+        "oauth_login_states",
+        "cms_auth_codes",
+        "consumer_rate_limit_windows",
+    ):
         assert len(getattr(fake, coll).created) == _SPEC_COUNTS[coll]
     # e a falha foi registrada explicitamente no log
     assert any("externalId" in r.getMessage() for r in caplog.records)
@@ -90,20 +95,28 @@ def test_index_specs_come_from_the_shared_module():
     from app.core.index_specs import INDEX_SPECS
 
     assert dbmod.INDEX_SPECS is INDEX_SPECS
-    # 30 specs (2026-08-20): 10 entities + 12 curations + 1 capture_sessions
-    # + 2 auth_sessions + 2 cms_auth_codes + 2 consumer_rate_limit_windows
-    # + 1 consumer_credential_usage
     assert {s[0] for s in INDEX_SPECS} == {
         "entities",
         "curations",
         "capture_sessions",
         "auth_sessions",
+        "oauth_login_states",
         "cms_auth_codes",
         "consumer_rate_limit_windows",
         "consumer_credential_usage",
     }
     assert sum(1 for s in INDEX_SPECS if s[0] == "capture_sessions") == 1
     assert ("auth_sessions", "jti", {"unique": True}) in INDEX_SPECS
+    assert (
+        "oauth_login_states",
+        [("state_hash", 1)],
+        {"unique": True, "name": "oauth_state_hash_unique"},
+    ) in INDEX_SPECS
+    assert (
+        "oauth_login_states",
+        [("expires_at", 1)],
+        {"expireAfterSeconds": 0, "name": "oauth_state_expiry_ttl"},
+    ) in INDEX_SPECS
     assert ("cms_auth_codes", [("code_hash", 1)], {"unique": True, "name": "cms_code_hash_unique"}) in INDEX_SPECS
     assert (
         "cms_auth_codes",

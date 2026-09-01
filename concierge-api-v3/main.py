@@ -3,7 +3,8 @@ Concierge Collector API V3 - Professional FastAPI Implementation
 Main application entry point with PyMongo (sync) support
 """
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -12,9 +13,12 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
+from app.core.feature_flags import collection_flag_dependency
 from app.core.lifespan import lifespan
 from app.core.rate_limit import limiter
+from app.core.security import require_role
 from app.core.observability import install_log_redaction, request_context_middleware
+from app.core.provider_response_sanitization import places_provider_response_middleware
 from app.api import (
     entities,
     curations,
@@ -37,42 +41,29 @@ from app.api import (
     distribution,
 )
 
-# Create FastAPI application
 app = FastAPI(
     title="Concierge Collector API V3",
     version="3.0.0",
     description="Professional async API with MongoDB support for entity and curation management",
     lifespan=lifespan,
-    docs_url="/api/v3/docs",  # Swagger UI
-    redoc_url="/api/v3/redoc",  # ReDoc
-    openapi_url="/api/v3/openapi.json",  # OpenAPI schema
-    redirect_slashes=False,  # CRITICAL: Disable automatic trailing slash redirects for OAuth
+    docs_url="/api/v3/docs",
+    redoc_url="/api/v3/redoc",
+    openapi_url="/api/v3/openapi.json",
+    redirect_slashes=False,
 )
 
-# Attach rate limiter to app state and register its exception handler
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 install_log_redaction()
 app.middleware("http")(request_context_middleware)
+app.middleware("http")(places_provider_response_middleware)
 
 
 def _cors_origins_safe(origins=None):
-    """Origins com validação fail-fast (achado #3 da auditoria 2026-08-18):
-    allow_credentials=True combinado com '*' na lista faz o Starlette
-    refletir QUALQUER origin com credenciais — session riding clássico
-    (site malicioso usa os cookies HttpOnly da vítima contra a API).
-    Config errada derruba o boot em vez de abrir a porta.
-
-    `origins` é injetável nos testes; em runtime usa settings.cors_origins_list.
-    """
+    """Return explicit credentialed CORS origins; wildcard is fail-closed."""
     if origins is None:
         origins = list(settings.cors_origins_list)
-        # O Admin é uma origem conhecida/configurada, não um wildcard ou uma
-        # reflection do header Origin. Inclusão CONDICIONAL no CORS: o CMS
-        # ainda não é deployado em produção — o boot da API não pode depender
-        # dele. Os endpoints do CMS continuam fail-closed via as properties
-        # estritas (cms_admin_origin_value etc. exigem a config quando usados).
         admin_origin = (settings.cms_admin_origin or "").strip()
         if admin_origin and admin_origin not in origins:
             origins.append(admin_origin)
@@ -84,7 +75,6 @@ def _cors_origins_safe(origins=None):
     return origins
 
 
-# Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins_safe(),
@@ -94,10 +84,34 @@ app.add_middleware(
 )
 
 
-# Global exception handler: log the exception, return a generic 500 message.
-# No manual CORS headers here — CORSMiddleware already adds them to every
-# response (incl. errors), and manually echoing the Origin header would bypass
-# the configured allowlist.
+@app.exception_handler(HTTPException)
+async def sanitized_http_exception_handler(request: Request, exc: HTTPException):
+    """Preserve domain/client errors while redacting unexpected server 5xx details."""
+    safe_feature_disabled = (
+        exc.status_code == 503
+        and isinstance(exc.detail, dict)
+        and exc.detail.get("code") == "feature_disabled"
+        and isinstance(exc.detail.get("flag"), str)
+    )
+    if exc.status_code < 500 or safe_feature_disabled:
+        return await http_exception_handler(request, exc)
+
+    from fastapi.responses import JSONResponse
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.error(
+        "[HTTP Exception] Redacted server error status=%s path=%s",
+        exc.status_code,
+        request.url.path,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": "Internal server error"},
+        headers=exc.headers,
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Return a generic 500 without leaking internal details to the client."""
@@ -105,38 +119,47 @@ async def global_exception_handler(request: Request, exc: Exception):
     import logging
 
     logger = logging.getLogger(__name__)
-
     logger.error(f"[Global Exception Handler] {type(exc).__name__}: {str(exc)}", exc_info=True)
-
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error"},
-    )
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
-# Include routers with /api/v3 prefix
+# Provider-backed/internal-data routers receive a live authorization gate at
+# the mount boundary. The LLM Gateway keeps its public /health endpoint and
+# applies live auth per paid endpoint.
+_live_viewer = [Depends(require_role("viewer"))]
+_cms_auth_enabled = [Depends(collection_flag_dependency("cms_auth"))]
+_catalog_scan_enabled = [Depends(collection_flag_dependency("catalog_scan"))]
+_collector_associations_enabled = [Depends(collection_flag_dependency("collector_association_read"))]
+_distribution_enabled = [Depends(collection_flag_dependency("collections_distribution"))]
+
 app.include_router(system.router, prefix="/api/v3")
 app.include_router(metrics.router, prefix="/api/v3")
-app.include_router(cms_auth.router, prefix="/api/v3")
-app.include_router(collection_associations.router, prefix="/api/v3")
-app.include_router(distribution.router, prefix="/api/v3")
-app.include_router(catalog.router, prefix="/api/v3")
+app.include_router(cms_auth.router, prefix="/api/v3", dependencies=_cms_auth_enabled)
+app.include_router(
+    collection_associations.router,
+    prefix="/api/v3",
+    dependencies=_collector_associations_enabled,
+)
+app.include_router(distribution.router, prefix="/api/v3", dependencies=_distribution_enabled)
+app.include_router(catalog.router, prefix="/api/v3", dependencies=_catalog_scan_enabled)
 app.include_router(internal_curations.router, prefix="/api/v3")
 app.include_router(internal_consumer_usage.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")
 app.include_router(entities.router, prefix="/api/v3")
-app.include_router(curations.router, prefix="/api/v3")
+app.include_router(curations.router, prefix="/api/v3", dependencies=_live_viewer)
+# O gate de live auth em places é POR ROTA (places.py), não no mount: o
+# proxy /places/photo é sem-auth POR DESIGN (tags <img> não enviam headers;
+# o rate limit protege o custo) — gate no mount quebrava o proxy inteiro.
 app.include_router(places.router, prefix="/api/v3")
 app.include_router(ai.router, prefix="/api/v3")
 app.include_router(concepts.router, prefix="/api/v3")
 app.include_router(llm_gateway.router, prefix="/api/v3")
-app.include_router(openai_compat.router, prefix="/api/v3")
+app.include_router(openai_compat.router, prefix="/api/v3", dependencies=_live_viewer)
 app.include_router(capture.router, prefix="/api/v3")
 app.include_router(curators.router, prefix="/api/v3")
 app.include_router(og_image.router, prefix="/api/v3")
 
 
-# ── Root redirects to Capture ─────────────────────────────────────────────
 @app.get("/", include_in_schema=False)
 async def root():
     from fastapi.responses import RedirectResponse
@@ -144,7 +167,6 @@ async def root():
     return RedirectResponse(url="/capture/")
 
 
-# ── Capture mode static files (served at /capture) ───────────────────────────
 _CAPTURE_DIR = Path(__file__).resolve().parents[1] / "capture"
 if _CAPTURE_DIR.is_dir():
     app.mount("/capture", StaticFiles(directory=str(_CAPTURE_DIR), html=True), name="capture")

@@ -69,7 +69,10 @@ function sessionFetch(baseURL: string, sessionCookie: string) {
 
 livePublish('creates v1, drafts v2, proves v1 stable, publishes v2, archives and restores v2', async ({ baseURL, page }) => {
   if (!baseURL) throw new Error('CMS_E2E_BASE_URL is required for the publish E2E suite')
-  test.setTimeout(240_000)
+  // O worker do stack processa jobs a cada MINUTO (cron) — v1+v2 com
+  // ticks de 60s + primeira compilação das páginas do Next dev passam
+  // folgado de 240s; o fluxo completo leva ~5 min.
+  test.setTimeout(600_000)
 
   // ---------------------------------------------------------------------------
   // 1. Session bootstrap: dev FastAPI session + CMS handoff.
@@ -149,7 +152,7 @@ livePublish('creates v1, drafts v2, proves v1 stable, publishes v2, archives and
         'If-Match': String(current.draftRevision),
         ...headers(),
       },
-      body: JSON.stringify({ action, curation_ids: ids, draft_revision: current.draftRevision }),
+      body: JSON.stringify({ action, mode: 'explicit', curation_ids: ids, draft_revision: current.draftRevision }),
     })
     expect(response.status).toBe(202)
     return (await response.json()) as { id: string }
@@ -271,6 +274,7 @@ livePublish('creates v1, drafts v2, proves v1 stable, publishes v2, archives and
   // ---------------------------------------------------------------------------
   // 7. The visual CMS surface lists the collection the E2E just managed.
   // ---------------------------------------------------------------------------
-  await page.goto('/admin/collections')
+  // Rota do Payload é /admin/collections/<slug> — slug é 'collections'.
+  await page.goto('/admin/collections/collections')
   await expect(page.getByText(collection.title, { exact: true })).toBeVisible({ timeout: 20_000 })
 })

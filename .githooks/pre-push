@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+printf '\n[Concierge] Running local release gate before push...\n'
+npm run verify

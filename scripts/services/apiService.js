@@ -108,13 +108,13 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
 
         const { headers: _customHeaders, silent, ...restOptions } = options;
         const fetchOptions = {
-    method,
-    headers,
-    // cookie HttpOnly (auth aditivo): o access_token também flui via
-    // cookie quando o header Bearer não está — CORS já tem allow_credentials
-    credentials: 'include',
-    ...restOptions
-};
+            method,
+            headers,
+            // cookie HttpOnly (auth aditivo): o access_token também flui via
+            // cookie quando o header Bearer não está — CORS já tem allow_credentials
+            credentials: 'include',
+            ...restOptions
+        };
 
         this.log.debug(`${method} ${url}`);
 
@@ -140,14 +140,18 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                         retryHeaders['Content-Type'] = 'application/json';
                     }
 
-                    const retryFetchOptions = { method, headers: retryHeaders, ...restOptions };
+                    const retryFetchOptions = {
+                        method,
+                        headers: retryHeaders,
+                        credentials: 'include',
+                        ...restOptions
+                    };
                     const retryResponse = await fetch(url, retryFetchOptions);
                     if (!retryResponse.ok) {
-                        await this.handleErrorResponse(retryResponse, { silent });
-                        // refresh "sucedeu" mas o recurso ainda rejeita: LANÇA
-                        // com .status (o contrato vale para TODOS os throws) —
-                        // devolver o response faria getCuration parsear
-                        // {detail: ...} como um doc de sucesso
+                        // A logical request gets at most one automatic refresh.
+                        // If the retried request is also 401, surface it instead
+                        // of rotating the refresh session a second time.
+                        await this.handleErrorResponse(retryResponse, { silent, allowRefresh: false });
                         const errRetry = new Error('Request failed after token refresh');
                         errRetry.status = retryResponse.status;
                         throw errRetry;
@@ -165,14 +169,17 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
 
     async handleErrorResponse(response, options = {}) {
         const silent = !!options.silent;
+        const allowRefresh = options.allowRefresh !== false;
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
 
         // Check for 401 FIRST, before reading the body
         if (response.status === 401) {
             errorMessage = 'Authentication required or token expired';
-            // Try to refresh token
-            if (typeof AuthService !== 'undefined' && AuthService.isAuthenticated()) {
-                this.log.debug('Token expired, attempting refresh...');
+            // Cookie-only sessions have no JS-visible access token, so a 401
+            // attempts one refresh path when AuthService exists. A retry that
+            // also returns 401 calls this method with allowRefresh=false.
+            if (allowRefresh && typeof AuthService !== 'undefined') {
+                this.log.debug('Token expired or cookie session needs refresh, attempting refresh...');
                 const refreshed = await AuthService.refreshToken();
                 if (refreshed === true) {
                     // Return true to signal caller to retry the request

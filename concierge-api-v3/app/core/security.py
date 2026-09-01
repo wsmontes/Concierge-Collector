@@ -435,24 +435,50 @@ def is_admin_auth(auth: dict) -> bool:
 
 
 def require_role(required: str):
-    """FastAPI dependency factory: exige role >= required no JWT.
+    """FastAPI dependency factory: require the live Mongo role for writes.
 
-    API key passa (scripts administrativos = admin). Viewer nunca escreve —
-    auditoria ago/2026: os writes verificavam ownership mas não exigiam
-    role mínima, então um viewer owner podia escrever.
-    Uso: `auth: dict = Depends(require_role("curator"))`
+    API keys remain administrative service credentials. Human JWT/cookie
+    sessions are revalidated against ``users`` on every role-protected request,
+    so revoking authorization or downgrading a role takes effect immediately
+    instead of waiting for the access JWT to expire.
     """
+    from app.core.database import get_database
     from app.models.user import has_role
 
-    def dependency(auth: dict = Depends(verify_auth)) -> dict:
+    def dependency(auth: dict = Depends(verify_auth), db=Depends(get_database)) -> dict:
         if auth.get("method") == "api_key":
             return auth
-        if not has_role(auth.get("role", "viewer"), required):
+
+        email = auth.get("user")
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authenticated user is missing",
+            )
+
+        user = db.users.find_one({"email": email})
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+            )
+        if user.get("authorized") is not True:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User not authorized",
+            )
+
+        stored_role = user.get("role")
+        current_role = stored_role if stored_role in ("admin", "curator", "viewer") else "viewer"
+        if not has_role(current_role, required):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Requires {required} role",
             )
-        return auth
+
+        live_auth = dict(auth)
+        live_auth["role"] = current_role
+        return live_auth
 
     return dependency
 

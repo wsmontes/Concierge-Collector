@@ -146,11 +146,13 @@ describe('ApiService - Authentication', () => {
     expect([401, 403]).toContain(response.status);
   });
 
-  test('should allow GET requests without API key', async (t) => {
+  // Leitura de entities exige auth desde o Baseline 1 (hardening de
+  // leitura — test_integration: "leitura de entities agora exige auth").
+  test('entity reads require an API key', async (t) => {
     if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
-    
+
     const response = await fetch(`${API_BASE}/entities`);
-    expect(response.ok).toBe(true);
+    expect(response.status).toBe(401);
   });
 });
 
@@ -198,9 +200,11 @@ describe('ApiService - Entity Operations', () => {
   test('should get entity by ID', async (t) => {
     if (!apiAvailable || !testEntityId) { t.skip(apiUnavailableReason); return; }
     
-    const response = await fetch(`${API_BASE}/entities/${testEntityId}`);
+    const response = await fetch(`${API_BASE}/entities/${testEntityId}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
-    
+
     const entity = await response.json();
     expect(entity.entity_id).toBe(testEntityId);
     expect(entity.name).toBe('Test Restaurant');
@@ -209,9 +213,11 @@ describe('ApiService - Entity Operations', () => {
   test('should list all entities', async (t) => {
     if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
-    const response = await fetch(`${API_BASE}/entities`);
+    const response = await fetch(`${API_BASE}/entities`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
-    
+
     const result = await response.json();
     expect(result).toHaveProperty('items');
     expect(Array.isArray(result.items)).toBe(true);
@@ -222,7 +228,9 @@ describe('ApiService - Entity Operations', () => {
   test('should filter entities by type', async (t) => {
     if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
-    const response = await fetch(`${API_BASE}/entities?type=restaurant`);
+    const response = await fetch(`${API_BASE}/entities?type=restaurant`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
     
     const result = await response.json();
@@ -233,7 +241,9 @@ describe('ApiService - Entity Operations', () => {
   test('should filter entities by status', async (t) => {
     if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
-    const response = await fetch(`${API_BASE}/entities?status=active`);
+    const response = await fetch(`${API_BASE}/entities?status=active`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
     
     const result = await response.json();
@@ -245,7 +255,9 @@ describe('ApiService - Entity Operations', () => {
     if (!apiAvailable || !testEntityId) { t.skip(apiUnavailableReason); return; }
     
     // Get current version
-    const getResponse = await fetch(`${API_BASE}/entities/${testEntityId}`);
+    const getResponse = await fetch(`${API_BASE}/entities/${testEntityId}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     const current = await getResponse.json();
     
     // Update with If-Match header
@@ -298,7 +310,9 @@ describe('ApiService - Entity Operations', () => {
     expect(response.ok).toBe(true);
     
     // Verify deleted
-    const getResponse = await fetch(`${API_BASE}/entities/${testEntityId}`);
+    const getResponse = await fetch(`${API_BASE}/entities/${testEntityId}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(getResponse.status).toBe(404);
   });
 });
@@ -311,7 +325,9 @@ describe('ApiService - Error Handling', () => {
   test('should return 404 for non-existent entity', async (t) => {
     if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
-    const response = await fetch(`${API_BASE}/entities/nonexistent_id_xyz`);
+    const response = await fetch(`${API_BASE}/entities/nonexistent_id_xyz`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.status).toBe(404);
   });
 
@@ -439,7 +455,9 @@ describe('ApiService - Request Format', () => {
   test('should handle query parameters', async (t) => {
     if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
-    const response = await fetch(`${API_BASE}/entities?type=restaurant&limit=5`);
+    const response = await fetch(`${API_BASE}/entities?type=restaurant&limit=5`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
     
     const result = await response.json();
@@ -449,7 +467,9 @@ describe('ApiService - Request Format', () => {
   test('should handle pagination', async (t) => {
     if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
-    const response = await fetch(`${API_BASE}/entities?limit=10&offset=0`);
+    const response = await fetch(`${API_BASE}/entities?limit=10&offset=0`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
     
     const result = await response.json();
@@ -1166,7 +1186,9 @@ describe('ApiService - Advanced Entity Operations', () => {
     }
 
     // Search for "Pizza"
-    const response = await fetch(`${API_BASE}/entities?search=Pizza&limit=200`);
+    const response = await fetch(`${API_BASE}/entities?search=Pizza&limit=200`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
     
     const result = await response.json();
@@ -1185,7 +1207,9 @@ describe('ApiService - Advanced Entity Operations', () => {
     if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     // Test sorting by name
-    const response = await fetch(`${API_BASE}/entities?sort_by=name&sort_order=asc&limit=10`);
+    const response = await fetch(`${API_BASE}/entities?sort_by=name&sort_order=asc&limit=10`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
     
     const result = await response.json();
@@ -1198,7 +1222,9 @@ describe('ApiService - Advanced Entity Operations', () => {
     const limit = 5;
     const offset = 0;
 
-    const response = await fetch(`${API_BASE}/entities?limit=${limit}&offset=${offset}`);
+    const response = await fetch(`${API_BASE}/entities?limit=${limit}&offset=${offset}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
     
     const result = await response.json();
@@ -1328,7 +1354,9 @@ describe('ApiService - Optimistic Locking', () => {
     expect([403, 409, 412]).toContain(update2Response.status);
 
     // Verify first update succeeded
-    const getResponse = await fetch(`${API_BASE}/entities/${created.entity_id}`);
+    const getResponse = await fetch(`${API_BASE}/entities/${created.entity_id}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     const current = await getResponse.json();
     expect(current.name).toBe('Updated by User 1');
     expect(current.version).toBe(updated1.version);

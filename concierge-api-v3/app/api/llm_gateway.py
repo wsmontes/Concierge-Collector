@@ -22,7 +22,7 @@ from app.models.llm_models import (
 )
 from app.models.llm_tools import get_all_tools, get_tools_manifest
 from app.core.rate_limit import limiter
-from app.core.security import require_role, verify_auth
+from app.core.security import require_role
 from app.services.llm_place_service import LLMPlaceService
 from app.core.database import get_database
 
@@ -89,8 +89,8 @@ def search_restaurants(
         )
 
     except Exception as e:
-        logger.error(f"Error in search-restaurants: {e}")
-        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+        logger.error("Error in search-restaurants: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Restaurant search failed")
 
 
 @router.post("/get-restaurant-snapshot", response_model=LLMGetRestaurantSnapshotResponse)
@@ -111,8 +111,8 @@ def get_restaurant_snapshot(
     It consolidates data from:
     - Google Places (if enabled)
     - MongoDB entities (if exists)
-    - Michelin guide (if available)
-    - Curations (if exists)
+    - Michelin guide
+    - Curations
 
     The response is optimized for LLM consumption with:
     - Clear boolean flags (is_open_now, open_on_weekend, etc.)
@@ -164,8 +164,8 @@ def get_restaurant_snapshot(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in get-restaurant-snapshot: {e}")
-        raise HTTPException(status_code=500, detail=f"Snapshot error: {str(e)}")
+        logger.error("Error in get-restaurant-snapshot: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Restaurant snapshot failed")
 
 
 @router.post("/get-restaurant-availability", response_model=LLMGetRestaurantAvailabilityResponse)
@@ -174,7 +174,7 @@ def get_restaurant_availability(
     request: Request,
     body: LLMGetRestaurantAvailabilityRequest,
     service: LLMPlaceService = Depends(get_llm_service),
-    auth: dict = Depends(verify_auth),  # Support both API key and JWT
+    auth: dict = Depends(require_role("viewer")),
 ):
     """
     Get restaurant availability and opening hours information.
@@ -225,8 +225,8 @@ def get_restaurant_availability(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in get-restaurant-availability: {e}")
-        raise HTTPException(status_code=500, detail=f"Availability error: {str(e)}")
+        logger.error("Error in get-restaurant-availability: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Restaurant availability failed")
 
 
 @router.get("/health")
@@ -246,7 +246,7 @@ async def health_check():
 
 
 @router.get("/tools")
-def get_tools(auth: dict = Depends(verify_auth)):
+def get_tools(auth: dict = Depends(require_role("viewer"))):
     """
     Get MCP tool definitions.
 
@@ -263,7 +263,7 @@ def get_tools(auth: dict = Depends(verify_auth)):
 
 
 @router.get("/tools-manifest")
-def get_manifest(auth: dict = Depends(verify_auth)):
+def get_manifest(auth: dict = Depends(require_role("viewer"))):
     """
     Get complete MCP tools manifest with metadata.
 

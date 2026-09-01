@@ -32,8 +32,11 @@
     "test:e2e": "npm run test:e2e --workspace=@concierge/admin",
     "lint:admin": "npm run lint --workspace=@concierge/admin",
     "typecheck:admin": "npm run typecheck --workspace=@concierge/admin",
-    "generate:contracts": "cd concierge-api-v3 && venv/bin/python scripts/export_admin_openapi.py && cd .. && npm run generate --workspace=@concierge/fastapi-client",
-    "check:contracts": "cd concierge-api-v3 && venv/bin/python scripts/export_admin_openapi.py --check && cd .. && npm run check --workspace=@concierge/fastapi-client"
+    "generate:contracts": "node scripts/release/run-python.mjs scripts/export_admin_openapi.py && npm run generate --workspace=@concierge/fastapi-client",
+    "check:contracts": "node scripts/release/run-python.mjs scripts/export_admin_openapi.py --check && npm run check --workspace=@concierge/fastapi-client",
+    "verify": "node scripts/release/release-gate.mjs",
+    "verify:full": "node scripts/release/release-gate.mjs --full",
+    "hooks:enable": "node scripts/release/enable-hooks.mjs"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^1.6.1",

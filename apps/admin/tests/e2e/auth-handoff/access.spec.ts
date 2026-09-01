@@ -10,6 +10,21 @@ liveHandoff('CMS handoff keeps tokens out of browser state and sets a host-only 
 }) => {
   if (!baseURL) throw new Error('CMS_E2E_BASE_URL is required for the CMS handoff E2E suite')
 
+  // Bootstrap da sessão dev no FastAPI (igual ao publish spec): sem o
+  // dev-login, o /auth/cms/authorize responde 401 e o handoff nunca chega
+  // ao callback. O runbook §2 exige ENVIRONMENT=development exatamente
+  // para este fluxo.
+  const FASTAPI_URL = process.env.CMS_E2E_FASTAPI_URL || 'http://127.0.0.1:8000'
+  const fastApiOrigin = new URL(FASTAPI_URL).origin
+  const devLogin = await fetch(`${FASTAPI_URL}/api/v3/auth/dev-login`)
+  expect(devLogin.status, 'FastAPI must run in development mode for dev-login').toBe(200)
+  const tokens = await devLogin.json() as { access_token?: string; refresh_token?: string }
+  expect(tokens.access_token).toBeTruthy()
+  await context.addCookies([
+    { name: 'access_token', value: tokens.access_token ?? '', domain: new URL(fastApiOrigin).hostname, path: '/' },
+    { name: 'refresh_token', value: tokens.refresh_token ?? '', domain: new URL(fastApiOrigin).hostname, path: '/' },
+  ])
+
   const adminOrigin = new URL(baseURL).origin
   const callbackResponse = page.waitForResponse((response) => {
     const url = new URL(response.url())
@@ -26,9 +41,11 @@ liveHandoff('CMS handoff keeps tokens out of browser state and sets a host-only 
     expect(finalUrl.searchParams.has(parameter)).toBe(false)
   }
 
-  const headers = await callback.allHeaders()
-  expect(headers['set-cookie']).toMatch(/cms_session=/)
-  expect(headers['set-cookie']).not.toMatch(/(?:^|;)\s*domain=/i)
+  // Playwright NÃO expõe set-cookie de respostas de redirect (nem em
+  // allHeaders() nem em headersArray()) — o browser processa o cookie do
+  // redirect mesmo assim. As asserções de cookie abaixo (domain/httpOnly/
+  // sameSite) são a prova observável do handoff; o publish spec confirma
+  // o mesmo cookie via context.cookies() após o mesmo fluxo.
 
   const session = (await context.cookies()).find((cookie) => cookie.name === 'cms_session')
   expect(session).toMatchObject({
