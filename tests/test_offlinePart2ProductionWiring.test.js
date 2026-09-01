@@ -16,8 +16,11 @@ describe('Offline Part 2 production wiring', () => {
     expect(pendingAudio).toContain('offlineDurabilityModule.js?v=20260830-');
     expect(durability).toContain('storageDurability.js?v=20260830-');
     expect(storageDurability).toContain('offlinePart2Bootstrap.js?v=20260830-');
+    expect(part2).toContain("'OfflineAudioLeaseGuard'");
     expect(part2).toContain("'OfflineCaptureProcessor'");
+    expect(part2).toContain("'OfflinePhotoLeaseGuard'");
     expect(part2).toContain("'OfflinePhotoProcessor'");
+    expect(part2).toContain("'OfflinePhotoDurabilityGuard'");
     expect(part2).toContain("'OfflineSourceIdentityBridge'");
     expect(part2).toContain("'OfflineKnownLinkageGuard'");
     expect(part2).toContain("'OfflineExplicitDiscardGuard'");
@@ -28,10 +31,22 @@ describe('Offline Part 2 production wiring', () => {
     expect(part2).toContain("'SyncOwnershipFailureGuard'");
   });
 
-  test('fresh Service Worker generation precaches new dynamic modules and serves versioned local requests offline', () => {
-    expect(serviceWorker).toContain("concierge-collector-shell-v3");
-    expect(serviceWorker).toContain('ignoreSearch: true');
+  test('preloads lease guards before processors can schedule reconnect work', () => {
+    expect(part2.indexOf("'OfflineAudioLeaseGuard'")).toBeLessThan(part2.indexOf("'OfflineCaptureProcessor'"));
+    expect(part2.indexOf("'OfflinePhotoLeaseGuard'")).toBeLessThan(part2.indexOf("'OfflinePhotoProcessor'"));
+  });
+
+  test('loads the save coordinator last so it owns the outermost save boundary', () => {
+    const coordinator = part2.lastIndexOf("'OfflineSaveCoordinator'");
+    const identity = part2.indexOf("'OfflineCuratorIdentityGuard'");
+    expect(coordinator).toBeGreaterThan(identity);
+  });
+
+  test('fresh Service Worker generation precaches final-hash and shell-generation identities', () => {
+    expect(serviceWorker).toContain("const SHELL_VERSION = '__COLLECTOR_SHELL_VERSION__'");
+    expect(serviceWorker).not.toContain('ignoreSearch: true');
+    expect(serviceWorker).toContain('entry.sha256.slice(0, 12)');
+    expect(serviceWorker).toContain('?v=${SHELL_VERSION}');
     expect(serviceWorker).toContain('url.origin === self.location.origin');
-    expect(serviceWorker).toContain('manifest.map');
   });
 });

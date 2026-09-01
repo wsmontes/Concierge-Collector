@@ -107,7 +107,7 @@ liveBulk('applies an all-matching selection across Collections without ever ship
 
   const createResponse = await api('/api/admin/v1/collections', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestId() },
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestId(), 'X-Request-Id': requestId() },
     body: JSON.stringify({ slug: `e2e-bulk-${Date.now()}`, title: `E2E Bulk ${Date.now()}` }),
   })
   expect(createResponse.status).toBe(201)
@@ -127,17 +127,16 @@ liveBulk('applies an all-matching selection across Collections without ever ship
   const table = page.getByRole('table', { name: 'Curations' })
   await expect(table.locator('.curation-table__row input[type="checkbox"]')).toHaveCount(3, { timeout: 30_000 })
 
+  // Select-all is a local React state change; the selection intent POST only
+  // fires on "Apply to Collections" (handleApplyToCollections). Register both
+  // request waits before the Apply click, then await them in order.
+  await page.getByRole('button', { name: 'Select all matching results' }).click()
+
   // The selection intent POST: prove all-matching ships filters, never IDs.
   const selectionRequest = page.waitForRequest(
     (request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/admin/v1/selections',
     { timeout: 30_000 },
   )
-  await page.getByRole('button', { name: 'Select all matching results' }).click()
-  const selectionSent = await selectionRequest
-  const selectionBody = selectionSent.postDataJSON() as Record<string, unknown>
-  expect(selectionBody.mode).toBe('all_matching')
-  expect(Object.keys(selectionBody)).not.toContain('curation_ids')
-  expect(Object.keys(selectionBody)).not.toContain('curationIds')
 
   // The bulk intent POST: prove the browser sends collectionIds + action only.
   // Even a 50k selection never expands into an ID array in this request.
@@ -148,6 +147,12 @@ liveBulk('applies an all-matching selection across Collections without ever ship
 
   // The toolbar polls the materialized selection; the dialog opens when ready.
   await page.getByRole('button', { name: /Apply to Collections/ }).click()
+  const selectionSent = await selectionRequest
+  const selectionBody = selectionSent.postDataJSON() as Record<string, unknown>
+  expect(selectionBody.mode).toBe('all_matching')
+  expect(Object.keys(selectionBody)).not.toContain('curation_ids')
+  expect(Object.keys(selectionBody)).not.toContain('curationIds')
+
   const dialog = page.getByRole('dialog', { name: 'Apply selection to Collections' })
   await expect(dialog).toBeVisible({ timeout: 120_000 })
   await dialog.getByRole('checkbox', { name: new RegExp(collection.title) }).click()

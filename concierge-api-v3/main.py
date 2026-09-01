@@ -4,7 +4,6 @@ Main application entry point with PyMongo (sync) support
 """
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -14,6 +13,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
 from app.core.feature_flags import collection_flag_dependency
+from app.core.http_error_contract import http_exception_content
 from app.core.lifespan import lifespan
 from app.core.rate_limit import limiter
 from app.core.security import require_role
@@ -86,7 +86,7 @@ app.add_middleware(
 
 @app.exception_handler(HTTPException)
 async def sanitized_http_exception_handler(request: Request, exc: HTTPException):
-    """Preserve domain/client errors while redacting unexpected server 5xx details."""
+    """Preserve domain/client errors (with stable domain codes) while redacting unexpected server 5xx details."""
     safe_feature_disabled = (
         exc.status_code == 503
         and isinstance(exc.detail, dict)
@@ -94,7 +94,13 @@ async def sanitized_http_exception_handler(request: Request, exc: HTTPException)
         and isinstance(exc.detail.get("flag"), str)
     )
     if exc.status_code < 500 or safe_feature_disabled:
-        return await http_exception_handler(request, exc)
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=http_exception_content(exc),
+            headers=exc.headers,
+        )
 
     from fastapi.responses import JSONResponse
     import logging

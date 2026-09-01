@@ -50,15 +50,16 @@ function loadGuard({ bulk = false } = {}) {
   const events = [];
   const ApiService = {
     async updateCuration() {
-      const error = new Error('Access forbidden - user not authorized');
+      const error = new Error('Cannot modify another curator\'s curation');
       error.status = 403;
+      error.code = 'curation_owner_mismatch';
       throw error;
     },
     async bulkUpsertCurations(items) {
       return {
         created: 0,
         updated: 0,
-        errors: [{ index: 0, error: 'Cannot modify another curator\'s curation' }],
+        errors: [{ index: 0, code: 'curation_owner_mismatch', error: 'Cannot modify another curator\'s curation' }],
         total_received: items.length
       };
     }
@@ -97,7 +98,21 @@ function loadGuard({ bulk = false } = {}) {
 }
 
 describe('SyncOwnershipFailureGuard', () => {
-  test('PATCH 403 becomes an ownership conflict instead of endless pending retry', async () => {
+  test('does not infer ownership from a generic HTTP 403', () => {
+    const { guard } = loadGuard();
+    expect(guard.isOwnershipFailure({ status: 403 })).toBe(false);
+    expect(guard.isOwnershipFailure({ status: 403, detail: 'Forbidden' })).toBe(false);
+    expect(guard.isOwnershipFailure({ status: 403, message: 'User not authorized' })).toBe(false);
+  });
+
+  test('recognizes explicit ownership-domain codes across response shapes', () => {
+    const { guard } = loadGuard();
+    expect(guard.isOwnershipFailure({ status: 403, code: 'curation_owner_mismatch' })).toBe(true);
+    expect(guard.isOwnershipFailure({ status: 403, errorCode: 'curation_owner_mismatch' })).toBe(true);
+    expect(guard.isOwnershipFailure({ status: 403, detail: { code: 'curation_owner_mismatch' } })).toBe(true);
+  });
+
+  test('PATCH ownership code becomes a permanent ownership conflict', async () => {
     const { guard, db, curation, events, manager } = loadGuard();
     expect(guard.install()).toBe(true);
 

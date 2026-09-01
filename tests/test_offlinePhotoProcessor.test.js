@@ -5,6 +5,7 @@ import { describe, expect, test, vi } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sourcePath = path.resolve(__dirname, '../scripts/services/offlinePhotoProcessor.js');
+const leaseGuardPath = path.resolve(__dirname, '../scripts/services/offlinePhotoLeaseGuard.js');
 
 function table(seed = [], key = 'id') {
   const rows = seed.map((row) => structuredClone(row));
@@ -34,6 +35,14 @@ function table(seed = [], key = 'id') {
       };
     }
   };
+}
+
+function installLeaseGuard(processor, runtime) {
+  const source = readFileSync(leaseGuardPath, 'utf8');
+  // eslint-disable-next-line no-new-func
+  new Function('window', `${source}\n;`)(runtime);
+  const Guard = runtime.OfflinePhotoLeaseGuard;
+  return new Guard(runtime).install(processor);
 }
 
 function loadProcessor({ online = true, drafts = [], curations = [], analysis = null } = {}) {
@@ -204,6 +213,31 @@ describe('OfflinePhotoProcessor', () => {
     expect(result.failed).toBe(1);
     expect(after.photoProcessing[sourceId]).toMatchObject({ status: 'failed', retryCount: 1 });
     expect(JSON.parse(after.metadata).photos).toHaveLength(1);
+  });
+
+  test('leased work owned by another tab is counted as skipped, not failed', async () => {
+    const draft = photoDraft();
+    const { processor, runtime, draftTable, analyzeImage } = loadProcessor({ online: true, drafts: [draft] });
+    const sourceId = await processor.sourceIdForPhoto('data:image/jpeg;base64,QUJD');
+    await draftTable.update(1, {
+      photoProcessing: {
+        [sourceId]: {
+          sourceId,
+          status: 'processing',
+          capturedAt: '2026-08-30T18:00:00.000Z',
+          retryCount: 0,
+          processingLeaseToken: 'other-tab-token',
+          processingLeaseOwner: 'other-tab',
+          processingLeaseExpiresAt: new Date(Date.now() + 60_000).toISOString()
+        }
+      }
+    });
+    expect(installLeaseGuard(processor, runtime)).toBe(true);
+
+    const result = await processor.processPending();
+
+    expect(result).toMatchObject({ processed: 0, failed: 0, skipped: 1 });
+    expect(analyzeImage).not.toHaveBeenCalled();
   });
 
   test('photos not registered for AI are never analyzed merely because they exist in a draft', async () => {

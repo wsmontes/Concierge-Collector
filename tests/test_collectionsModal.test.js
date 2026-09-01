@@ -17,6 +17,7 @@ function loadModal() {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   document.body.innerHTML = '';
   delete window.CollectionsModal;
   delete window.CollectionsService;
@@ -83,5 +84,36 @@ describe('CollectionsModal', () => {
     // No guaranteed 403 round-trip for a non-admin.
     expect(window.CollectionsService.getDraftOptions).not.toHaveBeenCalled();
     expect(opened[0].content.querySelector('.collections-modal__action')).toBeNull();
+  });
+
+  test('completed_with_skips reloads authoritative draft but never reports unconditional success', async () => {
+    vi.useFakeTimers();
+    const opened = [];
+    window.ModalManager = { open: vi.fn((options) => { opened.push(options); return 'modal-1'; }) };
+    window.CollectionsService = {
+      getPublishedAssociations: vi.fn().mockResolvedValue({ items: [] }),
+      getDraftOptions: vi.fn().mockResolvedValue({
+        items: [{ collectionId: 'c1', title: 'Brazil', slug: 'brazil', draftRevision: 4, draftState: 'dirty', desiredState: 'add', locked: false }]
+      }),
+      createSingleCurationOperation: vi.fn().mockResolvedValue({ id: 'op-1' }),
+      getOperation: vi.fn().mockResolvedValue({
+        id: 'op-1',
+        status: 'completed_with_skips',
+        reasonCode: 'curation_already_present'
+      })
+    };
+
+    authAs('admin');
+    loadModal().open({ curation_id: 'curation-1' });
+    await vi.advanceTimersByTimeAsync(0);
+    const content = opened[0].content;
+    content.querySelector('.collections-modal__action').click();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(1000);
+    await Promise.resolve();
+
+    expect(content.querySelector('.collections-modal__status').textContent).toContain('completed with skips');
+    expect(content.querySelector('.collections-modal__status').textContent).not.toBe('Draft updated.');
+    expect(window.CollectionsService.getDraftOptions.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 });

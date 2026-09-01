@@ -52,7 +52,7 @@ describe('StorageDurability', () => {
     await expect(policy.assertCaptureCapacity('audio')).rejects.toMatchObject({ name: 'StorageCapacityError' });
   });
 
-  test('allows large capture below the critical threshold', async () => {
+  test('allows large capture below the critical threshold when no size is known yet', async () => {
     const StorageDurability = loadStorageDurability({
       storage: {
         async estimate() { return { usage: 60, quota: 100 }; }
@@ -61,6 +61,32 @@ describe('StorageDurability', () => {
     const policy = new StorageDurability({ criticalRatio: 0.95 });
 
     await expect(policy.assertCaptureCapacity('photo')).resolves.toMatchObject({ canCaptureLarge: true });
+  });
+
+  test('blocks a known capture that cannot fit even below the percentage threshold', async () => {
+    const StorageDurability = loadStorageDurability({
+      storage: {
+        async estimate() { return { usage: 60, quota: 100 }; }
+      }
+    });
+    const policy = new StorageDurability({ criticalRatio: 0.95, safetyReserveBytes: 0 });
+
+    await expect(policy.assertCaptureCapacity('photo', 50)).rejects.toMatchObject({
+      name: 'StorageCapacityError'
+    });
+  });
+
+  test('allows a known capture when free bytes cover it plus reserve', async () => {
+    const StorageDurability = loadStorageDurability({
+      storage: {
+        async estimate() { return { usage: 60, quota: 100 }; }
+      }
+    });
+    const policy = new StorageDurability({ criticalRatio: 0.95, safetyReserveBytes: 5 });
+
+    await expect(policy.assertCaptureCapacity('audio', 30)).resolves.toMatchObject({
+      availableBytes: 40
+    });
   });
 
   test('recognizes QuotaExceededError without prescribing deletion', () => {
@@ -76,8 +102,19 @@ describe('Collector integration', () => {
 
   test('preflights recording and photo intake through the storage policy', () => {
     expect(storageSrc).toContain('installCaptureCapacityGuards');
-    expect(storageSrc).toContain("assertCaptureCapacity('audio')");
-    expect(storageSrc).toContain("assertCaptureCapacity('photo')");
+    expect(storageSrc).toContain("assertCaptureCapacity('audio'");
+    expect(storageSrc).toContain("assertCaptureCapacity('photo'");
+  });
+
+  test('uses actual media size before raw-audio persistence and photo preview', () => {
+    expect(storageSrc).toContain('expectedBytes');
+    expect(storageSrc).toContain('estimatePhotoBytes');
+    expect(storageSrc).toContain('audioBlob?.size');
+  });
+
+  test('keeps polling until both capture and raw-audio guards are actually installed', () => {
+    expect(storageSrc).toContain('this._captureGuardsInstalled && this._audioWriteGuardInstalled');
+    expect(storageSrc).toContain('manager.__storageDurabilitySaveAudioInstalled');
   });
 
   test('exposes the policy through DataStore without making text save depend on quota', () => {

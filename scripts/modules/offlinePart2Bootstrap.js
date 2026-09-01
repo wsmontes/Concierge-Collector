@@ -18,13 +18,22 @@
         ['CurationOwnershipPolicy', 'scripts/services/curationOwnershipPolicy.js?v=20260830-1'],
         ['OfflineLinkingModule', 'scripts/modules/offlineLinkingModule.js?v=20260830-1'],
         ['OfflineOwnershipModule', 'scripts/modules/offlineOwnershipModule.js?v=20260830-1'],
+        // Lease guards load first and observe processor assignment. This makes
+        // their wrappers attach synchronously before processor.start()'s
+        // setTimeout(0) reconnect work can execute on a fresh page.
+        ['OfflineAudioLeaseGuard', 'scripts/services/offlineAudioLeaseGuard.js?v=20260831-1'],
         ['CurationAuthoringController', 'scripts/modules/curationAuthoringController.js?v=20260830-1'],
         ['OfflineCaptureProcessor', 'scripts/services/offlineCaptureProcessor.js?v=20260830-1'],
+        ['OfflinePhotoLeaseGuard', 'scripts/services/offlinePhotoLeaseGuard.js?v=20260831-1'],
         ['OfflinePhotoProcessor', 'scripts/services/offlinePhotoProcessor.js?v=20260830-1'],
+        ['OfflinePhotoDurabilityGuard', 'scripts/services/offlinePhotoDurabilityGuard.js?v=20260831-1'],
         ['OfflineSourceIdentityBridge', 'scripts/modules/offlineSourceIdentityBridge.js?v=20260830-1'],
         ['OfflineKnownLinkageGuard', 'scripts/modules/offlineKnownLinkageGuard.js?v=20260830-1'],
         ['OfflineExplicitDiscardGuard', 'scripts/modules/offlineExplicitDiscardGuard.js?v=20260830-1'],
-        ['OfflineCuratorIdentityGuard', 'scripts/modules/offlineCuratorIdentityGuard.js?v=20260830-1']
+        ['OfflineCuratorIdentityGuard', 'scripts/modules/offlineCuratorIdentityGuard.js?v=20260830-1'],
+        // Loaded last on purpose. It waits for the save compatibility wrappers
+        // above to attach, then becomes the outermost serialized save boundary.
+        ['OfflineSaveCoordinator', 'scripts/services/offlineSaveCoordinator.js?v=20260831-1']
     ];
 
     function loadScript(globalName, src) {

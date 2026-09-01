@@ -9,11 +9,14 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
     constructor() {
         this.log = Logger.module('DraftRestaurantManager');
         this.dataStorage = null;
-        this.autoSaveTimeout = null;
         this.autoSaveDelay = 3000;
         this.currentDraftId = null;
         this.currentSessionId = null;
-        this.pendingAutoSave = null;
+        // Debounce state and I/O ordering are both keyed by durable draft id.
+        // Independent drafts never cancel each other, while two writes for one
+        // draft can never complete out of order and resurrect stale content.
+        this.pendingAutoSaves = new Map();
+        this.writeTails = new Map();
     }
 
     init(dataStorage) {
@@ -133,35 +136,70 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
         await this.dataStorage.db.draftRestaurants.update(draftId, updates);
     }
 
-    async autoSaveDraft(draftId, data) {
-        if (this.autoSaveTimeout) clearTimeout(this.autoSaveTimeout);
-        const token = {};
-        this.pendingAutoSave = { draftId, data, token };
-        this.autoSaveTimeout = setTimeout(async () => {
-            const pending = this.pendingAutoSave;
-            if (!pending || pending.token !== token) return;
-            try {
-                await this.updateDraft(pending.draftId, pending.data);
-            } catch (error) {
-                this.log.error('Error auto-saving draft:', error);
-            } finally {
-                if (this.pendingAutoSave?.token === token) {
-                    this.pendingAutoSave = null;
-                    this.autoSaveTimeout = null;
-                }
-            }
-        }, this.autoSaveDelay);
+    _enqueueDraftWrite(draftId, data) {
+        const previous = this.writeTails.get(draftId) || Promise.resolve();
+        // A failed earlier write must not permanently poison this draft's
+        // queue; its original caller still receives the rejection, but the next
+        // newer write is allowed to attempt persistence.
+        const run = previous.catch(() => undefined).then(() => this.updateDraft(draftId, data));
+        let tracked = null;
+        tracked = run.finally(() => {
+            if (this.writeTails.get(draftId) === tracked) this.writeTails.delete(draftId);
+        });
+        this.writeTails.set(draftId, tracked);
+        return tracked;
     }
 
-    async flushPendingSave() {
-        if (this.autoSaveTimeout) {
-            clearTimeout(this.autoSaveTimeout);
-            this.autoSaveTimeout = null;
+    async autoSaveDraft(draftId, data) {
+        if (draftId === null || draftId === undefined) return false;
+
+        const previous = this.pendingAutoSaves.get(draftId);
+        if (previous?.timeout) clearTimeout(previous.timeout);
+
+        const token = {};
+        const pending = { draftId, data, token, timeout: null };
+        pending.timeout = setTimeout(async () => {
+            const current = this.pendingAutoSaves.get(draftId);
+            if (!current || current.token !== token) return;
+            // Remove the debounce entry before starting I/O. flushPendingSave()
+            // can still see/await the write through writeTails.
+            this.pendingAutoSaves.delete(draftId);
+            try {
+                await this._enqueueDraftWrite(current.draftId, current.data);
+            } catch (error) {
+                this.log.error('Error auto-saving draft:', error);
+            }
+        }, this.autoSaveDelay);
+
+        this.pendingAutoSaves.set(draftId, pending);
+        return true;
+    }
+
+    async flushPendingSave(draftId = null) {
+        const allDrafts = draftId === null || draftId === undefined;
+        const entries = allDrafts
+            ? [...this.pendingAutoSaves.entries()]
+            : (this.pendingAutoSaves.has(draftId)
+                ? [[draftId, this.pendingAutoSaves.get(draftId)]]
+                : []);
+
+        for (const [id, pending] of entries) {
+            if (pending?.timeout) clearTimeout(pending.timeout);
+            // Delete before awaiting I/O so a new autosave scheduled while the
+            // flush is in flight gets a fresh entry rather than being erased.
+            if (this.pendingAutoSaves.get(id)?.token === pending.token) {
+                this.pendingAutoSaves.delete(id);
+            }
+            this._enqueueDraftWrite(pending.draftId, pending.data);
         }
-        const pending = this.pendingAutoSave;
-        this.pendingAutoSave = null;
-        if (!pending) return false;
-        await this.updateDraft(pending.draftId, pending.data);
+
+        const tails = allDrafts
+            ? [...this.writeTails.values()]
+            : (this.writeTails.has(draftId) ? [this.writeTails.get(draftId)] : []);
+        const uniqueTails = [...new Set(tails.filter(Boolean))];
+        if (!uniqueTails.length) return false;
+
+        await Promise.all(uniqueTails);
         return true;
     }
 
@@ -194,7 +232,9 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
     }
 
     async deleteDraft(draftId) {
-        await this.flushPendingSave().catch(() => {});
+        // Flush/await only this draft. Other draft sessions retain their
+        // independent debounce/write queues and can still be flushed later.
+        await this.flushPendingSave(draftId).catch(() => {});
         await this.dataStorage.db.draftRestaurants.delete(draftId);
         if (this.currentDraftId === draftId) this.clearCurrentDraft();
     }

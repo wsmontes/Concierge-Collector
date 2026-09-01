@@ -1,14 +1,18 @@
 /*
  * SyncOwnershipFailureGuard
  *
- * A 403 on a Curation write is not a transient network failure. Retrying it
- * forever leaves a divergent local record that appears merely "pending".
- * Capture those permanent authorization failures, preserve the local Curation
- * as a conflict for inspection, remove automatic retry queue rows, and emit
- * the existing sync-conflict event understood by the UI.
+ * Ownership rejection on a Curation write is permanent, but HTTP 403 alone is
+ * not ownership semantics. Only an explicit machine-readable ownership code
+ * may quarantine the local Curation as `ownership_forbidden`; generic role or
+ * authorization failures remain ordinary sync failures.
  */
 (function exposeSyncOwnershipFailureGuard(global) {
     'use strict';
+
+    const OWNERSHIP_CODES = new Set([
+        'curation_owner_mismatch',
+        'curation_ownership_forbidden'
+    ]);
 
     class SyncOwnershipFailureGuard {
         constructor(runtime = global) {
@@ -34,24 +38,31 @@
             this._timer = this.runtime.setTimeout?.(() => this._pollInstall(attempt + 1), 100);
         }
 
+        errorCode(value) {
+            if (!value) return null;
+            const candidates = [
+                value?.code,
+                value?.errorCode,
+                value?.detail?.code,
+                value?.error?.code,
+                value?.body?.code,
+                value?.response?.data?.code
+            ];
+            const code = candidates.find((candidate) => typeof candidate === 'string' && candidate.trim());
+            return code ? code.trim().toLowerCase() : null;
+        }
+
         isOwnershipFailure(value) {
-            if (!value) return false;
-            if (Number(value?.status) === 403) return true;
-            const text = String(
-                value?.error || value?.detail || value?.message || value
-            ).toLowerCase();
-            return text.includes('403') ||
-                text.includes('forbidden') ||
-                text.includes('not authorized') ||
-                text.includes('cannot modify another curator') ||
-                text.includes("another curator's curation");
+            const code = this.errorCode(value);
+            return Boolean(code && OWNERSHIP_CODES.has(code));
         }
 
         remember(curationId, error) {
             if (!curationId) return;
             this.failures.set(String(curationId), {
                 curationId: String(curationId),
-                message: String(error?.message || error?.error || error || 'Forbidden Curation write'),
+                code: this.errorCode(error),
+                message: String(error?.message || error?.error || error?.detail?.message || error || 'Forbidden Curation write'),
                 at: new Date().toISOString()
             });
         }
@@ -64,9 +75,33 @@
             return failure;
         }
 
+        installErrorCodeBridge(api) {
+            if (!api?.handleErrorResponse || api.__syncOwnershipErrorCodeBridgeInstalled) return Boolean(api?.__syncOwnershipErrorCodeBridgeInstalled);
+            const originalHandle = api.handleErrorResponse.bind(api);
+            api.__syncOwnershipErrorCodeBridgeInstalled = true;
+            api.__syncOwnershipOriginalHandleErrorResponse = originalHandle;
+
+            api.handleErrorResponse = async (response, ...args) => {
+                let code = null;
+                try {
+                    const body = response?.clone ? await response.clone().json() : null;
+                    code = this.errorCode(body?.detail || body);
+                } catch (_) {}
+
+                try {
+                    return await originalHandle(response, ...args);
+                } catch (error) {
+                    if (code) error.code = code;
+                    throw error;
+                }
+            };
+            return true;
+        }
+
         installApiGuards() {
             const api = this.runtime.ApiService;
             if (!api?.updateCuration || !api?.bulkUpsertCurations) return false;
+            this.installErrorCodeBridge(api);
             if (api.__syncOwnershipFailureGuardInstalled) return true;
 
             const guard = this;
@@ -186,7 +221,8 @@
             proto.pushCurations = async function (...args) {
                 const result = await originalPushCurations.apply(this, args);
                 // Bulk upsert reports per-item errors instead of throwing.
-                // Convert remembered permanent 403s after the normal bulk loop.
+                // Convert only remembered ownership-domain failures after the
+                // normal bulk loop; generic 403s remain normal sync failures.
                 await guard.flushRemembered(this);
                 return result;
             };

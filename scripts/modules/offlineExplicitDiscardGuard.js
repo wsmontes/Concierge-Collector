@@ -32,6 +32,18 @@
             this._timer = this.runtime.setTimeout?.(() => this._pollInstall(attempt + 1), 100);
         }
 
+        normalizeOutcome(result, { keepDraft = false, wasEditingEntity = false } = {}) {
+            if (result && typeof result === 'object' && typeof result.outcome === 'string') {
+                return result;
+            }
+            if (result === false) return { outcome: 'notDiscarded', value: result };
+
+            const outcome = wasEditingEntity
+                ? 'cancelledEntityEdit'
+                : (keepDraft ? 'keptDraft' : 'discardedCuration');
+            return result === undefined ? { outcome } : { outcome, value: result };
+        }
+
         install() {
             const conceptModule = this.runtime.uiManager?.conceptModule;
             if (!conceptModule?.discardRestaurant || !this.runtime.PendingAudioManager) return false;
@@ -47,11 +59,18 @@
 
             conceptModule.discardRestaurant = async (options = {}, ...args) => {
                 const keepDraft = options?.keepDraft === true;
+                const wasEditingEntity = guard.runtime.uiManager?.isEditingEntity === true;
                 const draftId = guard.runtime.DraftRestaurantManager?.currentDraftId || null;
                 const currentAudioId = guard.runtime.uiManager?.recordingModule?.currentAudioId ?? null;
 
                 const result = await original(options, ...args);
-                if (keepDraft) return result;
+                const outcome = guard.normalizeOutcome(result, { keepDraft, wasEditingEntity });
+
+                // ConceptModule uses discardRestaurant as the Cancel action for
+                // Entity edit too. Typed outcomes make that distinction durable
+                // for callers and future wrappers instead of relying on UI state
+                // after the action has already changed it.
+                if (outcome.outcome !== 'discardedCuration') return outcome;
 
                 const manager = guard.runtime.PendingAudioManager;
                 try {
@@ -68,7 +87,7 @@
                     // visible in logs but must not resurrect or mutate the draft.
                     guard.log.warn('Explicit discard media cleanup failed:', error);
                 }
-                return result;
+                return outcome;
             };
 
             this._installed = true;

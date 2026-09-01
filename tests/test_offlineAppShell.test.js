@@ -8,25 +8,42 @@ const root = path.resolve(__dirname, '..');
 const swPath = path.join(root, 'service-worker.js');
 const buildSource = readFileSync(path.join(root, 'scripts/build-collector.mjs'), 'utf8');
 const bootstrapSource = readFileSync(path.join(root, 'scripts/storage/storageDurability.js'), 'utf8');
+const part2Source = readFileSync(path.join(root, 'scripts/modules/offlinePart2Bootstrap.js'), 'utf8');
 
 describe('Collector offline app shell', () => {
-  test('ships a versioned Service Worker as a build artifact', () => {
+  test('ships a content-addressed Service Worker generation as a build artifact', () => {
     expect(existsSync(swPath)).toBe(true);
     expect(buildSource).toContain("'service-worker.js'");
+    expect(buildSource).toContain('computeShellGeneration');
+    expect(buildSource).toContain('stampServiceWorkerGeneration');
     const sw = readFileSync(swPath, 'utf8');
-    expect(sw).toContain('concierge-collector-shell-v3');
+    expect(sw).toContain("const SHELL_VERSION = '__COLLECTOR_SHELL_VERSION__'");
+    expect(sw).toContain('concierge-collector-shell-__COLLECTOR_SHELL_VERSION__');
   });
 
-  test('precaches the deterministic build manifest instead of a hand-maintained partial local list', () => {
+  test('precaches both final-content and shell-generation aliases from the build manifest', () => {
     const sw = readFileSync(swPath, 'utf8');
     expect(sw).toContain('.manifest.json');
+    expect(sw).toContain('entry.sha256.slice(0, 12)');
+    expect(sw).toContain('?v=${SHELL_VERSION}');
+    expect(sw).toContain("entry.path?.endsWith('.js')");
     expect(sw).toContain('cache.addAll');
   });
 
-  test('serves cache-busted same-origin assets from bare manifest entries while offline', () => {
+  test('never falls back across cache-busting query versions', () => {
     const sw = readFileSync(swPath, 'utf8');
-    expect(sw).toContain('ignoreSearch: true');
-    expect(sw).toContain('url.origin === self.location.origin');
+    expect(sw).toContain('ignoreSearch: false');
+    expect(sw).not.toContain('ignoreSearch: true');
+  });
+
+  test('stamps dynamic Offline Part 2 script references before final index hashes', () => {
+    // Call sites (not imports): the shell generation must stamp the dynamic
+    // loader scripts before the final index asset hashes are computed.
+    const dynamic = buildSource.indexOf('await stampLocalScriptVersions');
+    const html = buildSource.indexOf('await stampLocalAssetVersions');
+    expect(dynamic).toBeGreaterThan(-1);
+    expect(html).toBeGreaterThan(dynamic);
+    expect(part2Source).toContain('scripts/services/syncSemanticPolicy.js');
   });
 
   test('keeps API and mutation traffic network-only', () => {

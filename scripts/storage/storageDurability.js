@@ -18,9 +18,10 @@
     }
 
     class StorageDurability {
-        constructor({ criticalRatio = 0.95, warningRatio = 0.80 } = {}) {
+        constructor({ criticalRatio = 0.95, warningRatio = 0.80, safetyReserveBytes = 5 * 1024 * 1024 } = {}) {
             this.criticalRatio = criticalRatio;
             this.warningRatio = warningRatio;
+            this.safetyReserveBytes = Math.max(0, Number(safetyReserveBytes) || 0);
             this.lastHealth = null;
         }
 
@@ -40,6 +41,7 @@
                 const unsupported = {
                     usage: null,
                     quota: null,
+                    availableBytes: null,
                     ratio: null,
                     warning: false,
                     critical: false,
@@ -53,10 +55,12 @@
             const estimate = await storage.estimate();
             const usage = Number(estimate?.usage || 0);
             const quota = Number(estimate?.quota || 0);
+            const availableBytes = quota > 0 ? Math.max(0, quota - usage) : null;
             const ratio = quota > 0 ? usage / quota : 0;
             const health = {
                 usage,
                 quota,
+                availableBytes,
                 ratio,
                 warning: quota > 0 && ratio >= this.warningRatio,
                 critical: quota > 0 && ratio >= this.criticalRatio,
@@ -67,15 +71,31 @@
             return health;
         }
 
-        async assertCaptureCapacity(kind = 'media') {
+        async assertCaptureCapacity(kind = 'media', expectedBytes = 0) {
             const health = await this.getStorageHealth();
-            if (health.canCaptureLarge) return health;
+            if (!health.canCaptureLarge) {
+                const percentage = Math.round((health.ratio || 0) * 100);
+                throw new StorageCapacityError(
+                    `Local storage is ${percentage}% full. Free space or sync processed media before capturing more ${kind}. Existing work was preserved.`,
+                    health
+                );
+            }
 
-            const percentage = Math.round((health.ratio || 0) * 100);
-            throw new StorageCapacityError(
-                `Local storage is ${percentage}% full. Free space or sync processed media before capturing more ${kind}. Existing work was preserved.`,
-                health
-            );
+            const expected = Math.max(0, Number(expectedBytes) || 0);
+            if (expected > 0 && health.availableBytes !== null) {
+                // Reserve at most 5% of the reported quota so tiny test/dev
+                // quotas are not dominated by the production 5 MiB default.
+                const reserve = Math.min(this.safetyReserveBytes, Math.max(0, health.quota * 0.05));
+                const required = expected + reserve;
+                if (health.availableBytes < required) {
+                    throw new StorageCapacityError(
+                        `Not enough local storage for this ${kind}. The capture needs about ${Math.ceil(expected / 1024)} KiB plus safety margin, but only ${Math.floor(health.availableBytes / 1024)} KiB is available. Existing work was preserved.`,
+                        { ...health, expectedBytes: expected, requiredBytes: required, safetyReserveBytes: reserve }
+                    );
+                }
+            }
+
+            return { ...health, expectedBytes: expected };
         }
 
         isQuotaExceededError(error) {
@@ -154,8 +174,10 @@
             if (uiManager?.recordingModule && uiManager?.conceptModule) {
                 this.installCaptureCapacityGuards(uiManager);
                 this.installAudioQuotaWriteGuard();
-                this.policy.requestPersistentStorage().catch(() => false);
-                return;
+                if (this._captureGuardsInstalled && this._audioWriteGuardInstalled) {
+                    this.policy.requestPersistentStorage().catch(() => false);
+                    return;
+                }
             }
             if (attempt >= 300) return;
             clearTimeout(this._pollTimer);
@@ -169,7 +191,7 @@
             store.__storageDurabilityInstalled = true;
             store.requestPersistentStorage = () => this.policy.requestPersistentStorage();
             store.getStorageHealth = () => this.policy.getStorageHealth();
-            store.assertCaptureCapacity = (kind) => this.policy.assertCaptureCapacity(kind);
+            store.assertCaptureCapacity = (kind, expectedBytes = 0) => this.policy.assertCaptureCapacity(kind, expectedBytes);
             this._dataStoreInstalled = true;
         }
 
@@ -184,6 +206,17 @@
             }
         }
 
+        estimatePhotoBytes(photoDataArray = []) {
+            return (Array.isArray(photoDataArray) ? photoDataArray : [])
+                .reduce((total, item) => {
+                    const value = item?.photoData ?? item?.data ?? item ?? '';
+                    // Drafts persist the data URL/string itself, so UTF-16/JSON
+                    // overhead matters more than decoded image bytes. Two bytes
+                    // per code unit is intentionally conservative.
+                    return total + (typeof value === 'string' ? value.length * 2 : 0);
+                }, 0);
+        }
+
         installCaptureCapacityGuards(uiManager) {
             if (this._captureGuardsInstalled) return;
             const recordingModule = uiManager?.recordingModule;
@@ -196,7 +229,7 @@
                 recordingModule.__storageDurabilityOriginalStartRecording = originalStartRecording;
                 recordingModule.startRecording = async (...args) => {
                     try {
-                        await this.policy.assertCaptureCapacity('audio');
+                        await this.policy.assertCaptureCapacity('audio', 0);
                     } catch (error) {
                         this._notify(error);
                         return false;
@@ -211,7 +244,7 @@
                 conceptModule.__storageDurabilityOriginalPhotoPreview = originalPhotoPreview;
                 conceptModule.showMultiImagePreviewModal = async (photoDataArray, ...args) => {
                     try {
-                        await this.policy.assertCaptureCapacity('photo');
+                        await this.policy.assertCaptureCapacity('photo', this.estimatePhotoBytes(photoDataArray));
                     } catch (error) {
                         this._notify(error);
                         return false;
@@ -224,13 +257,16 @@
         }
 
         /**
-         * A preflight can still race with OS/browser quota changes. Catch the
-         * actual IndexedDB QuotaExceededError at raw-audio persistence and
-         * report it; importantly, no delete/prune is attempted as recovery.
+         * A start-recording preflight cannot know final bytes. Before the raw
+         * Blob is written we can, so run a second byte-aware check. The actual
+         * IndexedDB QuotaExceededError remains the final authority if browser
+         * quota changes between estimate and write.
          */
         installAudioQuotaWriteGuard() {
             const manager = global.PendingAudioManager;
-            if (!manager?.saveAudio || this._audioWriteGuardInstalled || manager.__storageDurabilitySaveAudioInstalled) {
+            if (!manager?.saveAudio || this._audioWriteGuardInstalled) return;
+            if (manager.__storageDurabilitySaveAudioInstalled) {
+                this._audioWriteGuardInstalled = true;
                 return;
             }
 
@@ -240,9 +276,17 @@
             this._audioWriteGuardInstalled = true;
 
             manager.saveAudio = async (...args) => {
+                const first = args[0];
+                const audioBlob = first?.audioBlob || first;
+                const expectedBytes = Number(audioBlob?.size || 0);
                 try {
+                    await this.policy.assertCaptureCapacity('audio', expectedBytes);
                     return await originalSaveAudio(...args);
                 } catch (error) {
+                    if (error instanceof StorageCapacityError) {
+                        this._notify(error);
+                        throw error;
+                    }
                     if (this.policy.isQuotaExceededError(error)) {
                         const quotaError = new StorageCapacityError(
                             'Could not store the new recording because local storage is full. Existing recordings and Curations were preserved.',
