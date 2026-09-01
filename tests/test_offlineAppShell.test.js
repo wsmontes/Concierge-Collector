@@ -37,8 +37,10 @@ describe('Collector offline app shell', () => {
   });
 
   test('stamps dynamic Offline Part 2 script references before final index hashes', () => {
-    const dynamic = buildSource.indexOf('stampLocalScriptVersions');
-    const html = buildSource.indexOf('stampLocalAssetVersions');
+    // Call sites (not imports): the shell generation must stamp the dynamic
+    // loader scripts before the final index asset hashes are computed.
+    const dynamic = buildSource.indexOf('await stampLocalScriptVersions');
+    const html = buildSource.indexOf('await stampLocalAssetVersions');
     expect(dynamic).toBeGreaterThan(-1);
     expect(html).toBeGreaterThan(dynamic);
     expect(part2Source).toContain('scripts/services/syncSemanticPolicy.js');

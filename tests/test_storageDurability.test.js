@@ -109,7 +109,7 @@ describe('Collector integration', () => {
   test('uses actual media size before raw-audio persistence and photo preview', () => {
     expect(storageSrc).toContain('expectedBytes');
     expect(storageSrc).toContain('estimatePhotoBytes');
-    expect(storageSrc).toContain('audioBlob.size');
+    expect(storageSrc).toContain('audioBlob?.size');
   });
 
   test('keeps polling until both capture and raw-audio guards are actually installed', () => {

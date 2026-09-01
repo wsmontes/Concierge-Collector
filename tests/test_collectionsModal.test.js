@@ -105,8 +105,7 @@ describe('CollectionsModal', () => {
 
     authAs('admin');
     loadModal().open({ curation_id: 'curation-1' });
-    await vi.runAllTicks();
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
     const content = opened[0].content;
     content.querySelector('.collections-modal__action').click();
     await Promise.resolve();

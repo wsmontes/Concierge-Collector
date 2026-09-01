@@ -357,10 +357,7 @@ class BulkItemError(BaseModel):
         # bulk route as a string rather than an HTTPException. Upgrade only
         # that exact server-owned message at the response-model boundary; do
         # not classify generic 403/authorization text or create attribution.
-        if (
-            self.code is None
-            and self.error == "ownership violation: curator_id does not match authenticated user"
-        ):
+        if self.code is None and self.error == "ownership violation: curator_id does not match authenticated user":
             self.code = "curation_owner_mismatch"
 
 
