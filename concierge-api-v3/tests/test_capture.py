@@ -192,6 +192,10 @@ def test_confirm_capture_rejects_foreign_owner(client, test_db):
             "createdAt": datetime.now(timezone.utc),
         }
     )
+    # require_role revalida o usuário vivo — bob precisa existir no Mongo
+    # para chegar ao check de ownership (senão 401 'User not found').
+    test_db.users.delete_many({"email": "bob@x.com"})
+    test_db.users.insert_one({"_id": "user-bob", "email": "bob@x.com", "authorized": True, "role": "curator"})
 
     token_b = create_access_token(data={"sub": "bob@x.com", "role": "curator"})
     r = client.post(
@@ -203,6 +207,7 @@ def test_confirm_capture_rejects_foreign_owner(client, test_db):
     assert "does not belong" in r.json()["detail"]
 
     test_db["capture_sessions"].delete_one({"_id": "test_cap_own"})
+    test_db.users.delete_one({"_id": "user-bob"})
 
 
 @pytest.mark.mongo
@@ -253,6 +258,9 @@ def test_confirm_capture_uses_entity_id_for_linkage_and_capture_id_for_audio_pro
     )
 
     try:
+        # require_role revalida o usuário vivo no Mongo — sem o seed, 401.
+        test_db.users.delete_many({"email": curator_id})
+        test_db.users.insert_one({"_id": "user-voice", "email": curator_id, "authorized": True, "role": "curator"})
         token = create_access_token(data={"sub": curator_id, "role": "curator"})
         response = client.post(
             f"/api/v3/capture/{capture_id}/confirm",

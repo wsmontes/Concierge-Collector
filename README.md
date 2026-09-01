@@ -1,104 +1,160 @@
-<!--
-Purpose: Provide the operational overview of Concierge Collector and act as the single entry point for setup, execution, and active documentation.
-Main responsibilities: Describe current architecture, minimum local run flow, and point to official active guides.
-Dependencies: index.html, scripts/, styles/, concierge-api-v3/, docs/README.md, docs/API/README.md, setup_local.sh.
--->
+# Concierge
 
-# Concierge Collector
+Concierge is a curated-knowledge platform. It captures human perspective about real-world entities, organizes that knowledge into intentional Collections, and exposes it to downstream applications and AI systems.
 
-Restaurant curation platform with a web frontend and FastAPI V3 backend, including semantic search, Places integration, and AI services.
+The repository is a monorepo containing the offline-first Collector, the FastAPI operational domain, the Payload/Admin knowledge-operations system, generated contracts, workers, publication and distribution surfaces.
 
-## Current status
+## Domain model
 
-- Static frontend at repository root ([index.html](index.html)).
-- Main backend in [concierge-api-v3](concierge-api-v3).
-- Production API URL: `https://concierge-collector.onrender.com/api/v3`.
-- Default local API URL: `http://localhost:8000/api/v3`.
+The current architecture is built around three deliberately separate concepts:
 
-## Local quick start
+- **Entity** — the thing in the world: a restaurant, hotel, place or other canonical object.
+- **Curation** — a curator's perspective/knowledge about an Entity. A Curation may be authored before it is linked to an Entity.
+- **Collection** — an intentional, versioned selection of Curations for publication or distribution.
 
-### 1) Backend setup
+`entity_id` is the Curation→Entity relation. Workflow state such as `draft`/`active` is not used to represent linkage.
 
-```bash
-./setup_local.sh
+## Components
+
+```text
+Concierge-Collector/
+├── index.html / scripts/ / styles/
+│   └── Collector — offline-first curator authoring client
+│
+├── capture/
+│   └── lightweight voice capture surface
+│
+├── concierge-api-v3/
+│   └── FastAPI — operational domain authority
+│       ├── Entity / Curation writes and ownership
+│       ├── OAuth / sessions / authorization
+│       ├── semantic and hybrid retrieval
+│       ├── Places / AI / Capture provider boundaries
+│       └── consumer-facing distribution projection
+│
+├── apps/admin/
+│   └── Payload + Next — knowledge operations
+│       ├── Collections and versioning
+│       ├── Explorer / selections / bulk operations
+│       ├── publish and export jobs
+│       ├── consumer applications / credentials
+│       └── operational worker surfaces
+│
+├── packages/
+│   ├── design-tokens
+│   └── fastapi-client — generated API contract client
+│
+├── contracts/
+│   └── generated/shared API contracts
+│
+└── docs/
+    └── architecture, operations, plans and historical material
 ```
 
-Or manually:
+### Boundary ownership
+
+**Collector** owns authoring UX and durable local work. Local drafts/media remain authoritative until persistence/synchronization succeeds.
+
+**FastAPI** owns operational Entity/Curation mutations, identity, authorization and paid-provider boundaries. Client-side role state is never authorization authority.
+
+**Payload/Admin** owns knowledge operations around Collections, publication, selection/export and consumer management. Collection publication is versioned and worker-driven.
+
+**Contracts** are generated boundaries between components rather than hand-maintained duplicate schemas.
+
+## Local setup
+
+### JavaScript workspace
+
+The repository requires Node 22 and npm 10.
+
+```bash
+npm ci --legacy-peer-deps
+```
+
+### FastAPI
 
 ```bash
 cd concierge-api-v3
 cp .env.example .env
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-./run_local.sh
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+cd ..
 ```
 
-### 2) Start frontend
+The release tooling does not require a particular virtualenv path. Python resolution is:
 
-Open [index.html](index.html) using VS Code Live Server, or run:
+1. `CONCIERGE_PYTHON`
+2. `PYTHON`
+3. `concierge-api-v3/venv`
+4. `concierge-api-v3/.venv`
+5. system `python3` / `python`
+
+### Collector
+
+Serve the repository root, for example:
 
 ```bash
 python3 -m http.server 5500
 ```
 
-Expected local frontend: `http://127.0.0.1:5500`  
-Expected local API: `http://localhost:8000/api/v3`
+Default local surfaces:
 
-## Project structure
+- Collector: `http://127.0.0.1:5500`
+- FastAPI: `http://localhost:8000/api/v3`
+- Admin: `http://127.0.0.1:3000`
 
-```text
-Concierge-Collector/
-├── index.html              # Frontend entry point
-├── scripts/                # JS modules (core, services, UI, utilities)
-├── styles/                 # Frontend styles
-├── concierge-api-v3/       # FastAPI V3 backend
-│   ├── app/                # Routes, models, services, core
-│   ├── tests/              # Backend tests
-│   └── requirements.txt
-├── docs/                   # Active official docs + historical docs
-└── data/                   # Support data and exports
-```
+## Verification — no GitHub Actions CI
 
-## Main environment variables
+The project deliberately does **not** use GitHub Actions for CI. The canonical release gates are reproducible local commands.
 
-Configure [concierge-api-v3/.env.example](concierge-api-v3/.env.example) as `.env`:
-
-- `MONGODB_URL`
-- `MONGODB_DB_NAME`
-- `API_SECRET_KEY`
-- `OPENAI_API_KEY` (optional, AI features)
-- `GOOGLE_PLACES_API_KEY` (optional, Places)
-- `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` (optional, OAuth)
-
-## Active documentation
-
-- Master index: [docs/README.md](docs/README.md)
-- API: [docs/API/README.md](docs/API/README.md)
-- Local development: [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md)
-- Deployment: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-- OAuth: [docs/OAUTH_SETUP_GUIDE.md](docs/OAUTH_SETUP_GUIDE.md)
-- Environment detection: [docs/ENVIRONMENT_DETECTION.md](docs/ENVIRONMENT_DETECTION.md)
-
-## Testing
-
-Backend:
+Standard gate:
 
 ```bash
-cd concierge-api-v3
-source venv/bin/activate
-pytest tests/ -v
+npm run verify
 ```
 
-Official testing guide: [docs/testing/COLLECTOR_V3_TEST_GUIDE.md](docs/testing/COLLECTOR_V3_TEST_GUIDE.md)
+It checks Collector build/lint/unit tests, Admin unit/type/build, API unit/format/lint, and generated contracts.
 
-## Production operation
+Full release qualification:
 
-- API: `https://concierge-collector.onrender.com/api/v3`
-- Swagger: `https://concierge-collector.onrender.com/api/v3/docs`
-- Health: `https://concierge-collector.onrender.com/api/v3/health`
+```bash
+npm run verify:full
+```
 
-## Notes
+It adds Admin/API integration coverage and live Playwright flows, including auth handoff, Explorer and Collection publication. The full gate expects the documented local Mongo/FastAPI/Admin/worker test stack and fails rather than silently skipping those high-value suites.
 
-- This README is operational and links only to active documentation.
-- Historical/superseded documents remain in [docs/archive](docs/archive) and [archive](archive).
+See [docs/LOCAL_RELEASE_GATE.md](docs/LOCAL_RELEASE_GATE.md).
+
+An optional pre-push gate can be enabled with:
+
+```bash
+npm run hooks:enable
+```
+
+## Security and identity operations
+
+Production authorization is server-side. Important operational tools under `concierge-api-v3/scripts/` include dry-run-first auditing/migration for user identity indexes and removal of legacy stored Google OAuth refresh credentials.
+
+Do not apply destructive migrations blindly. Audit first, review duplicates/state, then apply in the intended environment.
+
+## Architecture baseline
+
+The current convergence target is **Architecture Baseline 1**. Its invariants, qualification requirements and deliberately deferred decisions are documented in:
+
+- [docs/ARCHITECTURE_BASELINE_1.md](docs/ARCHITECTURE_BASELINE_1.md)
+- [docs/superpowers/specs/2026-08-30-convergence-baseline-design.md](docs/superpowers/specs/2026-08-30-convergence-baseline-design.md)
+- [docs/superpowers/plans/2026-08-30-convergence-baseline.md](docs/superpowers/plans/2026-08-30-convergence-baseline.md)
+
+Synthetic Curations remain supported for compatibility/enrichment workflows, but whether synthetic knowledge should remain a first-class `Curation` type is an explicitly deferred domain-model decision; it is not being silently cemented by this baseline.
+
+## Documentation
+
+- [docs/README.md](docs/README.md) — documentation index
+- [docs/API/README.md](docs/API/README.md) — API documentation
+- [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) — local development
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — deployment
+- [docs/OAUTH_SETUP_GUIDE.md](docs/OAUTH_SETUP_GUIDE.md) — OAuth setup
+- [docs/LOCAL_RELEASE_GATE.md](docs/LOCAL_RELEASE_GATE.md) — release qualification
+
+Historical/superseded material remains in `docs/archive/` and `archive/`; it should not be treated as the current architecture unless explicitly referenced.

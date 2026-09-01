@@ -425,12 +425,12 @@ class SemanticSearchResponse(BaseModel):
     search_time: float
     total_results: int
     search_mode: str = Field(
-        default="fallback",
-        description="'atlas_vector' (índice nativo) ou 'fallback' (varredura bounded por recência)",
+        default="fallback_exhaustive",
+        description="'atlas_vector' (native index) or 'fallback_exhaustive' (all eligible Curations scored)",
     )
     partial: bool = Field(
-        default=True,
-        description="True quando o resultado pode estar INCOMPLETO (fallback só pontua candidatos recentes)",
+        default=False,
+        description="False for the exhaustive fallback; no eligible Curation is omitted by a recency candidate window",
     )
     candidate_count: int = Field(default=0, description="Número de curadorias candidatas pontuadas")
 

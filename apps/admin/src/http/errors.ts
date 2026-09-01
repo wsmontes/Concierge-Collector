@@ -31,6 +31,7 @@ const ADMIN_ERROR_CODES = {
   draft_locked: 423,
   authorization_unavailable: 503,
   service_unavailable: 503,
+  feature_disabled: 503,
 } as const
 
 type AdminErrorCode = keyof typeof ADMIN_ERROR_CODES

@@ -24,7 +24,7 @@ import logging
 
 from app.core.config import settings
 from app.core.rate_limit import limiter
-from app.core.security import verify_auth
+from app.core.security import require_role, verify_auth
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -231,7 +231,7 @@ def get_enhanced_field_mask(
 # ============================================================================
 
 
-@router.get("/nearby", response_model=NearbySearchResponse)
+@router.get("/nearby", response_model=NearbySearchResponse, dependencies=[Depends(require_role("viewer"))])
 @limiter.limit("20/minute")
 async def search_nearby(
     request: Request,
@@ -564,7 +564,7 @@ def _convert_price_level(price_level_str: Optional[str]) -> Optional[int]:
     return price_map.get(price_level_str)
 
 
-@router.get("/details/{place_id}", response_model=PlaceDetailsResponse)
+@router.get("/details/{place_id}", response_model=PlaceDetailsResponse, dependencies=[Depends(require_role("viewer"))])
 @limiter.limit("20/minute")
 async def get_place_details(
     request: Request,
@@ -747,7 +747,7 @@ async def proxy_place_photo(
     )
 
 
-@router.get("/{place_id}/photos")
+@router.get("/{place_id}/photos", dependencies=[Depends(require_role("viewer"))])
 @limiter.limit("20/minute")
 async def get_place_photos(
     request: Request,
@@ -1193,7 +1193,7 @@ async def call_bulk_multi_operations(
 # ============================================================================
 
 
-@router.post("/orchestrate", response_model=PlacesOrchestrationResponse)
+@router.post("/orchestrate", response_model=PlacesOrchestrationResponse, dependencies=[Depends(require_role("viewer"))])
 @limiter.limit("20/minute")
 async def orchestrate_places_request(
     request: Request,

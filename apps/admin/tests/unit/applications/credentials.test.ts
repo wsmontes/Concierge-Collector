@@ -53,7 +53,10 @@ describe('consumer credentials', () => {
 
   test('rotate rejects an already revoked credential', async () => {
     const repo = fakeCredentialRepository({ id: 'cred-1', status: 'revoked' })
-    await expect(rotateCredential('cred-1', { actorId: actor.user_id, idempotencyKey: 'rotate-3', overlapUntil: new Date('2026-08-21T00:00:00Z') }, repo, fixedRandom(9))).rejects.toMatchObject({ status: 409, code: 'conflict' })
+    // `now` é passado explicitamente como nos testes irmãos: sem ele, o
+    // overlapUntil fixo vira passado em datas reais posteriores e o
+    // validateRotate rejeita com 400 antes do check de revoked.
+    await expect(rotateCredential('cred-1', { actorId: actor.user_id, idempotencyKey: 'rotate-3', overlapUntil: new Date('2026-08-21T00:00:00Z') }, repo, fixedRandom(9), new Date('2026-08-20T01:00:00Z'))).rejects.toMatchObject({ status: 409, code: 'conflict' })
     expect(repo.audit).toEqual([])
   })
 

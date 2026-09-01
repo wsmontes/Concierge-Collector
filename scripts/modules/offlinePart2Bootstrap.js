@@ -22,6 +22,7 @@
         // their wrappers attach synchronously before processor.start()'s
         // setTimeout(0) reconnect work can execute on a fresh page.
         ['OfflineAudioLeaseGuard', 'scripts/services/offlineAudioLeaseGuard.js?v=20260831-1'],
+        ['CurationAuthoringController', 'scripts/modules/curationAuthoringController.js?v=20260830-1'],
         ['OfflineCaptureProcessor', 'scripts/services/offlineCaptureProcessor.js?v=20260830-1'],
         ['OfflinePhotoLeaseGuard', 'scripts/services/offlinePhotoLeaseGuard.js?v=20260831-1'],
         ['OfflinePhotoProcessor', 'scripts/services/offlinePhotoProcessor.js?v=20260830-1'],

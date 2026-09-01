@@ -388,11 +388,15 @@ class TestDeleteEntityAccess:
         from app.core.security import create_access_token
 
         self._seed_entity(test_db, "test_del_e1")
+        # require_role revalida o usuário vivo no Mongo — sem o seed, 401.
+        test_db.users.delete_many({"email": "cur@x.com"})
+        test_db.users.insert_one({"_id": "user-cur", "email": "cur@x.com", "authorized": True, "role": "curator"})
         token = create_access_token(data={"sub": "cur@x.com", "role": "curator"})
         r = client.delete("/api/v3/entities/test_del_e1", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 403
         assert test_db.entities.find_one({"_id": "test_del_e1"}) is not None  # nada foi apagado
         test_db.entities.delete_one({"_id": "test_del_e1"})
+        test_db.users.delete_one({"_id": "user-cur"})
 
     def test_delete_entity_admin_without_links(self, client, test_db, auth_headers):
         """Admin (API key) apaga entity sem curadorias ativas → 204."""
