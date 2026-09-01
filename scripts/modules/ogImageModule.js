@@ -8,8 +8,9 @@
  *   gravado pelo CardFactory) e resolve a imagem OG em real-time via
  *   GET /api/v3/og-image (fetch server-side — o browser sozinho esbarra
  *   em CORS). O backend devolve o JPEG JÁ redimensionado (~768px).
- * - Persistência client-side em Cache Storage ('og-images-v1'): cache
- *   quente dispensa a rede em loads seguintes e funciona offline.
+ * - Persistência client-side em Cache Storage ('og-images-v2'): cache
+ *   quente dispensa a rede em loads seguintes e funciona offline até
+ *   um hard reset explícito de fotos (ou eviction por storage pressure).
  *   (Cache Storage em vez de IndexedDB: guarda o blob/Response direto,
  *   sem bump de schema do banco local — IndexedDB exigiria migração.)
  * - Dedupe por URL: N cards do mesmo site compartilham uma única busca
@@ -46,12 +47,17 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         // (a única situação em que o fade faz sentido).
         this._resolvedUrls = new Map();
         this._freshFromNetwork = new Set();
-        // v2: namespace novo (ago/2026) — entradas da v1 não têm TTL e
-        // ficariam servindo imagens antigas (brancos/ícones) para sempre
+        // v2: namespace persistente das fotos do Collector. As imagens
+        // permanecem locais entre sessões; só hard reset/Refresh photos
+        // (ou eviction do próprio navegador por pressão de storage) limpa.
         this._cacheName = 'og-images-v2';
-        // TTL client-side: o ranking SERVER-SIDE muda com as heurísticas
-        // (1h no servidor) — sem TTL o blob velho venceria o ranking novo
-        this._clientCacheTtlMs = 24 * 3600 * 1000;
+        // Cache Storage exige chaves Request HTTP(S). As chaves lógicas
+        // entity:/place: são convertidas para uma URL sintética same-origin.
+        this._cacheKeyPrefix = '/__concierge-image-cache__/';
+        // Migração somente: entradas antigas da v2 (sem x-cache-policy)
+        // ainda expiram em 24h uma última vez. Tudo que este código grava
+        // recebe policy=persistent e NÃO expira automaticamente.
+        this._legacyCacheTtlMs = 24 * 3600 * 1000;
         // prefetch da próxima página (padrão ImagePrefetcher do feedmine)
         this._prefetchedPages = new Set();
         this._prefetchTimer = null;
@@ -443,33 +449,68 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
     }
 
     /**
-     * Lê o blob persistido no Cache Storage (null sem hit/sem suporte).
-     * @param {string} url - chave do cache (URL do site)
-     * @returns {Promise<string|null>} objectURL ou null
+     * Converte a chave lógica do Collector em uma chave válida do Cache API.
+     * URLs HTTP(S) legadas permanecem como estão para reaproveitar entradas
+     * já persistidas; entity:/place:/gallery: viram URLs sintéticas da origem.
+     * @param {string} key - chave lógica de cache/dedupe
+     * @returns {string} chave HTTP(S) aceita por Cache.match/put
      */
-    async _readCache(url) {
+    _cacheRequestKey(key) {
+        const raw = String(key || '');
+        if (/^https?:\/\//i.test(raw)) return raw;
+        // Os únicos schemes lógicos produzidos pelo Collector são entity:
+        // e place:. Chaves desconhecidas passam intactas para não alterar
+        // contratos de callers externos/testes legados.
+        if (!/^(entity|place):/i.test(raw)) return raw;
+
+        let origin = '';
+        try {
+            const candidate = window.location && window.location.origin;
+            if (candidate && /^https?:\/\//i.test(candidate)) {
+                origin = candidate.replace(/\/$/, '');
+            }
+        } catch (error) {
+            this.log.debug('origem do cache de imagens indisponível:', error);
+        }
+        // Fallback só é usado em ambientes sem origem HTTP(S), como testes.
+        // Cache Storage real é origin-scoped, então em produção usa a origem
+        // efetiva do Collector.
+        if (!origin) origin = 'https://concierge-cache.invalid';
+        return `${origin}${this._cacheKeyPrefix}${encodeURIComponent(raw)}`;
+    }
+
+    /**
+     * Lê o blob persistido no Cache Storage (null sem hit/sem suporte).
+     * Entradas novas não têm TTL de aplicação: só saem por hard reset
+     * explícito ou eviction do navegador. Entradas legadas sem policy têm
+     * uma expiração de migração de 24h para descartar cache v2 antigo.
+     * @param {string} key - chave lógica de cache/dedupe
+     * @returns {Promise<string|null|false>} objectURL, null (miss) ou false (negativo)
+     */
+    async _readCache(key) {
         if (!window.caches) return null;
         try {
             const cache = await caches.open(this._cacheName);
-            const hit = await cache.match(url);
+            const cacheKey = this._cacheRequestKey(key);
+            const hit = await cache.match(cacheKey);
             if (!hit) return null;
-            // TTL client-side: entradas antigas não podem vencer um
-            // ranking server-side novo (caso Ryo/Arturito — o navegador
-            // guardava o blob branco/ícone com a mesma chave). Entradas
-            // legadas sem o header ficam como "frescas" (compat).
             const headers = hit.headers;
+            // Migração de entradas antigas da v2: elas não tinham política
+            // explícita e podem conter thumbnails ruins do ranking anterior.
+            // Expiram UMA última vez em 24h. Entradas novas são persistentes
+            // até Refresh photos/hard reset (ou eviction do navegador).
+            const policy = headers && headers.get ? headers.get('x-cache-policy') : null;
             const cachedAt = Number(headers && headers.get ? headers.get('x-cached-at') : 0) || 0;
-            if (cachedAt && Date.now() - cachedAt > this._clientCacheTtlMs) {
-                await cache.delete(url);
+            if (policy !== 'persistent' && cachedAt && Date.now() - cachedAt > this._legacyCacheTtlMs) {
+                await cache.delete(key);
                 return null;
             }
             // Negativo persistido (404/400 já visto nesta chave): false
-            // sinaliza "sem imagem conhecida" SEM refazer a rede — sem
-            // isso cada reload re-dispareava a enxurrada de 404 (2026-08-16)
+            // sinaliza "sem imagem conhecida" SEM refazer a rede.
             const noImage = !!(headers && headers.get && headers.get('x-no-image'));
             if (noImage) return false;
             const blob = await hit.blob();
-            return blob && blob.size > 0 ? this._objectUrlFor(url, blob) : null;
+            return blob && blob.size > 0 ? this._objectUrlFor(key, blob) : null;
         } catch (error) {
             this.log.debug('leitura do Cache Storage falhou:', error);
             return null;
@@ -478,32 +519,27 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
 
     /**
      * Persiste o blob no Cache Storage (no-op sem suporte/em falha).
-     * @param {string} url - chave do cache (URL do site)
+     * O cache persistente não tem LRU da aplicação: o navegador gerencia
+     * quota/eviction e o usuário controla a limpeza via hard reset de fotos.
+     * @param {string} key - chave lógica de cache/dedupe
      * @param {Blob} blob - imagem já redimensionada pelo backend
      */
-    async _writeCache(url, blob) {
+    async _writeCache(key, blob) {
         if (!window.caches) return;
         try {
             const cache = await caches.open(this._cacheName);
+            const cacheKey = this._cacheRequestKey(key);
             await cache.put(
-                url,
+                cacheKey,
                 new Response(blob, {
                     headers: {
                         'Content-Type': blob.type,
-                        'x-cached-at': String(Date.now())
+                        // Timestamp fica só para diagnóstico/migração.
+                        'x-cached-at': String(Date.now()),
+                        'x-cache-policy': 'persistent'
                     }
                 })
             );
-            // LRU manual: o browser decide a cota, mas ~200 imagens (60-120KB)
-            // são suficientes para o acervo local — além disso, remove as
-            // entradas mais antigas em ordem de inserção (feedmine
-            // DiskImageCache tem política parecida).
-            const keys = await cache.keys();
-            if (keys.length > 200) {
-                for (const stale of keys.slice(0, keys.length - 200)) {
-                    await cache.delete(stale);
-                }
-            }
         } catch (error) {
             this.log.debug('escrita no Cache Storage falhou:', error);
         }
@@ -511,23 +547,24 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
 
     /**
      * Persiste um NEGATIVO no Cache Storage: esta chave já foi resolvida
-     * e NÃO tem imagem (404/400 definitivo do servidor). Com o negativo,
-     * o próximo load do card pula a rede direto para o fallback — sem a
-     * enxurrada de requests 404 no console a cada reload. Falha de rede
-     * NÃO grava negativo: offline não pode congelar o card por 24h.
-     * @param {string} url - chave do cache
+     * e NÃO tem imagem (404/400 definitivo do servidor). O próximo load
+     * pula a rede até um hard reset/Refresh photos explícito. Falha de rede
+     * NÃO grava negativo: offline não pode congelar o card como "sem foto".
+     * @param {string} key - chave lógica do cache
      */
-    async _writeNoImage(url) {
+    async _writeNoImage(key) {
         if (!window.caches) return;
         try {
             const cache = await caches.open(this._cacheName);
+            const cacheKey = this._cacheRequestKey(key);
             await cache.put(
-                url,
+                cacheKey,
                 new Response('', {
                     headers: {
                         'Content-Type': 'text/plain',
                         'x-no-image': '1',
-                        'x-cached-at': String(Date.now())
+                        'x-cached-at': String(Date.now()),
+                        'x-cache-policy': 'persistent'
                     }
                 })
             );
@@ -569,10 +606,9 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
     }
 
     /**
-     * LRU do mapa quente (mesmo teto do Cache Storage): além de ~200
-     * chaves, a mais antiga sai e o objectURL é revogado — sem revoke
-     * os blobs de páginas antigas acumulavam para sempre (leak a cada
-     * rebuild de lista).
+     * Limite apenas do mapa quente em RAM: além de ~200 objectURLs, a
+     * mais antiga sai e é revogada. Isso NÃO remove o blob persistido do
+     * Cache Storage; ao revisitar o card ele é recriado localmente, sem rede.
      */
     _trimResolvedUrls() {
         if (this._resolvedUrls.size <= 200) return;
