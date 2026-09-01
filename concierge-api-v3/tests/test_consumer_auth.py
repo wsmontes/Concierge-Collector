@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 import hashlib
 
 import pytest
+from bson import ObjectId
 from fastapi import HTTPException
 
 from app.services.consumer_auth_service import authenticate_consumer, authorize_collection
@@ -17,6 +18,10 @@ class Collection:
         if self.document is None:
             return None
         if "status" in query and self.document.get("status") != query["status"]:
+            return None
+        # Type-sensitive _id comparison: a 24-hex string must not match an
+        # ObjectId (the production CMS stores ObjectId _ids).
+        if "_id" in query and self.document.get("_id") != query["_id"]:
             return None
         return self.document
 
@@ -59,6 +64,18 @@ def test_authentication_is_hash_only_and_allowlist_is_enforced():
     with pytest.raises(HTTPException) as error:
         authorize_collection(principal, "collection-b")
     assert error.value.status_code == 404
+
+
+def test_application_lookup_accepts_hex_string_application_ids():
+    # The Admin stores applicationId on the credential as a 24-hex string
+    # while consumer_applications documents use ObjectId _ids. The lookup must
+    # normalize the string so a valid credential still authenticates.
+    raw, db = seeded()
+    hex_id = "6a967b39d537f3a5e5c0aec3"
+    db.credentials.document["applicationId"] = hex_id
+    db.applications.document["_id"] = ObjectId(hex_id)
+    principal = authenticate_consumer(db, f"Bearer {raw}", datetime(2026, 8, 20, tzinfo=timezone.utc))
+    assert principal.application_id == hex_id
 
 
 def test_revoked_or_malformed_credential_is_rejected_without_cache():

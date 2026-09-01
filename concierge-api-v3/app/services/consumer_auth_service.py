@@ -54,9 +54,18 @@ def authenticate_consumer(
     )
     if not credential:
         raise HTTPException(status_code=401, detail="Consumer credential required")
-    application = cms_db.collection("consumer_applications").find_one(
-        {"_id": credential.get("applicationId"), "status": "active"}
-    )
+    # The Admin stores applicationId as a 24-hex string, but the CMS
+    # application documents use Mongo ObjectId _ids. Normalize so the lookup
+    # matches either representation.
+    application_id = credential.get("applicationId")
+    try:
+        from bson import ObjectId
+
+        if isinstance(application_id, str) and len(application_id) == 24:
+            application_id = ObjectId(application_id)
+    except (ImportError, ValueError):
+        pass
+    application = cms_db.collection("consumer_applications").find_one({"_id": application_id, "status": "active"})
     if not application:
         raise HTTPException(status_code=401, detail="Consumer credential required")
     return ConsumerPrincipal(
