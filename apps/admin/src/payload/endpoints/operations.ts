@@ -115,7 +115,11 @@ function sumProgress(children: Array<Record<string, unknown>>): Record<string, n
 /** Loads a parent and aggregates its children's outcomes at read time. */
 async function parentWithSummary(request: PayloadRequest, parentId: string): Promise<{ parent: ParentOperationRecord; summary: ParentSummary; children: Array<Record<string, unknown>> } | null> {
   const operations = operationModels(request)
-  const parent = await operations.findById(parentId).lean()
+  // Parents are written with deliberate string _ids via the raw collection
+  // (createParentOperation). Payload's findById coerces to ObjectId and never
+  // matches them — read through the raw collection instead.
+  const raw = operations.collection as unknown as { findOne(query: Record<string, unknown>): Promise<Record<string, unknown> | null> }
+  const parent = await raw.findOne({ _id: parentId })
   if (!parent) return null
   const value = parent as Record<string, unknown>
   if (value.parentOperationId) return null
@@ -266,7 +270,13 @@ export function operationEndpoints(): Endpoint[] {
         try {
         const actor = await authenticateAdminRequest(request as unknown as Request, { allowCollectorBearer: true, allowCollectorOperationRead: true })
         const operationId = routeId(request)
-        const value = await operationModels(request).findById(operationId).lean()
+        // Two _id conventions coexist in collection_operations: parents are
+        // written with deliberate string _ids (createParentOperation) while
+        // draft operations use payload's ObjectId _ids. Match either.
+        const model = operationModels(request)
+        const raw = model.collection as unknown as { findOne(query: Record<string, unknown>): Promise<Record<string, unknown> | null> }
+        const value = await raw.findOne({ _id: operationId })
+          ?? await model.findById(operationId).lean() as unknown as Record<string, unknown> | null
         if (!value) throw new AdminHttpError(404, 'not_found')
         const operation = value as Record<string, unknown>
         const isCollector = readCollectorOrigin(request)
@@ -287,6 +297,17 @@ export function operationEndpoints(): Endpoint[] {
             cancellable: children.some((child) => ['queued', 'materializing', 'staging', 'validating'].includes(String(child.status))),
             action: parent.action, selectionId: parent.selectionId, selectionHash: parent.selectionHash,
             requestId: parent.requestId, createdAt: parent.createdAt, updatedAt: parent.updatedAt,
+          })
+        }
+        // Only selection parents (mode 'selection', no parentOperationId) are
+        // aggregate-by-read: they never store a terminal status (see enqueue.ts).
+        // Standalone draft operations keep their authoritative stored status.
+        if (operation.mode === 'selection') {
+          const children = await operationModels(request).find({ parentOperationId: operationId }).lean() as Array<Record<string, unknown>>
+          const summary = parentSummary(children)
+          return Response.json({
+            ...operation, id: idOf(operation), status: effectiveParentStatus(summary),
+            parentSummary: summary, progress: sumProgress(children),
           })
         }
         return Response.json({ ...operation, id: idOf(operation) })

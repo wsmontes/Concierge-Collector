@@ -23,7 +23,10 @@ async function browserLoadPage({ cursor, filters }: { cursor: string | null; fil
 }
 
 const SELECTION_READY_POLL_MS = 1_000
-const SELECTION_READY_TIMEOUT_MS = 30_000
+// The materialization worker runs on a 1-minute cron cadence, so a selection
+// can legitimately take up to ~61s to reach ready. A 30s deadline lost the
+// race by seconds (client gave up right before the worker's next tick).
+const SELECTION_READY_TIMEOUT_MS = 90_000
 
 function newId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
