@@ -44,6 +44,16 @@ export interface ActivityRowDto {
   createdAt: string
 }
 
+export interface PublishPreviewDto {
+  currentPublishedVersion: number | null
+  nextVersion: number
+  draftRevision: number
+  revision: number
+  selectedCount: number
+  availableCount: number
+  unavailableCount: number
+}
+
 export interface PublishJobDto {
   id: string
   status: string
@@ -74,6 +84,7 @@ export interface CollectionsAdminClient {
   ): Promise<AdminCollectionRecord>
   archive(collection: AdminCollectionRecord): Promise<AdminCollectionRecord>
   restore(collection: AdminCollectionRecord): Promise<AdminCollectionRecord>
+  publishPreview(collectionId: string): Promise<PublishPreviewDto>
   publish(
     collection: AdminCollectionRecord,
     input: { confirmUnavailable: boolean; expectedUnavailableCount?: number },
@@ -219,6 +230,12 @@ export function createBrowserCollectionsAdminClient(
         `/api/admin/v1/collections/${encodeURIComponent(collection.id)}/restore`,
         { method: 'POST', headers },
       ))
+    },
+
+    async publishPreview(collectionId) {
+      return requestJson<PublishPreviewDto>(
+        `/api/admin/v1/collections/${encodeURIComponent(collectionId)}/publish-preview`,
+      )
     },
 
     async publish(collection, input, commandId = uuid()) {
