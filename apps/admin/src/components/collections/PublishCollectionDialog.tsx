@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { PublishPreviewDto } from '../../collections/admin-client'
 
 export interface PublishCollectionDialogProps {
@@ -30,6 +30,10 @@ export function PublishCollectionDialog({
 }: PublishCollectionDialogProps) {
   const [confirmedUnavailable, setConfirmedUnavailable] = useState(preview.unavailableCount === 0)
   const needsUnavailableConfirmation = preview.unavailableCount > 0
+
+  useEffect(() => {
+    setConfirmedUnavailable(preview.unavailableCount === 0)
+  }, [preview.unavailableCount, preview.draftRevision, preview.revision])
 
   return (
     <div className="collection-dialog-backdrop" role="presentation">
