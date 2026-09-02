@@ -29,6 +29,7 @@ function client(overrides: Partial<CollectionsAdminClient> = {}): CollectionsAdm
     patchMetadata: vi.fn(),
     archive: vi.fn(),
     restore: vi.fn(),
+    publishPreview: vi.fn(),
     publish: vi.fn(),
     restoreVersionAsDraft: vi.fn(),
     members: vi.fn().mockResolvedValue({ items: [{ curationId: 'c1' }], nextCursor: 'm2' }),
