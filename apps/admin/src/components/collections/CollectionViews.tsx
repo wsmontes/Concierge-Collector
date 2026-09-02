@@ -28,6 +28,20 @@ export interface CollectionReadPreview {
   versions?: VersionRow[]
 }
 
+export interface CollectionPaginationPreview {
+  activity?: { hasMore: boolean; loading?: boolean }
+  diff?: { hasMore: boolean; loading?: boolean }
+  members?: { hasMore: boolean; loading?: boolean }
+  versions?: { hasMore: boolean; loading?: boolean }
+}
+
+export interface CollectionPaginationActions {
+  onLoadMoreActivity?: () => void
+  onLoadMoreDiff?: () => void
+  onLoadMoreMembers?: () => void
+  onLoadMoreVersions?: () => void
+}
+
 const TABS: readonly CollectionTab[] = ['Overview', 'Members', 'Draft Changes', 'Versions', 'Distribution', 'Activity']
 
 function count(value: number) {
@@ -35,7 +49,17 @@ function count(value: number) {
 }
 
 /** Compact, keyboard-accessible Collection review shell. All lists remain paginated server reads. */
-export function CollectionViews({ collection, preview = {} }: { collection: CollectionViewRecord; preview?: CollectionReadPreview }) {
+export function CollectionViews({
+  collection,
+  preview = {},
+  pagination = {},
+  actions = {},
+}: {
+  collection: CollectionViewRecord
+  preview?: CollectionReadPreview
+  pagination?: CollectionPaginationPreview
+  actions?: CollectionPaginationActions
+}) {
   const [tab, setTab] = useState<CollectionTab>('Overview')
   const archived = collection.lifecycle === 'archived'
   const publishing = collection.draftState === 'publishing'
@@ -72,11 +96,31 @@ export function CollectionViews({ collection, preview = {} }: { collection: Coll
           diff={preview.diff ?? []}
           onNavigate={setTab}
         />}
-        {tab === 'Members' && <MembersView items={preview.members ?? []} />}
-        {tab === 'Draft Changes' && <DraftDiffView items={preview.diff ?? []} />}
-        {tab === 'Versions' && <VersionsView items={preview.versions ?? []} />}
+        {tab === 'Members' && <MembersView
+          items={preview.members ?? []}
+          hasMore={pagination.members?.hasMore}
+          loading={pagination.members?.loading}
+          onLoadMore={actions.onLoadMoreMembers}
+        />}
+        {tab === 'Draft Changes' && <DraftDiffView
+          items={preview.diff ?? []}
+          hasMore={pagination.diff?.hasMore}
+          loading={pagination.diff?.loading}
+          onLoadMore={actions.onLoadMoreDiff}
+        />}
+        {tab === 'Versions' && <VersionsView
+          items={preview.versions ?? []}
+          hasMore={pagination.versions?.hasMore}
+          loading={pagination.versions?.loading}
+          onLoadMore={actions.onLoadMoreVersions}
+        />}
         {tab === 'Distribution' && <p>Live availability is checked at publish and distribution time.</p>}
-        {tab === 'Activity' && <ActivityView items={preview.activity ?? []} />}
+        {tab === 'Activity' && <ActivityView
+          items={preview.activity ?? []}
+          hasMore={pagination.activity?.hasMore}
+          loading={pagination.activity?.loading}
+          onLoadMore={actions.onLoadMoreActivity}
+        />}
       </div>
     </section>
   )
