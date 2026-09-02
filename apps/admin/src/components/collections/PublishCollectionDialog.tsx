@@ -17,6 +17,10 @@ function versionTransition(preview: PublishPreviewDto) {
     : `First publish → Version ${preview.nextVersion}`
 }
 
+function changeLabel(count: number, singular: string) {
+  return `${count.toLocaleString('en-US')} ${count === 1 ? singular : `${singular}s`}`
+}
+
 export function PublishCollectionDialog({
   preview,
   pending,
@@ -47,6 +51,8 @@ export function PublishCollectionDialog({
         <dl className="collection-dialog__summary">
           <div><dt>Draft revision</dt><dd>{preview.draftRevision}</dd></div>
           <div><dt>Selection</dt><dd>{preview.selectedCount.toLocaleString('en-US')} selected</dd></div>
+          <div><dt>Draft additions</dt><dd>{changeLabel(preview.addCount, 'add')}</dd></div>
+          <div><dt>Draft removals</dt><dd>{changeLabel(preview.removeCount, 'remove')}</dd></div>
           <div><dt>Availability</dt><dd>{preview.availableCount.toLocaleString('en-US')} available</dd></div>
           <div><dt>Unavailable</dt><dd>{preview.unavailableCount.toLocaleString('en-US')} unavailable</dd></div>
         </dl>
