@@ -1,10 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { CollectionDetailWorkspace } from '../../../src/components/collections/CollectionDetailWorkspace'
-import type {
-  AdminCollectionRecord,
-  CollectionsAdminClient,
-  PublishPreviewDto,
+import {
+  CollectionsAdminError,
+  type AdminCollectionRecord,
+  type CollectionsAdminClient,
+  type PublishPreviewDto,
 } from '../../../src/collections/admin-client'
 
 const collection: AdminCollectionRecord = {
@@ -89,6 +90,37 @@ test('publish preview shows exact live counts and requires unavailable confirmat
 
   fireEvent.click(summary.getByRole('checkbox', { name: 'Publish with 1 unavailable Curation' }))
   expect(summary.getByRole('button', { name: 'Publish Collection now' })).toBeEnabled()
+})
+
+test('availability change forces a fresh confirmation against the new preview', async () => {
+  const changedPreview: PublishPreviewDto = {
+    ...preview,
+    availableCount: 7,
+    unavailableCount: 2,
+  }
+  const publishPreview = vi.fn()
+    .mockResolvedValueOnce(preview)
+    .mockResolvedValueOnce(changedPreview)
+  const publish = vi.fn().mockRejectedValue(new CollectionsAdminError(
+    'unavailable_confirmation_required',
+    409,
+    false,
+  ))
+  const api = client({ publishPreview, publish })
+  render(<CollectionDetailWorkspace collectionId={collection.id} client={api} />)
+
+  await screen.findByRole('heading', { name: 'Victoria' })
+  fireEvent.click(screen.getByRole('button', { name: 'Publish new version' }))
+  let dialog = await screen.findByRole('dialog', { name: 'Publish Collection' })
+  fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Publish with 1 unavailable Curation' }))
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Publish Collection now' }))
+
+  expect(await screen.findByText('Availability changed since the preview. Review the current counts before publishing.')).toBeVisible()
+  dialog = screen.getByRole('dialog', { name: 'Publish Collection' })
+  const refreshed = within(dialog)
+  expect(refreshed.getByText('2 unavailable')).toBeVisible()
+  expect(refreshed.getByRole('checkbox', { name: 'Publish with 2 unavailable Curations' })).not.toBeChecked()
+  expect(refreshed.getByRole('button', { name: 'Publish Collection now' })).toBeDisabled()
 })
 
 test('confirmed publish uses the preview count and refreshes after promotion', async () => {
