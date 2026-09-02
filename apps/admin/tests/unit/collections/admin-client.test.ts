@@ -46,6 +46,33 @@ describe('CollectionsAdminClient', () => {
     expect(JSON.parse(String(init.body))).toEqual({ title: 'Victoria 2027' })
   })
 
+  test('loads the exact live publish preview without mutating Collection state', async () => {
+    const preview = {
+      currentPublishedVersion: 2,
+      nextVersion: 3,
+      draftRevision: 7,
+      revision: 12,
+      selectedCount: 9,
+      availableCount: 8,
+      unavailableCount: 1,
+    }
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(preview), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+    const client = createBrowserCollectionsAdminClient({
+      fetcher: fetcher as typeof fetch,
+      uuid: () => 'request-1',
+    })
+
+    await expect(client.publishPreview(collection.id)).resolves.toEqual(preview)
+
+    const [path, init] = fetcher.mock.calls[0] as [string, RequestInit]
+    expect(path).toBe('/api/admin/v1/collections/507f1f77bcf86cd799439011/publish-preview')
+    expect(init.credentials).toBe('same-origin')
+    expect(init.method).toBeUndefined()
+  })
+
   test('publish preserves an explicit logical idempotency key', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       id: 'job-1',
