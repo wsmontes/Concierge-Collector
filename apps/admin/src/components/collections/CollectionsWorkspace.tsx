@@ -9,6 +9,8 @@ import {
 } from '../../collections/admin-client'
 import { NewCollectionDialog } from './NewCollectionDialog'
 
+const browserCollectionsClient = createBrowserCollectionsAdminClient()
+
 export interface CollectionsWorkspaceProps {
   client?: CollectionsAdminClient
   navigate?: (href: string) => void
@@ -33,7 +35,7 @@ function versionLabel(collection: AdminCollectionRecord) {
 }
 
 export function CollectionsWorkspace({
-  client = createBrowserCollectionsAdminClient(),
+  client = browserCollectionsClient,
   navigate = defaultNavigate,
 }: CollectionsWorkspaceProps) {
   const [rows, setRows] = useState<AdminCollectionRecord[]>([])
