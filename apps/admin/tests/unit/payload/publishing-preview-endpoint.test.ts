@@ -15,7 +15,7 @@ vi.mock('../../../src/http/with-admin', () => ({
     async (request: Request) => handler(request, actor),
 }))
 
-test('publish preview returns the live availability snapshot for the current admin', async () => {
+test('publish preview returns the live availability and delta snapshot for the current admin', async () => {
   const { publishingEndpoints } = await import('../../../src/payload/endpoints/publishing')
   const preview = vi.fn().mockResolvedValue({
     currentPublishedVersion: 2,
@@ -25,6 +25,8 @@ test('publish preview returns the live availability snapshot for the current adm
     selectedCount: 9,
     availableCount: 8,
     unavailableCount: 1,
+    addCount: 2,
+    removeCount: 1,
   })
   const endpoint = publishingEndpoints({ preview })
     .find(({ method, path }) => method === 'get' && path === '/admin/v1/collections/:id/publish-preview')
@@ -50,5 +52,7 @@ test('publish preview returns the live availability snapshot for the current adm
     selectedCount: 9,
     availableCount: 8,
     unavailableCount: 1,
+    addCount: 2,
+    removeCount: 1,
   })
 })
