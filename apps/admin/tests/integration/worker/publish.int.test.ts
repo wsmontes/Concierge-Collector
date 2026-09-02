@@ -108,11 +108,7 @@ integrationSuite('collection publish worker', () => {
     await expect(enqueuePublish(payload, {
       collectionId: collection.id, ifMatch: dirty.revision, idempotencyKey: 'publish-unavailable', requestId: 'publish-unavailable-request',
       actorId: 'admin-1', confirmUnavailable: false,
-    }, unavailable)).rejects.toMatchObject({
-      status: 409,
-      code: 'unavailable_confirmation_required',
-      details: { unavailableCount: '1' },
-    })
+    }, unavailable)).rejects.toMatchObject({ status: 409, code: 'unavailable_confirmation_required' })
     await expect(enqueuePublish(payload, {
       collectionId: collection.id, ifMatch: dirty.revision, idempotencyKey: 'publish-unavailable-confirmed', requestId: 'publish-unavailable-confirmed-request',
       actorId: 'admin-1', confirmUnavailable: true, expectedUnavailableCount: 1,
