@@ -88,13 +88,21 @@ export function collectionEndpoints(
         const model = request.payload.db.collections['collections']
         if (!model) throw new Error('Missing collections model')
         const rows = await (model as { find(query: Record<string, unknown>): { sort(sort: Record<string, 1 | -1>): { lean(): Promise<unknown[]> } } })
-          .find({ lifecycle: { $ne: 'archived' } }).sort({ title: 1 }).lean()
+          .find({}).sort({ title: 1 }).lean()
         return Response.json({ items: rows.map((row) => {
           const value = row as Record<string, unknown>
           return {
-            id: String(value.id ?? value._id), slug: value.slug, title: value.title, description: value.description ?? null,
-            lifecycle: value.lifecycle, draftRevision: value.draftRevision, draftState: value.draftState,
+            id: String(value.id ?? value._id),
+            slug: value.slug,
+            title: value.title,
+            description: value.description ?? null,
+            lifecycle: value.lifecycle,
+            currentPublishedVersion: value.currentPublishedVersion ?? null,
+            draftRevision: value.draftRevision,
+            draftState: value.draftState,
+            publishedSelectedCount: value.publishedSelectedCount ?? 0,
             draftSelectedCount: value.draftSelectedCount ?? 0,
+            revision: value.revision,
           }
         }) })
       }),
