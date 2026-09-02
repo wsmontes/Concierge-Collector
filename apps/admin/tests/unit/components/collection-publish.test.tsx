@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { CollectionDetailWorkspace } from '../../../src/components/collections/CollectionDetailWorkspace'
 import type {
@@ -29,6 +29,8 @@ const preview: PublishPreviewDto = {
   selectedCount: 9,
   availableCount: 8,
   unavailableCount: 1,
+  addCount: 2,
+  removeCount: 1,
 }
 
 function client(overrides: Partial<CollectionsAdminClient> = {}): CollectionsAdminClient {
@@ -74,16 +76,19 @@ test('publish preview shows exact live counts and requires unavailable confirmat
   await screen.findByRole('heading', { name: 'Victoria' })
   fireEvent.click(screen.getByRole('button', { name: 'Publish new version' }))
 
-  expect(await screen.findByRole('dialog', { name: 'Publish Collection' })).toBeVisible()
+  const dialog = await screen.findByRole('dialog', { name: 'Publish Collection' })
+  const summary = within(dialog)
   expect(api.publishPreview).toHaveBeenCalledWith(collection.id)
-  expect(screen.getByText('Version 2 → Version 3')).toBeVisible()
-  expect(screen.getByText('9 selected')).toBeVisible()
-  expect(screen.getByText('8 available')).toBeVisible()
-  expect(screen.getByText('1 unavailable')).toBeVisible()
-  expect(screen.getByRole('button', { name: 'Publish Collection now' })).toBeDisabled()
+  expect(summary.getByText('Version 2 → Version 3')).toBeVisible()
+  expect(summary.getByText('9 selected')).toBeVisible()
+  expect(summary.getByText('8 available')).toBeVisible()
+  expect(summary.getByText('1 unavailable')).toBeVisible()
+  expect(summary.getByText('2 adds')).toBeVisible()
+  expect(summary.getByText('1 remove')).toBeVisible()
+  expect(summary.getByRole('button', { name: 'Publish Collection now' })).toBeDisabled()
 
-  fireEvent.click(screen.getByRole('checkbox', { name: 'Publish with 1 unavailable Curation' }))
-  expect(screen.getByRole('button', { name: 'Publish Collection now' })).toBeEnabled()
+  fireEvent.click(summary.getByRole('checkbox', { name: 'Publish with 1 unavailable Curation' }))
+  expect(summary.getByRole('button', { name: 'Publish Collection now' })).toBeEnabled()
 })
 
 test('confirmed publish uses the preview count and refreshes after promotion', async () => {
@@ -120,9 +125,9 @@ test('confirmed publish uses the preview count and refreshes after promotion', a
 
   await screen.findByRole('heading', { name: 'Victoria' })
   fireEvent.click(screen.getByRole('button', { name: 'Publish new version' }))
-  await screen.findByRole('dialog', { name: 'Publish Collection' })
-  fireEvent.click(screen.getByRole('checkbox', { name: 'Publish with 1 unavailable Curation' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Publish Collection now' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Publish Collection' })
+  fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Publish with 1 unavailable Curation' }))
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Publish Collection now' }))
 
   await waitFor(() => expect(publish).toHaveBeenCalledWith(
     expect.objectContaining({ id: collection.id, revision: 12 }),
