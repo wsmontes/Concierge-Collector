@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
-  CollectionsAdminError,
   createBrowserCollectionsAdminClient,
   type AdminCollectionRecord,
 } from '../../../src/collections/admin-client'
@@ -38,13 +37,12 @@ describe('CollectionsAdminClient', () => {
 
     expect(fetcher).toHaveBeenCalledTimes(1)
     const [path, init] = fetcher.mock.calls[0] as [string, RequestInit]
+    const headers = new Headers(init.headers)
     expect(path).toBe('/api/admin/v1/collections/507f1f77bcf86cd799439011')
     expect(init).toMatchObject({ method: 'PATCH', credentials: 'same-origin' })
-    expect(init.headers).toMatchObject({
-      'If-Match': '12',
-      'Idempotency-Key': 'idem-1',
-      'X-Request-Id': 'request-1',
-    })
+    expect(headers.get('If-Match')).toBe('12')
+    expect(headers.get('Idempotency-Key')).toBe('idem-1')
+    expect(headers.get('X-Request-Id')).toBe('request-1')
     expect(JSON.parse(String(init.body))).toEqual({ title: 'Victoria 2027' })
   })
 
@@ -65,12 +63,11 @@ describe('CollectionsAdminClient', () => {
     )
 
     const [path, init] = fetcher.mock.calls[0] as [string, RequestInit]
+    const headers = new Headers(init.headers)
     expect(path).toBe('/api/admin/v1/collections/507f1f77bcf86cd799439011/publish')
-    expect(init.headers).toMatchObject({
-      'If-Match': '12',
-      'Idempotency-Key': 'publish-command-1',
-      'X-Request-Id': 'request-1',
-    })
+    expect(headers.get('If-Match')).toBe('12')
+    expect(headers.get('Idempotency-Key')).toBe('publish-command-1')
+    expect(headers.get('X-Request-Id')).toBe('request-1')
     expect(JSON.parse(String(init.body))).toEqual({
       confirmUnavailable: true,
       expectedUnavailableCount: 2,
@@ -89,12 +86,13 @@ describe('CollectionsAdminClient', () => {
       uuid: () => 'request-1',
     })
 
-    await expect(client.get(collection.id)).rejects.toEqual(new CollectionsAdminError(
-      'unavailable_confirmation_required',
-      409,
-      false,
-      { unavailableCount: '3' },
-    ))
+    await expect(client.get(collection.id)).rejects.toMatchObject({
+      name: 'CollectionsAdminError',
+      code: 'unavailable_confirmation_required',
+      status: 409,
+      retryable: false,
+      details: { unavailableCount: '3' },
+    })
   })
 
   test('network failures remain retryable', async () => {
@@ -104,10 +102,11 @@ describe('CollectionsAdminClient', () => {
       uuid: () => 'request-1',
     })
 
-    await expect(client.get(collection.id)).rejects.toEqual(new CollectionsAdminError(
-      'network_error',
-      0,
-      true,
-    ))
+    await expect(client.get(collection.id)).rejects.toMatchObject({
+      name: 'CollectionsAdminError',
+      code: 'network_error',
+      status: 0,
+      retryable: true,
+    })
   })
 })
