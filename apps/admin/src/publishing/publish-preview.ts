@@ -20,6 +20,8 @@ export interface PublishPreviewResult {
   selectedCount: number
   availableCount: number
   unavailableCount: number
+  addCount: number
+  removeCount: number
 }
 
 function modelFor(payload: Payload, slug: string): DocumentModel {
@@ -30,6 +32,33 @@ function modelFor(payload: Payload, slug: string): DocumentModel {
 
 function assertObjectId(value: string): void {
   if (!/^[a-f\d]{24}$/i.test(value)) throw new AdminHttpError(404, 'not_found')
+}
+
+async function visibleDraftDeltaCounts(input: {
+  changes: DocumentModel
+  collectionId: string
+  draftEpoch: string
+  draftRevision: number
+}): Promise<{ addCount: number; removeCount: number }> {
+  const cursor = input.changes.find({
+    collectionId: input.collectionId,
+    draftEpoch: input.draftEpoch,
+    stageState: 'committed',
+    targetDraftRevision: { $lte: input.draftRevision },
+    $or: [{ validUntilDraftRevision: null }, { validUntilDraftRevision: { $gte: input.draftRevision } }],
+  }).sort({ curationId: 1, targetDraftRevision: -1 }).cursor() as unknown as AsyncIterable<Record<string, unknown>>
+
+  let previousCurationId: string | undefined
+  let addCount = 0
+  let removeCount = 0
+  for await (const change of cursor) {
+    const curationId = String(change.curationId)
+    if (curationId === previousCurationId) continue
+    previousCurationId = curationId
+    if (change.desiredState === 'add') addCount += 1
+    else if (change.desiredState === 'remove') removeCount += 1
+  }
+  return { addCount, removeCount }
 }
 
 /**
@@ -54,22 +83,36 @@ export async function getPublishPreview(
   const currentPublishedVersion = typeof collection.currentPublishedVersion === 'number'
     ? collection.currentPublishedVersion
     : null
-  const availability = await inspectAvailability(streamDraftMembershipIds({
-    memberships: modelFor(payload, 'collection-memberships'),
-    changes: modelFor(payload, 'collection-draft-changes'),
-    collectionId: input.collectionId,
-    baseVersion: currentPublishedVersion,
-    draftEpoch: String(collection.draftEpoch),
-    draftRevision: Number(collection.draftRevision),
-  }), (ids) => client.hydrateCurations(ids))
+  const memberships = modelFor(payload, 'collection-memberships')
+  const changes = modelFor(payload, 'collection-draft-changes')
+  const draftEpoch = String(collection.draftEpoch)
+  const draftRevision = Number(collection.draftRevision)
+  const [availability, deltaCounts] = await Promise.all([
+    inspectAvailability(streamDraftMembershipIds({
+      memberships,
+      changes,
+      collectionId: input.collectionId,
+      baseVersion: currentPublishedVersion,
+      draftEpoch,
+      draftRevision,
+    }), (ids) => client.hydrateCurations(ids)),
+    visibleDraftDeltaCounts({
+      changes,
+      collectionId: input.collectionId,
+      draftEpoch,
+      draftRevision,
+    }),
+  ])
 
   return {
     currentPublishedVersion,
     nextVersion: (currentPublishedVersion ?? 0) + 1,
-    draftRevision: Number(collection.draftRevision),
+    draftRevision,
     revision: Number(collection.revision),
     selectedCount: availability.selectedCount,
     availableCount: availability.availableCount,
     unavailableCount: availability.unavailableCount,
+    addCount: deltaCounts.addCount,
+    removeCount: deltaCounts.removeCount,
   }
 }
