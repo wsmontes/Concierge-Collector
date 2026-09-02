@@ -52,6 +52,8 @@ export interface PublishPreviewDto {
   selectedCount: number
   availableCount: number
   unavailableCount: number
+  addCount: number
+  removeCount: number
 }
 
 export interface PublishJobDto {
