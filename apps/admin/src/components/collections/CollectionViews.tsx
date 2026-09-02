@@ -35,11 +35,14 @@ export interface CollectionPaginationPreview {
   versions?: { hasMore: boolean; loading?: boolean }
 }
 
-export interface CollectionPaginationActions {
+export interface CollectionViewActions {
+  onArchive?: () => void
+  onEditMetadata?: () => void
   onLoadMoreActivity?: () => void
   onLoadMoreDiff?: () => void
   onLoadMoreMembers?: () => void
   onLoadMoreVersions?: () => void
+  onRestore?: () => void
 }
 
 const TABS: readonly CollectionTab[] = ['Overview', 'Members', 'Draft Changes', 'Versions', 'Distribution', 'Activity']
@@ -58,7 +61,7 @@ export function CollectionViews({
   collection: CollectionViewRecord
   preview?: CollectionReadPreview
   pagination?: CollectionPaginationPreview
-  actions?: CollectionPaginationActions
+  actions?: CollectionViewActions
 }) {
   const [tab, setTab] = useState<CollectionTab>('Overview')
   const archived = collection.lifecycle === 'archived'
@@ -72,13 +75,17 @@ export function CollectionViews({
           <h1 id="collection-title">{collection.title}</h1>
           <p><span>{count(collection.draftSelectedCount)} selected</span> · draft revision {collection.draftRevision}</p>
         </div>
-        {archived ? (
-          <button type="button">Restore collection</button>
-        ) : (
-          <button type="button" disabled={publishing} aria-label="Publish new version">
-            {publishing ? 'Publishing…' : 'Publish new version'}
-          </button>
-        )}
+        <div className="collection-views__actions">
+          {archived ? (
+            <button type="button" onClick={actions.onRestore}>Restore collection</button>
+          ) : <>
+            <button type="button" onClick={actions.onEditMetadata}>Edit metadata</button>
+            <button type="button" onClick={actions.onArchive}>Archive collection</button>
+            <button type="button" disabled={publishing} aria-label="Publish new version">
+              {publishing ? 'Publishing…' : 'Publish new version'}
+            </button>
+          </>}
+        </div>
       </header>
       {archived && <p role="status">Archived collections are read-only until restored.</p>}
       <div role="tablist" aria-label="Collection review">
