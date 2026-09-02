@@ -42,7 +42,9 @@ export interface CollectionViewActions {
   onLoadMoreDiff?: () => void
   onLoadMoreMembers?: () => void
   onLoadMoreVersions?: () => void
+  onPublish?: () => void
   onRestore?: () => void
+  onRestoreVersionAsDraft?: (version: number) => void
 }
 
 const TABS: readonly CollectionTab[] = ['Overview', 'Members', 'Draft Changes', 'Versions', 'Distribution', 'Activity']
@@ -81,7 +83,7 @@ export function CollectionViews({
           ) : <>
             <button type="button" onClick={actions.onEditMetadata}>Edit metadata</button>
             <button type="button" onClick={actions.onArchive}>Archive collection</button>
-            <button type="button" disabled={publishing} aria-label="Publish new version">
+            <button type="button" disabled={publishing} aria-label="Publish new version" onClick={actions.onPublish}>
               {publishing ? 'Publishing…' : 'Publish new version'}
             </button>
           </>}
@@ -117,9 +119,11 @@ export function CollectionViews({
         />}
         {tab === 'Versions' && <VersionsView
           items={preview.versions ?? []}
+          currentPublishedVersion={collection.currentPublishedVersion}
           hasMore={pagination.versions?.hasMore}
           loading={pagination.versions?.loading}
           onLoadMore={actions.onLoadMoreVersions}
+          onRestoreAsDraft={actions.onRestoreVersionAsDraft}
         />}
         {tab === 'Distribution' && <p>Live availability is checked at publish and distribution time.</p>}
         {tab === 'Activity' && <ActivityView
