@@ -55,6 +55,8 @@ describe('CollectionsAdminClient', () => {
       selectedCount: 9,
       availableCount: 8,
       unavailableCount: 1,
+      addCount: 2,
+      removeCount: 1,
     }
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(preview), {
       status: 200,
