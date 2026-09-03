@@ -29,7 +29,7 @@ export const CMS_NAV_GROUPS: readonly CmsNavGroup[] = [
   },
   {
     label: 'Operations',
-    items: [],
+    items: [{ href: '/admin/operations', label: 'Operations' }],
     emptyState: 'Operations tools will appear here when available.',
   },
   {
