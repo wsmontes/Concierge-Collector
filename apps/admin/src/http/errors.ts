@@ -16,6 +16,7 @@ const DEFAULT_CODES: Record<AdminErrorStatus, string> = {
 
 const ADMIN_ERROR_CODES = {
   invalid_request: 400,
+  collection_not_grantable: 400,
   authentication_required: 401,
   authorization_denied: 403,
   authorization_revoked: 403,
