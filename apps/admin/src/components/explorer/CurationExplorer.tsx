@@ -33,7 +33,13 @@ function newId(): string {
 }
 
 /** Gmail-like selection intent over pages; it never expands all-matching into browser IDs. */
-export function CurationExplorer({ loadPage = browserLoadPage }: { loadPage?: LoadPage }) {
+export function CurationExplorer({
+  loadPage = browserLoadPage,
+  targetCollectionId = null,
+}: {
+  loadPage?: LoadPage
+  targetCollectionId?: string | null
+}) {
   const [filters, setFilters] = useState<CurationFilters>({})
   const [query, setQuery] = useState('')
   const [page, setPage] = useState<CurationSearchPage>({ items: [], next_cursor: null, total: null })
@@ -44,6 +50,7 @@ export function CurationExplorer({ loadPage = browserLoadPage }: { loadPage?: Lo
   const [applyError, setApplyError] = useState<string | null>(null)
   const [applySelection, setApplySelection] = useState<string | null>(null)
   const [showJobs, setShowJobs] = useState(false)
+  const [lastPostedOperation, setLastPostedOperation] = useState<string | null>(null)
   const pollController = useRef<AbortController | null>(null)
 
   useEffect(() => () => pollController.current?.abort(), [])
@@ -124,6 +131,7 @@ export function CurationExplorer({ loadPage = browserLoadPage }: { loadPage?: Lo
     if (applying) return
     setApplying(true)
     setApplyError(null)
+    setLastPostedOperation(null)
     const controller = new AbortController()
     pollController.current = controller
     try {
@@ -171,6 +179,19 @@ export function CurationExplorer({ loadPage = browserLoadPage }: { loadPage?: Lo
         <h1 id="curation-explorer-title">Curation Explorer</h1>
         <p>Search Curations and build a server-side selection for a Collection draft.</p>
       </header>
+      {targetCollectionId && (
+        <aside className="curation-explorer__target" aria-label="Target Collection">
+          <p>Selecting Curations for a Collection draft.</p>
+          <a href={`/admin/collections/${encodeURIComponent(targetCollectionId)}`}>Back to Collection</a>
+        </aside>
+      )}
+      {lastPostedOperation && (
+        <aside className="curation-explorer__posted" role="status">
+          <p>Bulk operation queued.</p>
+          {targetCollectionId && <a href={`/admin/collections/${encodeURIComponent(targetCollectionId)}`}>Return to Collection</a>}
+          <a href="/admin/operations">View Operations</a>
+        </aside>
+      )}
       <form onSubmit={search}>
         <label htmlFor="curation-search">Search Curations</label>
         <input id="curation-search" onChange={(event) => setQuery(event.target.value)} value={query} />
@@ -197,8 +218,13 @@ export function CurationExplorer({ loadPage = browserLoadPage }: { loadPage?: Lo
       {page.next_cursor && <button onClick={() => void load(filters, page.next_cursor)} type="button">Next page</button>}
       {applySelection && (
         <BulkActionDialog
+          initialCollectionId={targetCollectionId}
           onClose={() => setApplySelection(null)}
-          onPosted={() => { setApplySelection(null); setShowJobs(true) }}
+          onPosted={(operationId) => {
+            setApplySelection(null)
+            setLastPostedOperation(operationId)
+            setShowJobs(true)
+          }}
           selectionId={applySelection}
         />
       )}
