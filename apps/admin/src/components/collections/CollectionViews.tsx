@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import type { CollectionDistributionClient } from '../../collections/distribution-client'
 import { ActivityView, type ActivityRow } from './ActivityView'
+import { CollectionDistributionView } from './CollectionDistributionView'
 import { DraftDiffView, type DraftDiffRow } from './DraftDiffView'
 import { MembersView, type MemberRow } from './MembersView'
 import { VersionsView, type VersionRow } from './VersionsView'
@@ -59,11 +61,13 @@ export function CollectionViews({
   preview = {},
   pagination = {},
   actions = {},
+  distributionClient,
 }: {
   collection: CollectionViewRecord
   preview?: CollectionReadPreview
   pagination?: CollectionPaginationPreview
   actions?: CollectionViewActions
+  distributionClient?: CollectionDistributionClient
 }) {
   const [tab, setTab] = useState<CollectionTab>('Overview')
   const archived = collection.lifecycle === 'archived'
@@ -126,7 +130,12 @@ export function CollectionViews({
           onLoadMore={actions.onLoadMoreVersions}
           onRestoreAsDraft={actions.onRestoreVersionAsDraft}
         />}
-        {tab === 'Distribution' && <p>Live availability is checked at publish and distribution time.</p>}
+        {tab === 'Distribution' && <CollectionDistributionView
+          collectionId={collection.id}
+          lifecycle={collection.lifecycle}
+          currentPublishedVersion={collection.currentPublishedVersion}
+          client={distributionClient}
+        />}
         {tab === 'Activity' && <ActivityView
           items={preview.activity ?? []}
           hasMore={pagination.activity?.hasMore}
