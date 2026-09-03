@@ -93,7 +93,7 @@ function progressLabel(progress: Record<string, number>): string {
 }
 
 async function cancelOperation(operationId: string): Promise<void> {
-  const response = await fetch(`/api/admin/v1/operations/${operationId}/cancel`, {
+  const response = await fetch(`/api/admin/v1/operation-history/${operationId}/cancel`, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'x-request-id': crypto.randomUUID() },
@@ -135,7 +135,7 @@ function JobRow({ job, onCancelled }: { job: ActiveJobRow; onCancelled: () => vo
           <button onClick={() => void cancel()} type="button">Cancel</button>
         )}
       </div>
-      {cancelError && <p role="alert">Unable to cancel. It may already be committing.</p>}
+      {cancelError && <p role="alert">Unable to cancel. Some children may already be committing.</p>}
     </li>
   )
 }
