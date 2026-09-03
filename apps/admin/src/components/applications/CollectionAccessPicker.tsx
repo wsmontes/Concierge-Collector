@@ -12,11 +12,23 @@ export interface DistributionCollectionOption {
 
 export type LoadDistributionCollections = () => Promise<DistributionCollectionOption[]>
 
-async function browserLoadCollections(): Promise<DistributionCollectionOption[]> {
-  const response = await fetch('/api/admin/v1/collections', { credentials: 'same-origin' })
-  if (!response.ok) throw new Error('unable_to_load_collections')
-  const body = await response.json() as { items: DistributionCollectionOption[] }
-  return body.items
+export async function browserLoadCollections(): Promise<DistributionCollectionOption[]> {
+  const items: DistributionCollectionOption[] = []
+  const seen = new Set<string>()
+  let cursor: string | null = null
+  do {
+    const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
+    const response = await fetch(`/api/admin/v1/collections${query}`, { credentials: 'same-origin' })
+    if (!response.ok) throw new Error('unable_to_load_collections')
+    const body = await response.json() as { items: DistributionCollectionOption[]; nextCursor?: string | null }
+    items.push(...body.items)
+    const next = body.nextCursor ?? null
+    if (!next) break
+    if (seen.has(next)) throw new Error('invalid_collection_pagination')
+    seen.add(next)
+    cursor = next
+  } while (true)
+  return items
 }
 
 function selectable(collection: DistributionCollectionOption, selected: boolean): boolean {
@@ -79,12 +91,7 @@ export function CollectionAccessPicker({
     <section className="collection-access-picker" aria-label="Collection access">
       <label>
         Find Collections
-        <input
-          disabled={disabled}
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <input disabled={disabled} type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
       </label>
       {loading && <p role="status">Loading Collections…</p>}
       {error && <p role="alert">{error}</p>}
@@ -96,12 +103,7 @@ export function CollectionAccessPicker({
           return (
             <li key={collection.id}>
               <label>
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  disabled={disabled || !canSelect}
-                  onChange={() => toggle(collection)}
-                />
+                <input type="checkbox" checked={checked} disabled={disabled || !canSelect} onChange={() => toggle(collection)} />
                 <span>
                   <strong>{collection.title}</strong>
                   <small>
