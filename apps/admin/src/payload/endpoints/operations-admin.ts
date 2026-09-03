@@ -2,6 +2,7 @@ import type { Endpoint, PayloadRequest } from 'payload'
 import type { CmsIdentity } from '../../auth/fastapi-authz-client'
 import { AdminHttpError } from '../../http/errors'
 import { withAdmin } from '../../http/with-admin'
+import { cancelDraftOperation } from '../../operations/apply-draft-operation'
 
 const PAGE_LIMIT = 30
 const TERMINAL = ['committed', 'completed', 'completed_with_skips', 'failed', 'cancelled', 'stale', 'conflicted', 'authorization_revoked']
@@ -17,6 +18,7 @@ type RawCollection = {
       limit(limit: number): { toArray(): Promise<RecordValue[]> }
     }
   }
+  findOne?(query: RecordValue): Promise<RecordValue | null>
   aggregate(pipeline: RecordValue[]): { toArray(): Promise<RecordValue[]> }
 }
 
@@ -40,6 +42,12 @@ function requireCurrentActorQuery(request: PayloadRequest): void {
   if (queryValue(request, 'actor') !== 'current') throw new AdminHttpError(400, 'invalid_request')
 }
 
+function routeId(request: PayloadRequest): string {
+  const id = request.routeParams?.id
+  if (typeof id !== 'string' || !/^[a-f\d]{24}$/i.test(id)) throw new AdminHttpError(404, 'not_found')
+  return id
+}
+
 function decodeCursor(request: PayloadRequest): string | null {
   const raw = queryValue(request, 'cursor')
   if (!raw) return null
@@ -60,10 +68,17 @@ function idOf(value: RecordValue): string {
   return String(value.id ?? value._id)
 }
 
-function operationCollection(request: PayloadRequest): RawCollection {
+function operationModel(request: PayloadRequest) {
   const model = request.payload.db.collections['collection-operations']
   if (!model) throw new Error('Missing collection operations model')
-  return (model as unknown as { collection: RawCollection }).collection
+  return model as unknown as {
+    collection: RawCollection
+    find(query: RecordValue): { select(projection: RecordValue): { lean(): Promise<RecordValue[]> } }
+  }
+}
+
+function operationCollection(request: PayloadRequest): RawCollection {
+  return operationModel(request).collection
 }
 
 function publishModel(request: PayloadRequest) {
@@ -208,7 +223,40 @@ async function recentPublishJobs(request: PayloadRequest, actorId: string) {
   }
 }
 
-/** Read-only operational history for the CMS. Collector operation contracts stay in operations.ts. */
+async function cancelParentOperation(request: PayloadRequest, actorId: string, parentId: string) {
+  const model = operationModel(request)
+  if (!model.collection.findOne) throw new Error('Operation collection does not support findOne')
+  const parent = await model.collection.findOne({
+    _id: parentId,
+    actorId,
+    mode: 'selection',
+    parentOperationId: null,
+  })
+  if (!parent) throw new AdminHttpError(404, 'not_found')
+
+  const children = await model.find({
+    parentOperationId: parentId,
+    status: { $in: [...CANCELLABLE] },
+  }).select({ _id: 1, status: 1 }).lean()
+
+  let cancelled = 0
+  let conflicts = 0
+  for (const child of children) {
+    try {
+      await cancelDraftOperation(request.payload, idOf(child))
+      cancelled += 1
+    } catch (error) {
+      if (error instanceof AdminHttpError && error.status === 409) {
+        conflicts += 1
+        continue
+      }
+      throw error
+    }
+  }
+  return { cancelled, conflicts }
+}
+
+/** Read-only operational history plus safe parent cancellation for the CMS. Collector operation contracts stay in operations.ts. */
 export function operationsAdminEndpoints(): Endpoint[] {
   return [
     {
@@ -218,6 +266,13 @@ export function operationsAdminEndpoints(): Endpoint[] {
         requireCurrentActorQuery(request)
         return Response.json(await recentBulkOperations(request, actor.user_id))
       }),
+    },
+    {
+      method: 'post',
+      path: '/admin/v1/operation-history/:id/cancel',
+      handler: guard(async (request, actor) => Response.json(
+        await cancelParentOperation(request, actor.user_id, routeId(request)),
+      )),
     },
     {
       method: 'get',
