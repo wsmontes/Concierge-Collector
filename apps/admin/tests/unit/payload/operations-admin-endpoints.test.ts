@@ -15,9 +15,14 @@ vi.mock('../../../src/http/with-admin', () => ({
     async (request: Request) => handler(request, actor),
 }))
 
-function requestFor(url: string, collections: Record<string, unknown>) {
+vi.mock('../../../src/operations/apply-draft-operation', () => ({
+  cancelDraftOperation: vi.fn().mockResolvedValue({ status: 'cancelled' }),
+}))
+
+function requestFor(url: string, collections: Record<string, unknown>, routeParams?: Record<string, string>) {
   return Object.assign(new Request(url), {
     query: Object.fromEntries(new URL(url).searchParams.entries()),
+    routeParams,
     payload: { db: { collections } },
   })
 }
@@ -146,5 +151,42 @@ describe('operations admin read models', () => {
       }],
       nextCursor: null,
     })
+  })
+
+  test('parent cancellation only touches cancellable children owned by the current actor', async () => {
+    const parentId = '65f000000000000000000001'
+    const { cancelDraftOperation } = await import('../../../src/operations/apply-draft-operation')
+    const cancel = vi.mocked(cancelDraftOperation)
+    cancel.mockClear()
+    let parentQuery: Record<string, unknown> | null = null
+    const operationsModel = {
+      collection: {
+        findOne: async (query: Record<string, unknown>) => {
+          parentQuery = query
+          return { _id: parentId, actorId: 'admin-1', mode: 'selection', parentOperationId: null }
+        },
+      },
+      find: () => ({
+        select: () => ({
+          lean: async () => [
+            { _id: '65f000000000000000000002', status: 'queued' },
+            { _id: '65f000000000000000000003', status: 'committing' },
+          ],
+        }),
+      }),
+    }
+    const { operationsAdminEndpoints } = await import('../../../src/payload/endpoints/operations-admin')
+    const endpoint = operationsAdminEndpoints().find(({ method, path }) => method === 'post' && path === '/admin/v1/operation-history/:id/cancel')!
+
+    const response = await endpoint.handler(requestFor(
+      `https://admin.example.test/api/admin/v1/operation-history/${parentId}/cancel`,
+      { 'collection-operations': operationsModel },
+      { id: parentId },
+    ) as never)
+
+    expect(parentQuery).toMatchObject({ _id: parentId, actorId: 'admin-1', mode: 'selection', parentOperationId: null })
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(cancel).toHaveBeenCalledWith(expect.anything(), '65f000000000000000000002')
+    expect(await response.json()).toEqual({ cancelled: 1, conflicts: 0 })
   })
 })
