@@ -77,7 +77,7 @@ export async function purgeOrphanStaging(
   const deletableIds = candidates
     .filter((row) => !protectedIds.has(String(row.operationId ?? '')))
     .map((row) => row.id ?? row._id)
-    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    .filter((id): id is NonNullable<unknown> => id !== null && id !== undefined)
 
   let deleted = 0
   if (deletableIds.length > 0) {
