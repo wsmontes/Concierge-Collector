@@ -8,7 +8,9 @@ const stalePayloadUpdatedAt = new Date('2026-09-02T11:50:00.000Z')
 function queryModel(rows: Record<string, unknown>[]) {
   return {
     find: vi.fn().mockReturnValue({
-      select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(rows) }),
+      select: vi.fn().mockReturnValue({
+        limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(rows) }),
+      }),
     }),
   }
 }
@@ -41,7 +43,7 @@ test('recovers an exhausted Payload job only when its domain lease is reclaimabl
 
   expect(result).toEqual({ recovered: 1, healthy: 0, exhausted: 0, missing: 0 })
   expect(payloadJobs.updateOne).toHaveBeenCalledWith(
-    { _id: payloadJob._id },
+    { _id: payloadJob._id, hasError: true },
     expect.objectContaining({
       $set: expect.objectContaining({
         processing: false,
