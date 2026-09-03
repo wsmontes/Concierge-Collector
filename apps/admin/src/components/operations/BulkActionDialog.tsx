@@ -6,6 +6,7 @@ export interface CollectionOption {
   id: string
   slug: string
   title: string
+  lifecycle: 'draft' | 'published' | 'archived'
   draftRevision: number
   draftState: string
   draftSelectedCount: number
@@ -15,17 +16,25 @@ function newId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
+function editable(collection: CollectionOption): boolean {
+  return collection.lifecycle !== 'archived' && collection.draftState !== 'publishing'
+}
+
 /**
  * Picks target Collections for a ready server-side selection and posts the bulk
  * intent. The browser never expands the selection into curation IDs: the body
  * carries only collectionIds and the action; the manifest stays on the server.
+ * A Collection ID supplied by navigation is only a hint: it is preselected
+ * after the live Collection list proves the target is currently editable.
  */
 export function BulkActionDialog({
   selectionId,
+  initialCollectionId,
   onClose,
   onPosted,
 }: {
   selectionId: string
+  initialCollectionId?: string | null
   onClose: () => void
   onPosted: (operationId: string) => void
 }) {
@@ -33,6 +42,7 @@ export function BulkActionDialog({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [action, setAction] = useState<'add' | 'remove'>('add')
   const [error, setError] = useState<string | null>(null)
+  const [targetWarning, setTargetWarning] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const closeButton = useRef<HTMLButtonElement>(null)
   const submittingRef = useRef(false)
@@ -46,7 +56,21 @@ export function BulkActionDialog({
         if (!response.ok) throw new Error('unable_to_load_collections')
         return response.json() as Promise<{ items: CollectionOption[] }>
       })
-      .then((data) => setCollections(data.items))
+      .then((data) => {
+        setCollections(data.items)
+        if (!initialCollectionId) return
+        const target = data.items.find((collection) => collection.id === initialCollectionId)
+        if (!target) {
+          setTargetWarning('The target Collection is no longer available.')
+          return
+        }
+        if (!editable(target)) {
+          setTargetWarning('The target Collection is not currently editable.')
+          return
+        }
+        setSelected(new Set([target.id]))
+        setTargetWarning(null)
+      })
       .catch((cause) => {
         if (controller.signal.aborted) return
         setError('Unable to load Collections. Try again.')
@@ -58,10 +82,12 @@ export function BulkActionDialog({
       controller.abort()
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [onClose])
+  }, [initialCollectionId, onClose])
 
   function toggle(collectionId: string) {
     if (submitting) return
+    const target = collections.find((collection) => collection.id === collectionId)
+    if (!target || !editable(target)) return
     setSelected((current) => {
       const next = new Set(current)
       if (next.has(collectionId)) next.delete(collectionId)
@@ -110,28 +136,33 @@ export function BulkActionDialog({
           <button ref={closeButton} type="button" onClick={onClose} disabled={submitting}>Close</button>
         </header>
         <p className="bulk-dialog__hint">The selection stays server-side — the browser only sends the target Collections and the action.</p>
+        {targetWarning && <p role="alert">{targetWarning}</p>}
         <fieldset className="bulk-dialog__action" disabled={submitting}>
           <legend>Action</legend>
           <label><input checked={action === 'add'} name="bulk-action" onChange={() => setAction('add')} type="radio" /> Add to draft</label>
           <label><input checked={action === 'remove'} name="bulk-action" onChange={() => setAction('remove')} type="radio" /> Remove from draft</label>
         </fieldset>
         <ul className="bulk-dialog__collections">
-          {collections.map((collection) => (
-            <li key={collection.id}>
-              <label>
-                <input
-                  checked={selected.has(collection.id)}
-                  disabled={submitting}
-                  onChange={() => toggle(collection.id)}
-                  type="checkbox"
-                />
-                <span className="bulk-dialog__collection-title">{collection.title}</span>
-                <span className="bulk-dialog__collection-meta">
-                  {collection.slug} · {collection.draftSelectedCount} in draft · rev {collection.draftRevision}
-                </span>
-              </label>
-            </li>
-          ))}
+          {collections.map((collection) => {
+            const isEditable = editable(collection)
+            return (
+              <li key={collection.id}>
+                <label>
+                  <input
+                    checked={selected.has(collection.id)}
+                    disabled={submitting || !isEditable}
+                    onChange={() => toggle(collection.id)}
+                    type="checkbox"
+                  />
+                  <span className="bulk-dialog__collection-title">{collection.title}</span>
+                  <span className="bulk-dialog__collection-meta">
+                    {collection.slug} · {collection.draftSelectedCount} in draft · rev {collection.draftRevision}
+                    {!isEditable ? ` · ${collection.lifecycle === 'archived' ? 'archived' : 'publishing'}` : ''}
+                  </span>
+                </label>
+              </li>
+            )
+          })}
         </ul>
         {error && <p role="alert">{error}</p>}
         <footer className="bulk-dialog__footer">
