@@ -159,6 +159,7 @@ describe('operations admin read models', () => {
     const cancel = vi.mocked(cancelDraftOperation)
     cancel.mockClear()
     let parentQuery: Record<string, unknown> | null = null
+    let childQuery: Record<string, unknown> | null = null
     const operationsModel = {
       collection: {
         findOne: async (query: Record<string, unknown>) => {
@@ -166,14 +167,17 @@ describe('operations admin read models', () => {
           return { _id: parentId, actorId: 'admin-1', mode: 'selection', parentOperationId: null }
         },
       },
-      find: () => ({
-        select: () => ({
-          lean: async () => [
-            { _id: '65f000000000000000000002', status: 'queued' },
-            { _id: '65f000000000000000000003', status: 'committing' },
-          ],
-        }),
-      }),
+      find: (query: Record<string, unknown>) => {
+        childQuery = query
+        return {
+          select: () => ({
+            lean: async () => [
+              { _id: '65f000000000000000000002', status: 'queued' },
+              { _id: '65f000000000000000000003', status: 'committing' },
+            ],
+          }),
+        }
+      },
     }
     const { operationsAdminEndpoints } = await import('../../../src/payload/endpoints/operations-admin')
     const endpoint = operationsAdminEndpoints().find(({ method, path }) => method === 'post' && path === '/admin/v1/operation-history/:id/cancel')!
@@ -185,6 +189,7 @@ describe('operations admin read models', () => {
     ) as never)
 
     expect(parentQuery).toMatchObject({ _id: parentId, actorId: 'admin-1', mode: 'selection', parentOperationId: null })
+    expect(childQuery).toMatchObject({ parentOperationId: parentId, actorId: 'admin-1' })
     expect(cancel).toHaveBeenCalledTimes(1)
     expect(cancel).toHaveBeenCalledWith(expect.anything(), '65f000000000000000000002')
     expect(await response.json()).toEqual({ cancelled: 1, conflicts: 0 })
