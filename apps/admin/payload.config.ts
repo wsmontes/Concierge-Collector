@@ -8,6 +8,7 @@ import { applyDraftOperationTask } from './src/jobs/applyDraftOperationTask'
 import { publishCollectionTask } from './src/jobs/publishCollectionTask'
 import { collectionEndpoints } from './src/payload/endpoints/collections'
 import { operationEndpoints } from './src/payload/endpoints/operations'
+import { operationsAdminEndpoints } from './src/payload/endpoints/operations-admin'
 import { publishingEndpoints } from './src/payload/endpoints/publishing'
 import { collectionReadEndpoints } from './src/payload/endpoints/collection-reads'
 import { collectorCollectionEndpoints } from './src/payload/endpoints/collector-collections'
@@ -48,6 +49,7 @@ const collectionsAdminEndpoints = guardFeatureEndpoints('collections_admin', [
   ...collectionReadEndpoints(),
   ...collectorCollectionEndpoints(),
   ...operationEndpoints(),
+  ...operationsAdminEndpoints(),
   ...publishingEndpoints(),
   ...explorerEndpoints(),
   ...selectionEndpoints(),
