@@ -10,6 +10,7 @@ import { FastApiCatalogClient } from '../operations/catalog-client'
 import type { CatalogResolver } from '../operations/types'
 import { FastApiPublishAvailabilityClient } from './availability-client'
 import { diffMembershipAtVersions, inspectAvailability, streamDraftMembershipIds, streamMembershipAtVersion } from './membership-stream'
+import { resetTargetVersionStaging } from './publish-staging'
 import type { EnqueuePublishCommand, PublishAvailabilityClient, PublishJobRecord, PublishLease, RestoreVersionAsDraftCommand, RestoreVersionAsDraftResult } from './types'
 
 type DocumentModel = Model<Record<string, unknown>>
@@ -248,6 +249,9 @@ export async function runPublishJob(
     await assertFence(jobs, job, lease)
     const collection = await collections.findOne({ _id: job.collectionId, revision: job.fixedCollectionRevision, draftEpoch: job.fixedDraftEpoch, draftRevision: job.fixedDraftRevision, draftState: 'publishing', lifecycle: { $ne: 'archived' } }).lean() as Record<string, unknown> | null
     if (!collection) throw new TerminalPublishError('stale', 'collection_changed')
+    if (!await resetTargetVersionStaging(payload, job, lease)) {
+      throw new TerminalPublishError('conflicted', 'target_version_already_published')
+    }
     await applyIntervals(payload, job, lease)
     const membershipHash = await computeCanonicalMembershipHash(streamMembershipAtVersion({ memberships, collectionId: job.collectionId, version: job.targetVersion }), 1)
     const availability = await inspectAvailability(
