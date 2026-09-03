@@ -3,8 +3,14 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { CollectionViews } from '../../../src/components/collections/CollectionViews'
 import { CurationExplorer } from '../../../src/components/explorer/CurationExplorer'
 import { BulkActionDialog } from '../../../src/components/operations/BulkActionDialog'
+import type { SavedCurationViewsClient } from '../../../src/explorer/saved-views-client'
 
 const collectionId = '507f1f77bcf86cd799439011'
+const savedViewsClient: SavedCurationViewsClient = {
+  list: vi.fn().mockResolvedValue([]),
+  create: vi.fn(),
+  remove: vi.fn(),
+}
 
 afterEach(() => {
   cleanup()
@@ -33,6 +39,7 @@ test('Collection detail links into Explorer with the Collection target encoded',
 test('Explorer exposes a safe target context and a way back to the Collection', async () => {
   render(<CurationExplorer
     targetCollectionId={collectionId}
+    savedViewsClient={savedViewsClient}
     loadPage={vi.fn().mockResolvedValue({ items: [], next_cursor: null, total: 0 })}
   />)
 
