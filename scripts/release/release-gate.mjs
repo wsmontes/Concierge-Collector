@@ -89,6 +89,7 @@ export function createReleasePlan(mode = 'standard', { env = process.env } = {})
     CMS_E2E_AUTH_HANDOFF: '1',
     CMS_E2E_PUBLISH: '1',
     CMS_E2E_EXPLORER: '1',
+    CMS_E2E_COLLECTIONS_UI: '1',
     CMS_E2E_BASE_URL: env.CMS_E2E_BASE_URL || 'http://127.0.0.1:3000',
     CMS_E2E_FASTAPI_URL: env.CMS_E2E_FASTAPI_URL || 'http://127.0.0.1:8000',
   }
