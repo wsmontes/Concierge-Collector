@@ -74,7 +74,10 @@ export function collectorCollectionEndpoints(): Endpoint[] {
             locked: collection.draftState === 'publishing',
           }
         }))
-        return Response.json({ items })
+        return Response.json(
+          { items },
+          { headers: { 'Cache-Control': 'private, no-store' } },
+        )
       } catch (error) {
         return adminErrorResponse(error)
       }
