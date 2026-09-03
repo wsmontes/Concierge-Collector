@@ -2,6 +2,8 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { CredentialRevealDialog, type IssuedCredential } from '../credentials/CredentialRevealDialog'
+import { ApplicationAccessDialog } from './ApplicationAccessDialog'
+import { CollectionAccessPicker } from './CollectionAccessPicker'
 
 export interface ApplicationRecord {
   id: string
@@ -27,6 +29,13 @@ interface CredentialRecord extends IssuedCredential {
   lastUsedAt: string | null
 }
 
+class ApplicationApiError extends Error {
+  constructor(readonly code: string, readonly status: number) {
+    super(code)
+    this.name = 'ApplicationApiError'
+  }
+}
+
 function requestId() {
   return globalThis.crypto?.randomUUID?.() ?? `admin-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
@@ -49,14 +58,11 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     credentials: 'same-origin',
   })
   if (!response.ok) {
-    const body = await response.json().catch(() => null) as { code?: string } | null
-    throw new Error(body?.code ?? 'request_failed')
+    const body = await response.json().catch(() => null) as { error?: { code?: unknown } } | null
+    const code = typeof body?.error?.code === 'string' ? body.error.code : `http_${response.status}`
+    throw new ApplicationApiError(code, response.status)
   }
   return response.json() as Promise<T>
-}
-
-function selectedIds(value: string) {
-  return [...new Set(value.split(/[\n,]/).map((id) => id.trim()).filter(Boolean))]
 }
 
 /** Command UI for applications and hash-only consumer credentials. */
@@ -68,6 +74,8 @@ export function ApplicationViews() {
   const [revealed, setRevealed] = useState<CredentialResponse | null>(null)
   const [credentials, setCredentials] = useState<Record<string, CredentialRecord[]>>({})
   const [credentialLoading, setCredentialLoading] = useState<string | null>(null)
+  const [newApplicationCollections, setNewApplicationCollections] = useState<string[]>([])
+  const [editingApplication, setEditingApplication] = useState<ApplicationRecord | null>(null)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -89,8 +97,11 @@ export function ApplicationViews() {
 
   async function createApplication(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (newApplicationCollections.length === 0) {
+      setError('Select at least one published Collection.')
+      return
+    }
     const form = new FormData(event.currentTarget)
-    const allowedCollectionIds = selectedIds(String(form.get('collectionIds') ?? ''))
     try {
       const created = await api<ApplicationRecord>('/api/admin/v1/applications', {
         method: 'POST',
@@ -98,15 +109,44 @@ export function ApplicationViews() {
         body: JSON.stringify({
           name: String(form.get('name') ?? ''),
           owner: String(form.get('owner') ?? ''),
-          allowedCollectionIds,
+          allowedCollectionIds: newApplicationCollections,
           defaultRequestsPerMinute: Number(form.get('rate') ?? 60),
         }),
       })
       setApplications((current) => [...current, created].sort((left, right) => left.name.localeCompare(right.name)))
       event.currentTarget.reset()
+      setNewApplicationCollections([])
       setError(null)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'request_failed')
+    }
+  }
+
+  async function saveApplicationAccess(
+    application: ApplicationRecord,
+    input: { allowedCollectionIds: string[]; defaultRequestsPerMinute: number },
+  ) {
+    try {
+      const updated = await api<ApplicationRecord>(`/api/admin/v1/applications/${application.id}`, {
+        method: 'PATCH',
+        headers: {
+          'If-Match': String(application.revision),
+          'Idempotency-Key': requestId(),
+          'X-Request-Id': requestId(),
+        },
+        body: JSON.stringify(input),
+      })
+      setApplications((current) => current.map((item) => item.id === updated.id ? updated : item))
+      setEditingApplication(null)
+      setError(null)
+    } catch (cause) {
+      if (cause instanceof ApplicationApiError && cause.status === 412) {
+        await reload()
+        setEditingApplication(null)
+        setError('Application changed on the server. The latest access has been reloaded.')
+        return
+      }
+      throw cause
     }
   }
 
@@ -197,8 +237,7 @@ export function ApplicationViews() {
         <form onSubmit={createApplication}>
           <label>Name <input name="name" required maxLength={120} /></label>
           <label>Owner <input name="owner" required maxLength={200} /></label>
-          <label>Collection IDs <textarea name="collectionIds" required rows={3} aria-describedby="collection-ids-help" /></label>
-          <small id="collection-ids-help">One Mongo collection ID per line or separated by commas.</small>
+          <CollectionAccessPicker value={newApplicationCollections} onChange={setNewApplicationCollections} />
           <label>Requests per minute <input name="rate" type="number" min="1" max="100000" defaultValue="60" required /></label>
           <button type="submit">Create application</button>
         </form>
@@ -213,6 +252,9 @@ export function ApplicationViews() {
                   <h3>{application.name}</h3>
                   <p>{application.owner} · {application.status} · {application.allowedCollectionIds.length} Collections · {application.defaultRequestsPerMinute}/min</p>
                 </div>
+                <button type="button" aria-label={`Edit access for ${application.name}`} onClick={() => setEditingApplication(application)}>
+                  Edit access
+                </button>
                 <button type="button" onClick={() => void issue(application)} disabled={application.status !== 'active' || issuingFor === application.id}>
                   {issuingFor === application.id ? 'Issuing…' : 'Issue credential'}
                 </button>
@@ -235,6 +277,13 @@ export function ApplicationViews() {
           </ul>
         )}
       </section>
+      {editingApplication && (
+        <ApplicationAccessDialog
+          application={editingApplication}
+          onClose={() => setEditingApplication(null)}
+          onSave={(input) => saveApplicationAccess(editingApplication, input)}
+        />
+      )}
       {revealed && (
         <CredentialRevealDialog
           credential={revealed.credential}
