@@ -81,7 +81,7 @@ export function createBrowserOperationsAdminClient(
     async cancelOperation(operationId) {
       await json<Record<string, unknown>>(
         fetcher,
-        `/api/admin/v1/operations/${encodeURIComponent(operationId)}/cancel`,
+        `/api/admin/v1/operation-history/${encodeURIComponent(operationId)}/cancel`,
         { method: 'POST', headers: { 'X-Request-Id': requestId() } },
       )
     },
