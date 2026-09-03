@@ -204,6 +204,7 @@ async function cancelParentOperation(request: PayloadRequest, actorId: string, p
   let cancelled = 0
   let conflicts = 0
   for (const child of children) {
+    if (!CANCELLABLE.has(String(child.status))) continue
     try {
       await cancelDraftOperation(request.payload, idOf(child))
       cancelled += 1
