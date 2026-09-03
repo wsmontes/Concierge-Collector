@@ -9,7 +9,9 @@ export const SelectionManifestItems: CollectionConfig = {
   fields: [
     { name: 'selectionId', type: 'text', required: true, index: true },
     { name: 'curationId', type: 'text', required: true, index: true },
-    { name: 'retainedUntil', type: 'date', index: true },
+    // TTL ownership lives in migration 010; do not auto-create a competing
+    // normal index for the same key.
+    { name: 'retainedUntil', type: 'date' },
     { name: 'expiresAt', type: 'date', required: true, index: true },
   ],
 }
