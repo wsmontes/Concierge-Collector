@@ -20,7 +20,7 @@ vi.mock('../../../src/selections/materialize-selection', () => ({
 describe('Selection endpoints', () => {
   beforeEach(() => { createSelection.mockReset() })
 
-  test('creates an all-matching intent with the server-derived actor', async () => {
+  test('creates an all-matching intent with the server-derived actor and hides worker internals', async () => {
     createSelection.mockResolvedValueOnce({
       id: 'selection-1', mode: 'all_matching', status: 'queued', candidateCount: 0, capturedCount: 0,
       skippedCount: 0, manifestHash: null, expiresAt: new Date('2026-08-22T00:00:00.000Z'), payloadJobId: 'job-1',
@@ -33,8 +33,10 @@ describe('Selection endpoints', () => {
     }), { payload: {} })
 
     const response = await endpoint!.handler(request as never)
+    const result = await response.json() as Record<string, unknown>
 
     expect(response.status).toBe(202)
+    expect(result).not.toHaveProperty('payloadJobId')
     expect(createSelection).toHaveBeenCalledWith({}, {
       actorId: 'admin-1', idempotencyKey: 'selection-key', requestId: 'request-1', mode: 'all_matching',
       curationIds: undefined, excludedIds: undefined, filters: { q: 'sushi', status: ['active'] },
