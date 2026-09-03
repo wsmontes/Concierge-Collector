@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { normalizeCurationFilters } from '../../explorer/normalize-filters'
-import type { CurationFilters, CurationSearchPage, SelectionState } from '../../explorer/types'
+import type { SavedCurationViewsClient } from '../../explorer/saved-views-client'
+import type { CurationFilters, CurationSearchPage, NormalizedCurationFilters, SelectionState } from '../../explorer/types'
 import { BulkActionDialog } from '../operations/BulkActionDialog'
 import { JobDrawer } from '../operations/JobDrawer'
+import { ExplorerFilterForm } from './ExplorerFilterForm'
+import { ExplorerSavedViews } from './ExplorerSavedViews'
 import { SelectionToolbar } from './SelectionToolbar'
 import { VirtualCurationTable } from './VirtualCurationTable'
 
@@ -32,16 +35,25 @@ function newId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
+function editableFilters(filters: NormalizedCurationFilters): CurationFilters {
+  return {
+    ...filters,
+    ...(filters.status ? { status: [...filters.status] } : {}),
+  }
+}
+
 /** Gmail-like selection intent over pages; it never expands all-matching into browser IDs. */
 export function CurationExplorer({
   loadPage = browserLoadPage,
   targetCollectionId = null,
+  savedViewsClient,
 }: {
   loadPage?: LoadPage
   targetCollectionId?: string | null
+  savedViewsClient?: SavedCurationViewsClient
 }) {
-  const [filters, setFilters] = useState<CurationFilters>({})
-  const [query, setQuery] = useState('')
+  const [filters, setFilters] = useState<NormalizedCurationFilters>({})
+  const [filterDraft, setFilterDraft] = useState<CurationFilters>({})
   const [page, setPage] = useState<CurationSearchPage>({ items: [], next_cursor: null, total: null })
   const [selection, setSelection] = useState<SelectionState>({ mode: 'explicit', selected: new Set() })
   const [error, setError] = useState<string | null>(null)
@@ -67,17 +79,38 @@ export function CurationExplorer({
   useEffect(() => {
     let active = true
     void loadPage({ cursor: null, filters }).then(
-      (nextPage) => { if (active) setPage(nextPage) },
+      (nextPage) => {
+        if (!active) return
+        setPage(nextPage)
+        setError(null)
+      },
       () => { if (active) setError('Unable to load Curations. Try again.') },
     )
     return () => { active = false }
   }, [filters, loadPage])
 
-  function search(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  function resetSelection() {
     setSelection({ mode: 'explicit', selected: new Set() })
     setLastSelectedIndex(null)
-    setFilters(normalizeCurationFilters({ ...filters, q: query }))
+    setApplyError(null)
+    setLastPostedOperation(null)
+  }
+
+  function applyFilters(next: CurationFilters = filterDraft) {
+    const normalized = normalizeCurationFilters(next)
+    resetSelection()
+    setFilterDraft(editableFilters(normalized))
+    setFilters(normalized)
+  }
+
+  function clearFilters() {
+    resetSelection()
+    setFilterDraft({})
+    setFilters({})
+  }
+
+  function applySavedView(next: NormalizedCurationFilters) {
+    applyFilters(editableFilters(next))
   }
 
   function toggle(curationId: string, index: number, shiftKey: boolean) {
@@ -115,14 +148,14 @@ export function CurationExplorer({
 
   /** Shortcuts must never fire while the user is typing in an editable target. */
   function isEditableTarget(target: EventTarget | null): boolean {
-    return target instanceof HTMLElement && Boolean(target.closest('input, textarea, [contenteditable="true"]'))
+    return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
     if (isEditableTarget(event.target)) return
     if (event.key.toLowerCase() === 'a' && selection.mode === 'explicit') {
       event.preventDefault()
-      setSelection({ mode: 'all_matching', filters: normalizeCurationFilters(filters), excluded: new Set(), previewCount: page.total })
+      setSelection({ mode: 'all_matching', filters, excluded: new Set(), previewCount: page.total })
     }
   }
 
@@ -177,7 +210,7 @@ export function CurationExplorer({
       <header>
         <p className="collection-views__eyebrow">Content</p>
         <h1 id="curation-explorer-title">Curation Explorer</h1>
-        <p>Search Curations and build a server-side selection for a Collection draft.</p>
+        <p>Search and filter Curations, then build a server-side selection for one or more Collection drafts.</p>
       </header>
       {targetCollectionId && (
         <aside className="curation-explorer__target" aria-label="Target Collection">
@@ -192,15 +225,17 @@ export function CurationExplorer({
           <a href="/admin/operations">View Operations</a>
         </aside>
       )}
-      <form onSubmit={search}>
-        <label htmlFor="curation-search">Search Curations</label>
-        <input id="curation-search" onChange={(event) => setQuery(event.target.value)} value={query} />
-        <button type="submit">Search</button>
-      </form>
+      <ExplorerFilterForm
+        value={filterDraft}
+        onChange={setFilterDraft}
+        onApply={() => applyFilters()}
+        onClear={clearFilters}
+      />
+      <ExplorerSavedViews currentFilters={filters} onApply={applySavedView} client={savedViewsClient} />
       <SelectionToolbar
         applying={applying}
         onApplyToCollections={() => void handleApplyToCollections()}
-        onSelectAllMatching={() => setSelection({ mode: 'all_matching', filters: normalizeCurationFilters(filters), excluded: new Set(), previewCount: page.total })}
+        onSelectAllMatching={() => setSelection({ mode: 'all_matching', filters, excluded: new Set(), previewCount: page.total })}
         selection={selection}
         total={page.total}
       />
