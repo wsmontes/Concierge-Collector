@@ -12,11 +12,18 @@ interface WithAdminDependencies {
   assertUnsafeCmsSessionOrigin: (method: string, headers: Headers) => void
 }
 
+function noStore(response: Response): Response {
+  response.headers.set('Cache-Control', 'private, no-store')
+  return response
+}
+
 /**
  * The only entry point for future `/api/admin/v1` handlers.
  *
- * It revalidates the CMS session against FastAPI on each request and overwrites
- * the request actor with that live identity. Request input never supplies actor.
+ * It revalidates the CMS session against FastAPI on each request, overwrites
+ * the request actor with that live identity and prevents authenticated admin
+ * responses (including failures) from being stored by browsers or proxies.
+ * Request input never supplies actor.
  */
 export function withAdmin(
   handler: AdminHandler,
@@ -33,9 +40,9 @@ export function withAdmin(
       resolvedDependencies.assertUnsafeCmsSessionOrigin(request.method, request.headers)
       const actor = await resolvedDependencies.requireCurrentAdmin(request.headers)
       const adminRequest = Object.assign(request, { actor }) as AdminRequest
-      return await handler(adminRequest, actor)
+      return noStore(await handler(adminRequest, actor))
     } catch (error) {
-      return adminErrorResponse(error)
+      return noStore(adminErrorResponse(error))
     }
   }
 }
