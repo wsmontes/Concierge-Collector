@@ -5,6 +5,7 @@ import { asRecord, createExport } from '../../exports/export-selection'
 import type { ExportRecord } from '../../exports/types'
 import { AdminHttpError, adminErrorResponse } from '../../http/errors'
 import { withAdmin } from '../../http/with-admin'
+import { retainSelectionForAudit } from '../../selections/retention'
 import { createS3ArtifactStore } from '../../storage/s3-artifact-store'
 import type { StoredArtifact } from '../../storage/artifact-store'
 
@@ -67,15 +68,25 @@ export function exportEndpoints(): Endpoint[] {
           const requestId = adminRequest.headers.get('x-request-id')?.trim()
           if (!idempotencyKey || !requestId) throw new AdminHttpError(400, 'invalid_request')
           const format = formatValue(await body(adminRequest))
+          // Capture before createExport's validity check. If the selection
+          // crosses its expiry millisecond immediately after the export intent
+          // commits, this timestamp still proves it was valid when consumed.
+          const consumedAt = new Date()
           // Fail closed when export storage is not configured for this service.
           const artifactTtlSeconds = readArtifactStorageEnv().artifactTtlSeconds
+          const selectedId = selectionId(request)
           const record = await createExport(request.payload, {
-            selectionId: selectionId(request),
+            selectionId: selectedId,
             actorId: actor.user_id,
             format,
             idempotencyKey,
             requestId,
           }, undefined, { artifactTtlSeconds })
+          await retainSelectionForAudit(request.payload, {
+            selectionId: selectedId,
+            actorId: actor.user_id,
+            now: consumedAt,
+          })
           return Response.json(publicExport(record), { status: 202 })
         } catch (error) { return adminErrorResponse(error) }
       })(request as unknown as Request),
