@@ -62,5 +62,8 @@ export function adminErrorResponse(error: unknown): Response {
   const status = known?.status ?? 503
   const code = known?.code ?? DEFAULT_CODES[503]
 
-  return Response.json({ error: { code, ...(known?.details ?? {}) } }, { status })
+  return Response.json(
+    { error: { code, ...(known?.details ?? {}) } },
+    { status, headers: { 'Cache-Control': 'private, no-store' } },
+  )
 }
