@@ -60,7 +60,7 @@ describe('Export endpoints', () => {
     }
   })
 
-  test('POST creates a queued export intent with server-derived actor and retains its selection for audit', async () => {
+  test('POST retains the selection before it commits an export intent', async () => {
     createExport.mockResolvedValueOnce({
       id: 'dddddddddddddddddddddddd', selectionId: 'ffffffffffffffffffffffff', format: 'ndjson', status: 'queued',
       progress: {}, sha256: null,
@@ -75,16 +75,32 @@ describe('Export endpoints', () => {
     const response = await endpoint!.handler(request as never)
 
     expect(response.status).toBe(202)
+    expect(retainSelectionForAudit).toHaveBeenCalledWith({}, expect.objectContaining({
+      selectionId: 'ffffffffffffffffffffffff', actorId: 'admin-1', now: expect.any(Date),
+    }))
     expect(createExport).toHaveBeenCalledWith({}, {
       selectionId: 'ffffffffffffffffffffffff', actorId: 'admin-1', format: 'ndjson',
       idempotencyKey: 'export-key', requestId: 'request-1',
     }, undefined, { artifactTtlSeconds: 604800 })
-    expect(retainSelectionForAudit).toHaveBeenCalledWith({}, expect.objectContaining({
-      selectionId: 'ffffffffffffffffffffffff', actorId: 'admin-1', now: expect.any(Date),
-    }))
+    expect(retainSelectionForAudit.mock.invocationCallOrder[0]).toBeLessThan(createExport.mock.invocationCallOrder[0])
     const payload = await response.json()
     expect(payload.status).toBe('queued')
     expect(payload.downloadUrl).toBeUndefined()
+  })
+
+  test('POST does not create export evidence when selection retention fails', async () => {
+    retainSelectionForAudit.mockRejectedValueOnce(new Error('retention unavailable'))
+    const { exportEndpoints } = await import('../../../src/payload/endpoints/exports')
+    const endpoint = exportEndpoints().find(({ method, path }) => method === 'post' && path === '/admin/v1/selections/:selectionId/exports')
+    const request = Object.assign(new Request('https://admin.example.test/api/admin/v1/selections/selection-1/exports', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'export-key', 'x-request-id': 'request-1' },
+      body: JSON.stringify({ format: 'ndjson' }),
+    }), { payload: {}, routeParams: { selectionId: 'ffffffffffffffffffffffff' } })
+
+    const response = await endpoint!.handler(request as never)
+
+    expect(response.status).toBe(503)
+    expect(createExport).not.toHaveBeenCalled()
   })
 
   test('POST rejects a missing idempotency header or unknown format', async () => {
@@ -133,8 +149,6 @@ describe('Export endpoints', () => {
   }
 
   function modelStub(document: Record<string, unknown> | null) {
-    // The endpoint chains findOne(...).lean(), so the stub returns a chainable
-    // object synchronously and only the final .lean() is async.
     return { db: { collections: { 'collection-exports': { findOne: vi.fn(() => ({ lean: async () => document })) } } } }
   }
 
