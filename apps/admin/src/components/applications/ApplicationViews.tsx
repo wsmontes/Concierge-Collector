@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { CredentialRevealDialog, type IssuedCredential } from '../credentials/CredentialRevealDialog'
 import { ApplicationAccessDialog } from './ApplicationAccessDialog'
 import { CollectionAccessPicker } from './CollectionAccessPicker'
+import { CredentialActionDialog, IssueCredentialDialog } from './CredentialCommandDialogs'
 
 export interface ApplicationRecord {
   id: string
@@ -27,6 +28,12 @@ interface CredentialRecord extends IssuedCredential {
   expiresAt: string | null
   revokedAt: string | null
   lastUsedAt: string | null
+}
+
+type CredentialCommand = {
+  action: 'rotate' | 'revoke'
+  applicationId: string
+  credential: CredentialRecord
 }
 
 class ApplicationApiError extends Error {
@@ -70,10 +77,13 @@ export function ApplicationViews() {
   const [applications, setApplications] = useState<ApplicationRecord[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [issuingApplication, setIssuingApplication] = useState<ApplicationRecord | null>(null)
   const [issuingFor, setIssuingFor] = useState<string | null>(null)
   const [revealed, setRevealed] = useState<CredentialResponse | null>(null)
   const [credentials, setCredentials] = useState<Record<string, CredentialRecord[]>>({})
   const [credentialLoading, setCredentialLoading] = useState<string | null>(null)
+  const [credentialCommand, setCredentialCommand] = useState<CredentialCommand | null>(null)
+  const [credentialCommandPending, setCredentialCommandPending] = useState(false)
   const [newApplicationCollections, setNewApplicationCollections] = useState<string[]>([])
   const [editingApplication, setEditingApplication] = useState<ApplicationRecord | null>(null)
 
@@ -150,9 +160,7 @@ export function ApplicationViews() {
     }
   }
 
-  async function issue(application: ApplicationRecord) {
-    const name = window.prompt(`Credential name for ${application.name}`)?.trim()
-    if (!name) return
+  async function issue(application: ApplicationRecord, name: string) {
     setIssuingFor(application.id)
     try {
       const result = await api<CredentialResponse>(`/api/admin/v1/applications/${application.id}/credentials`, {
@@ -161,9 +169,12 @@ export function ApplicationViews() {
         body: JSON.stringify({ name, scopes: ['collections:read'] }),
       })
       setRevealed(result)
+      setIssuingApplication(null)
       setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'request_failed')
+      const message = cause instanceof Error ? cause.message : 'request_failed'
+      setError(message)
+      throw new Error(message)
     } finally {
       setIssuingFor(null)
     }
@@ -191,36 +202,40 @@ export function ApplicationViews() {
   }
 
   async function revoke(applicationId: string, credential: CredentialRecord) {
-    if (credential.status !== 'active' || !window.confirm(`Revoke ${credential.name}? This takes effect on the next API request.`)) return
-    try {
-      const revoked = await api<CredentialRecord>(`/api/admin/v1/credentials/${credential.id}/revoke`, {
-        method: 'POST', headers: { 'X-Request-Id': requestId() },
-      })
-      setCredentials((current) => ({
-        ...current,
-        [applicationId]: (current[applicationId] ?? []).map((item) => item.id === revoked.id ? { ...item, ...revoked } : item),
-      }))
-      setError(null)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'request_failed')
-    }
+    const revoked = await api<CredentialRecord>(`/api/admin/v1/credentials/${credential.id}/revoke`, {
+      method: 'POST', headers: { 'X-Request-Id': requestId() },
+    })
+    setCredentials((current) => ({
+      ...current,
+      [applicationId]: (current[applicationId] ?? []).map((item) => item.id === revoked.id ? { ...item, ...revoked } : item),
+    }))
   }
 
   async function rotate(applicationId: string, credential: CredentialRecord) {
-    if (credential.status !== 'active' || !window.confirm(`Rotate ${credential.name}? A new secret is issued and the current one stays valid for ${ROTATE_OVERLAP_HOURS} hours.`)) return
+    const result = await api<CredentialResponse>(`/api/admin/v1/credentials/${credential.id}/rotate`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': requestId(), 'X-Request-Id': requestId() },
+      body: JSON.stringify({ overlapUntil: rotateOverlapUntil() }),
+    })
+    setRevealed(result)
+    // Refresh without toggling the list open/closed state.
+    const refreshed = await api<{ items: CredentialRecord[] }>(`/api/admin/v1/applications/${applicationId}/credentials`)
+    setCredentials((current) => ({ ...current, [applicationId]: refreshed.items }))
+  }
+
+  async function confirmCredentialCommand() {
+    if (!credentialCommand || credentialCommandPending) return
+    const command = credentialCommand
+    setCredentialCommandPending(true)
     try {
-      const result = await api<CredentialResponse>(`/api/admin/v1/credentials/${credential.id}/rotate`, {
-        method: 'POST',
-        headers: { 'Idempotency-Key': requestId(), 'X-Request-Id': requestId() },
-        body: JSON.stringify({ overlapUntil: rotateOverlapUntil() }),
-      })
-      setRevealed(result)
-      // Refresh without toggling the list open/closed state.
-      const refreshed = await api<{ items: CredentialRecord[] }>(`/api/admin/v1/applications/${applicationId}/credentials`)
-      setCredentials((current) => ({ ...current, [applicationId]: refreshed.items }))
+      if (command.action === 'rotate') await rotate(command.applicationId, command.credential)
+      else await revoke(command.applicationId, command.credential)
+      setCredentialCommand(null)
       setError(null)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'request_failed')
+    } finally {
+      setCredentialCommandPending(false)
     }
   }
 
@@ -255,7 +270,7 @@ export function ApplicationViews() {
                 <button type="button" aria-label={`Edit access for ${application.name}`} onClick={() => setEditingApplication(application)}>
                   Edit access
                 </button>
-                <button type="button" onClick={() => void issue(application)} disabled={application.status !== 'active' || issuingFor === application.id}>
+                <button type="button" onClick={() => setIssuingApplication(application)} disabled={application.status !== 'active' || issuingFor === application.id}>
                   {issuingFor === application.id ? 'Issuing…' : 'Issue credential'}
                 </button>
                 <button type="button" onClick={() => void loadCredentials(application.id)} disabled={credentialLoading === application.id}>
@@ -266,8 +281,16 @@ export function ApplicationViews() {
                     {credentials[application.id].length === 0 ? <li>No credentials issued.</li> : credentials[application.id].map((credential) => (
                       <li key={credential.id}>
                         <span>{credential.name} ({credential.prefix}) · {credential.status} · last use {credential.lastUsedAt ?? 'never'}</span>
-                        <button type="button" disabled={credential.status !== 'active'} onClick={() => void rotate(application.id, credential)}>Rotate</button>
-                        <button type="button" disabled={credential.status !== 'active'} onClick={() => void revoke(application.id, credential)}>Revoke</button>
+                        <button
+                          type="button"
+                          disabled={credential.status !== 'active'}
+                          onClick={() => setCredentialCommand({ action: 'rotate', applicationId: application.id, credential })}
+                        >Rotate</button>
+                        <button
+                          type="button"
+                          disabled={credential.status !== 'active'}
+                          onClick={() => setCredentialCommand({ action: 'revoke', applicationId: application.id, credential })}
+                        >Revoke</button>
                       </li>
                     ))}
                   </ul>
@@ -282,6 +305,24 @@ export function ApplicationViews() {
           application={editingApplication}
           onClose={() => setEditingApplication(null)}
           onSave={(input) => saveApplicationAccess(editingApplication, input)}
+        />
+      )}
+      {issuingApplication && (
+        <IssueCredentialDialog
+          applicationName={issuingApplication.name}
+          pending={issuingFor === issuingApplication.id}
+          onClose={() => { if (!issuingFor) setIssuingApplication(null) }}
+          onIssue={(name) => issue(issuingApplication, name)}
+        />
+      )}
+      {credentialCommand && (
+        <CredentialActionDialog
+          action={credentialCommand.action}
+          credentialName={credentialCommand.credential.name}
+          overlapHours={ROTATE_OVERLAP_HOURS}
+          pending={credentialCommandPending}
+          onClose={() => { if (!credentialCommandPending) setCredentialCommand(null) }}
+          onConfirm={() => void confirmCredentialCommand()}
         />
       )}
       {revealed && (
