@@ -27,6 +27,10 @@ export const SelectionManifests: CollectionConfig = {
     { name: 'requestHash', type: 'text', required: true },
     { name: 'requestId', type: 'text', required: true },
     { name: 'payloadJobId', type: 'text' },
+    // Selection validity and storage retention are deliberately separate.
+    // expiresAt controls whether the intent may be used; retainedUntil is the
+    // TTL field and can be extended after the selection becomes audit-relevant.
     { name: 'expiresAt', type: 'date', required: true, index: true },
+    { name: 'retainedUntil', type: 'date', required: true },
   ],
 }
