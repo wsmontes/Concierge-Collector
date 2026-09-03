@@ -22,6 +22,11 @@ function retentionDays(): number {
  * Extends deletion retention for a Selection that has become audit-relevant.
  * `expiresAt` remains untouched: callers still cannot reuse the selection after
  * its original validity window. Mongo TTL is driven by `retainedUntil` instead.
+ *
+ * This intentionally uses a monotonic fail-safe sequence rather than allowing
+ * a partial write that could delete items before the retained manifest. A race
+ * may over-retain items, but a successful return guarantees both sides were
+ * extended; under-retention is never accepted as success.
  */
 export async function retainSelectionForAudit(
   payload: Payload,
@@ -37,22 +42,28 @@ export async function retainSelectionForAudit(
     ?? new Date(now.getTime() + retentionDays() * 24 * 60 * 60 * 1000)
   const manifests = modelFor(payload, 'selection-manifests')
   const items = modelFor(payload, 'selection-manifest-items')
+  const predicate = {
+    _id: input.selectionId,
+    actorId: input.actorId,
+    status: 'ready',
+    expiresAt: { $gt: now },
+  }
+
+  const eligible = await manifests.findOne(predicate).select({ _id: 1 }).lean()
+  if (!eligible) throw new AdminHttpError(410, 'selection_expired')
+
+  // Retain items first. If the final manifest CAS loses an expiry/race, the
+  // only side effect is harmless extra retention; callers still receive 410.
+  await items.updateMany(
+    { selectionId: input.selectionId },
+    { $max: { retainedUntil } },
+  )
 
   const retained = await manifests.findOneAndUpdate(
-    {
-      _id: input.selectionId,
-      actorId: input.actorId,
-      status: 'ready',
-      expiresAt: { $gt: now },
-    },
+    predicate,
     { $max: { retainedUntil }, $set: { updatedAt: now } },
     { new: true, lean: true },
   ).lean()
 
   if (!retained) throw new AdminHttpError(410, 'selection_expired')
-
-  await items.updateMany(
-    { selectionId: input.selectionId },
-    { $max: { retainedUntil } },
-  )
 }
