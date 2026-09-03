@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { ApplicationViews } from '../../../src/components/applications/ApplicationViews'
-import { CollectionAccessPicker } from '../../../src/components/applications/CollectionAccessPicker'
+import { browserLoadCollections, CollectionAccessPicker } from '../../../src/components/applications/CollectionAccessPicker'
 
 const victoria = {
   id: '507f1f77bcf86cd799439011',
@@ -31,6 +31,23 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+test('browser Collection loader follows all bounded cursor pages', async () => {
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ items: [victoria], nextCursor: 'next-page' }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ items: [vancouver], nextCursor: null }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }))
+  vi.stubGlobal('fetch', fetcher)
+
+  await expect(browserLoadCollections()).resolves.toEqual([victoria, vancouver])
+  expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+    '/api/admin/v1/collections',
+    '/api/admin/v1/collections?cursor=next-page',
+  ])
+})
+
 test('picker exposes published Collections by name while archived rows cannot be newly granted', async () => {
   const onChange = vi.fn()
   render(<CollectionAccessPicker
@@ -56,7 +73,7 @@ test('new application sends Collection IDs selected through the picker instead o
       return new Response(JSON.stringify({ items: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     if (url === '/api/admin/v1/collections') {
-      return new Response(JSON.stringify({ items: [victoria, vancouver] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      return new Response(JSON.stringify({ items: [victoria, vancouver], nextCursor: null }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     if (url === '/api/admin/v1/applications' && init.method === 'POST') {
       createBody = JSON.parse(String(init.body)) as Record<string, unknown>
@@ -95,7 +112,7 @@ test('Edit access patches with the loaded application revision and selected Coll
       return new Response(JSON.stringify({ items: [application] }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     if (url === '/api/admin/v1/collections') {
-      return new Response(JSON.stringify({ items: [victoria, vancouver] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      return new Response(JSON.stringify({ items: [victoria, vancouver], nextCursor: null }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     if (url === `/api/admin/v1/applications/${application.id}` && init.method === 'PATCH') {
       patchInit = init
