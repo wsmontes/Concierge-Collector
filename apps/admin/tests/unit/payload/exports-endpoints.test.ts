@@ -6,6 +6,7 @@ const actor = {
 }
 
 const createExport = vi.fn()
+const retainSelectionForAudit = vi.fn().mockResolvedValue(undefined)
 const readUrl = vi.fn(async () => 'https://s3.example.test/private/cms/exports/x.ndjson?X-Amz-Signature=short-lived')
 const fakeStore = { put: vi.fn(), readUrl, delete: vi.fn() }
 
@@ -18,6 +19,8 @@ vi.mock('../../../src/exports/export-selection', () => ({
   asRecord: (value: unknown) => value,
   createExport,
 }))
+
+vi.mock('../../../src/selections/retention', () => ({ retainSelectionForAudit }))
 
 vi.mock('../../../src/storage/s3-artifact-store', () => ({
   createS3ArtifactStore: () => fakeStore,
@@ -33,6 +36,7 @@ describe('Export endpoints', () => {
 
   beforeEach(() => {
     createExport.mockReset()
+    retainSelectionForAudit.mockReset().mockResolvedValue(undefined)
     for (const key of S3_KEYS) {
       realEnv[key] = process.env[key]
       process.env[key] = {
@@ -56,7 +60,7 @@ describe('Export endpoints', () => {
     }
   })
 
-  test('POST creates a queued export intent with server-derived actor', async () => {
+  test('POST creates a queued export intent with server-derived actor and retains its selection for audit', async () => {
     createExport.mockResolvedValueOnce({
       id: 'dddddddddddddddddddddddd', selectionId: 'ffffffffffffffffffffffff', format: 'ndjson', status: 'queued',
       progress: {}, sha256: null,
@@ -75,6 +79,9 @@ describe('Export endpoints', () => {
       selectionId: 'ffffffffffffffffffffffff', actorId: 'admin-1', format: 'ndjson',
       idempotencyKey: 'export-key', requestId: 'request-1',
     }, undefined, { artifactTtlSeconds: 604800 })
+    expect(retainSelectionForAudit).toHaveBeenCalledWith({}, expect.objectContaining({
+      selectionId: 'ffffffffffffffffffffffff', actorId: 'admin-1', now: expect.any(Date),
+    }))
     const payload = await response.json()
     expect(payload.status).toBe('queued')
     expect(payload.downloadUrl).toBeUndefined()
@@ -112,6 +119,7 @@ describe('Export endpoints', () => {
     const response = await endpoint!.handler(request as never)
     expect(response.status).toBe(503)
     expect(createExport).not.toHaveBeenCalled()
+    expect(retainSelectionForAudit).not.toHaveBeenCalled()
   })
 
   function exportDocument(overrides: Record<string, unknown>): Record<string, unknown> {
