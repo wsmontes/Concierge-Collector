@@ -3,6 +3,11 @@ import type { Payload } from 'payload'
 import { appendAuditEvent } from '../audit/append-event'
 import { collectionCommandHash } from '../collections/idempotency'
 import { AdminHttpError } from '../http/errors'
+import {
+  assertGrantableCollectionIds,
+  newlyAddedCollectionIds,
+  storedAllowedCollectionIds,
+} from './allowlist'
 
 type DocumentModel = Model<Record<string, unknown>>
 export interface ConsumerApplicationInput {
@@ -44,9 +49,11 @@ function transactionUnsupported(error: unknown): boolean {
 
 export class ConsumerApplicationService {
   private readonly applications: DocumentModel
+  private readonly collections: DocumentModel
   private readonly audits: DocumentModel
   constructor(private readonly payload: Payload) {
     this.applications = modelFor(payload, 'consumer-applications')
+    this.collections = modelFor(payload, 'collections')
     this.audits = modelFor(payload, 'audit-events')
   }
 
@@ -78,6 +85,7 @@ export class ConsumerApplicationService {
     const document = { _id: new Types.ObjectId().toHexString(), ...value, allowedCollectionIds: value.allowedCollectionIds.map((collectionId) => ({ collectionId })), credentialsRevision: 0, revision: 1, createdAt: now, updatedAt: now }
     try {
       return await this.inTransaction(async (session) => {
+        await assertGrantableCollectionIds(this.collections, value.allowedCollectionIds, session)
         const created = await this.applications.create([document], { session })
         const result = this.public(created[0].toObject())
         await appendAuditEvent(this.audits, { actorId: context.actorId, requestId: context.requestId, eventKey, eventType: 'application.created', applicationId: String(document._id), metadata: { requestHash: hash, resultSnapshot: result } }, session)
@@ -102,6 +110,18 @@ export class ConsumerApplicationService {
       throw new AdminHttpError(409, 'idempotency_conflict')
     }
     return this.inTransaction(async (session) => {
+      const current = await this.applications.findById(id).session(session).lean()
+      if (!current) throw new AdminHttpError(404, 'not_found')
+      if (Number(current.revision) !== ifMatch) throw new AdminHttpError(412, 'revision_conflict')
+
+      if (value.allowedCollectionIds !== undefined) {
+        const additions = newlyAddedCollectionIds(
+          storedAllowedCollectionIds(current.allowedCollectionIds),
+          value.allowedCollectionIds,
+        )
+        await assertGrantableCollectionIds(this.collections, additions, session)
+      }
+
       const update = { ...value, ...(value.allowedCollectionIds === undefined ? {} : { allowedCollectionIds: value.allowedCollectionIds.map((collectionId) => ({ collectionId })) }), updatedAt: new Date() }
       const changed = await this.applications.findOneAndUpdate({ _id: id, revision: ifMatch }, { $set: update, $inc: { revision: 1 } }, { new: true, session }).lean()
       if (!changed) {
@@ -115,7 +135,7 @@ export class ConsumerApplicationService {
   }
 
   private public(value: Record<string, unknown>): Record<string, unknown> {
-    const allowed = Array.isArray(value.allowedCollectionIds) ? value.allowedCollectionIds.map((entry) => String((entry as { collectionId?: unknown }).collectionId ?? entry)) : []
+    const allowed = storedAllowedCollectionIds(value.allowedCollectionIds)
     return { id: String(value.id ?? value._id), name: value.name, owner: value.owner, status: value.status, allowedCollectionIds: allowed, defaultRequestsPerMinute: value.defaultRequestsPerMinute, credentialsRevision: value.credentialsRevision, revision: value.revision, createdAt: value.createdAt, updatedAt: value.updatedAt }
   }
 }
