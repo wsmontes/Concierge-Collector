@@ -19,23 +19,13 @@ async function body(request: Request): Promise<Record<string, unknown>> {
 }
 
 function command(value: Record<string, unknown>, request: PayloadRequest, actorId: string): CreateSelectionCommand {
-  if (Object.keys(value).some((key) => !['mode', 'curation_ids', 'filters', 'excluded_ids'].includes(key))) {
-    throw new AdminHttpError(400, 'invalid_request')
-  }
+  if (Object.keys(value).some((key) => !['mode', 'curation_ids', 'filters', 'excluded_ids'].includes(key))) throw new AdminHttpError(400, 'invalid_request')
   const idempotencyKey = request.headers.get('idempotency-key')?.trim()
   const requestId = request.headers.get('x-request-id')?.trim()
-  if (!idempotencyKey || !requestId || (value.mode !== 'explicit' && value.mode !== 'all_matching')) {
-    throw new AdminHttpError(400, 'invalid_request')
-  }
-  if (value.curation_ids !== undefined && (!Array.isArray(value.curation_ids) || value.curation_ids.some((id) => typeof id !== 'string'))) {
-    throw new AdminHttpError(400, 'invalid_request')
-  }
-  if (value.excluded_ids !== undefined && (!Array.isArray(value.excluded_ids) || value.excluded_ids.some((id) => typeof id !== 'string'))) {
-    throw new AdminHttpError(400, 'invalid_request')
-  }
-  if (value.filters !== undefined && (!value.filters || typeof value.filters !== 'object' || Array.isArray(value.filters))) {
-    throw new AdminHttpError(400, 'invalid_request')
-  }
+  if (!idempotencyKey || !requestId || (value.mode !== 'explicit' && value.mode !== 'all_matching')) throw new AdminHttpError(400, 'invalid_request')
+  if (value.curation_ids !== undefined && (!Array.isArray(value.curation_ids) || value.curation_ids.some((id) => typeof id !== 'string'))) throw new AdminHttpError(400, 'invalid_request')
+  if (value.excluded_ids !== undefined && (!Array.isArray(value.excluded_ids) || value.excluded_ids.some((id) => typeof id !== 'string'))) throw new AdminHttpError(400, 'invalid_request')
+  if (value.filters !== undefined && (!value.filters || typeof value.filters !== 'object' || Array.isArray(value.filters))) throw new AdminHttpError(400, 'invalid_request')
   return {
     actorId, idempotencyKey, requestId, mode: value.mode,
     curationIds: value.curation_ids as string[] | undefined,
@@ -58,13 +48,18 @@ function selectionId(request: PayloadRequest): string {
 
 function publicSelection(value: SelectionManifestRecord) {
   return {
-    id: value.id, mode: value.mode, status: value.status, candidateCount: value.candidateCount,
-    capturedCount: value.capturedCount, skippedCount: value.skippedCount, manifestHash: value.manifestHash,
-    expiresAt: value.expiresAt, payloadJobId: value.payloadJobId,
+    id: value.id,
+    mode: value.mode,
+    status: value.status,
+    candidateCount: value.candidateCount,
+    capturedCount: value.capturedCount,
+    skippedCount: value.skippedCount,
+    manifestHash: value.manifestHash,
+    expiresAt: value.expiresAt,
   }
 }
 
-/** Selection intents are private to the live admin actor and never expose worker leases. */
+/** Selection intents are private to the live admin actor and never expose worker leases/job ids. */
 export function selectionEndpoints(): Endpoint[] {
   return [
     {
