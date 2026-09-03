@@ -34,9 +34,9 @@ function requestFor(
 }
 
 describe('Collection lifecycle endpoints', () => {
-  test('management list includes archived Collections and the complete UI DTO', async () => {
+  test('management list includes archived Collections through a bounded cursor page', async () => {
     const { collectionEndpoints } = await import('../../../src/payload/endpoints/collections')
-    const lean = vi.fn().mockResolvedValue([{
+    const rows = [{
       _id: '507f1f77bcf86cd799439011',
       slug: 'victoria',
       title: 'Victoria',
@@ -60,8 +60,10 @@ describe('Collection lifecycle endpoints', () => {
       publishedSelectedCount: 4,
       draftSelectedCount: 4,
       revision: 5,
-    }])
-    const sort = vi.fn().mockReturnValue({ lean })
+    }]
+    const lean = vi.fn().mockResolvedValue(rows)
+    const limit = vi.fn().mockReturnValue({ lean })
+    const sort = vi.fn().mockReturnValue({ limit })
     const find = vi.fn().mockReturnValue({ sort })
     const endpoint = collectionEndpoints()
       .find(({ method, path }) => method === 'get' && path === '/admin/v1/collections')
@@ -73,6 +75,8 @@ describe('Collection lifecycle endpoints', () => {
 
     expect(response.status).toBe(200)
     expect(find).toHaveBeenCalledWith({})
+    expect(sort).toHaveBeenCalledWith({ title: 1, _id: 1 })
+    expect(limit).toHaveBeenCalledWith(101)
     expect(await response.json()).toEqual({ items: [{
       id: '507f1f77bcf86cd799439011',
       slug: 'victoria',
@@ -97,7 +101,30 @@ describe('Collection lifecycle endpoints', () => {
       publishedSelectedCount: 4,
       draftSelectedCount: 4,
       revision: 5,
-    }] })
+    }], nextCursor: null })
+  })
+
+  test('management list applies a validated title/id cursor', async () => {
+    const { collectionEndpoints } = await import('../../../src/payload/endpoints/collections')
+    const cursor = Buffer.from(JSON.stringify({ title: 'Old', id: '507f1f77bcf86cd799439012' })).toString('base64url')
+    const lean = vi.fn().mockResolvedValue([])
+    const limit = vi.fn().mockReturnValue({ lean })
+    const sort = vi.fn().mockReturnValue({ limit })
+    const find = vi.fn().mockReturnValue({ sort })
+    const endpoint = collectionEndpoints().find(({ method, path }) => method === 'get' && path === '/admin/v1/collections')!
+
+    const response = await endpoint.handler(requestFor(
+      `https://admin.example.test/api/admin/v1/collections?cursor=${encodeURIComponent(cursor)}`,
+      { payload: { db: { collections: { collections: { find } } } } },
+    ) as never)
+
+    expect(response.status).toBe(200)
+    expect(find).toHaveBeenCalledWith({
+      $or: [
+        { title: { $gt: 'Old' } },
+        { title: 'Old', _id: { $gt: '507f1f77bcf86cd799439012' } },
+      ],
+    })
   })
 
   test('rejects malformed Collection IDs before reaching the repository', async () => {
