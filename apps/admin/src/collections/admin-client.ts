@@ -19,30 +19,10 @@ export interface CursorPage<T> {
   nextCursor: string | null
 }
 
-export interface MemberRowDto {
-  curationId: string
-  available?: boolean
-  reasonCode?: string
-}
-
-export interface DraftDiffRowDto {
-  curationId: string
-  desiredState: 'add' | 'remove'
-  operationId: string
-}
-
-export interface VersionRowDto {
-  version: number
-  selectedCount: number
-  membershipHash: string
-  publishedAt?: string
-}
-
-export interface ActivityRowDto {
-  eventType: string
-  actorId: string
-  createdAt: string
-}
+export interface MemberRowDto { curationId: string; available?: boolean; reasonCode?: string }
+export interface DraftDiffRowDto { curationId: string; desiredState: 'add' | 'remove'; operationId: string }
+export interface VersionRowDto { version: number; selectedCount: number; membershipHash: string; publishedAt?: string }
+export interface ActivityRowDto { eventType: string; actorId: string; createdAt: string }
 
 export interface PublishPreviewDto {
   currentPublishedVersion: number | null
@@ -56,10 +36,7 @@ export interface PublishPreviewDto {
   removeCount: number
 }
 
-export interface PublishJobDto {
-  id: string
-  status: string
-}
+export interface PublishJobDto { id: string; status: string }
 
 export class CollectionsAdminError extends Error {
   constructor(
@@ -76,22 +53,12 @@ export class CollectionsAdminError extends Error {
 export interface CollectionsAdminClient {
   list(): Promise<AdminCollectionRecord[]>
   get(collectionId: string): Promise<AdminCollectionRecord>
-  create(
-    input: { slug: string; title: string; description?: string | null },
-    commandId?: string,
-  ): Promise<AdminCollectionRecord>
-  patchMetadata(
-    collection: AdminCollectionRecord,
-    input: { title?: string; description?: string | null },
-  ): Promise<AdminCollectionRecord>
+  create(input: { slug: string; title: string; description?: string | null }, commandId?: string): Promise<AdminCollectionRecord>
+  patchMetadata(collection: AdminCollectionRecord, input: { title?: string; description?: string | null }): Promise<AdminCollectionRecord>
   archive(collection: AdminCollectionRecord): Promise<AdminCollectionRecord>
   restore(collection: AdminCollectionRecord): Promise<AdminCollectionRecord>
   publishPreview(collectionId: string): Promise<PublishPreviewDto>
-  publish(
-    collection: AdminCollectionRecord,
-    input: { confirmUnavailable: boolean; expectedUnavailableCount?: number },
-    commandId?: string,
-  ): Promise<PublishJobDto>
+  publish(collection: AdminCollectionRecord, input: { confirmUnavailable: boolean; expectedUnavailableCount?: number }, commandId?: string): Promise<PublishJobDto>
   restoreVersionAsDraft(collectionId: string, version: number): Promise<Record<string, unknown>>
   members(collectionId: string, version: number, cursor?: string): Promise<CursorPage<MemberRowDto>>
   draftDiff(collectionId: string, cursor?: string): Promise<CursorPage<DraftDiffRowDto>>
@@ -99,28 +66,16 @@ export interface CollectionsAdminClient {
   activity(collectionId: string, cursor?: string): Promise<CursorPage<ActivityRowDto>>
 }
 
-interface ClientDependencies {
-  fetcher?: typeof fetch
-  uuid?: () => string
-}
+interface ClientDependencies { fetcher?: typeof fetch; uuid?: () => string }
+type AdminErrorBody = { error?: { code?: unknown; [key: string]: unknown } }
 
-type AdminErrorBody = {
-  error?: {
-    code?: unknown
-    [key: string]: unknown
-  }
-}
-
-function retryableStatus(status: number): boolean {
-  return status === 423 || status === 503 || status >= 500
-}
+function retryableStatus(status: number): boolean { return status === 423 || status === 503 || status >= 500 }
 
 function safeDetails(error: AdminErrorBody['error']): Record<string, string> {
   if (!error) return {}
   const details: Record<string, string> = {}
   for (const [key, value] of Object.entries(error)) {
-    if (key === 'code') continue
-    if (typeof value === 'string') details[key] = value
+    if (key !== 'code' && typeof value === 'string') details[key] = value
   }
   return details
 }
@@ -137,33 +92,23 @@ function normalizeCollection(value: AdminCollectionRecord): AdminCollectionRecor
 
 function withQuery(path: string, values: Record<string, string | number | undefined>): string {
   const query = new URLSearchParams()
-  for (const [key, value] of Object.entries(values)) {
-    if (value !== undefined) query.set(key, String(value))
-  }
+  for (const [key, value] of Object.entries(values)) if (value !== undefined) query.set(key, String(value))
   const suffix = query.toString()
   return suffix ? `${path}?${suffix}` : path
 }
 
-export function createBrowserCollectionsAdminClient(
-  dependencies: ClientDependencies = {},
-): CollectionsAdminClient {
+export function createBrowserCollectionsAdminClient(dependencies: ClientDependencies = {}): CollectionsAdminClient {
   const fetcher = dependencies.fetcher ?? fetch
   const uuid = dependencies.uuid ?? (() => crypto.randomUUID())
 
   async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers)
     if (!headers.has('Accept')) headers.set('Accept', 'application/json')
-    if (init.body !== undefined && init.body !== null && !headers.has('Content-Type')) {
-      headers.set('Content-Type', 'application/json')
-    }
+    if (init.body !== undefined && init.body !== null && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
 
     let response: Response
     try {
-      response = await fetcher(path, {
-        ...init,
-        credentials: 'same-origin',
-        headers,
-      })
+      response = await fetcher(path, { ...init, credentials: 'same-origin', headers })
     } catch {
       throw new CollectionsAdminError('network_error', 0, true)
     }
@@ -174,7 +119,6 @@ export function createBrowserCollectionsAdminClient(
       const code = typeof error?.code === 'string' ? error.code : `http_${response.status}`
       throw new CollectionsAdminError(code, response.status, retryableStatus(response.status), safeDetails(error))
     }
-
     return response.json() as Promise<T>
   }
 
@@ -188,28 +132,33 @@ export function createBrowserCollectionsAdminClient(
 
   return {
     async list() {
-      const result = await requestJson<{ items: AdminCollectionRecord[] }>('/api/admin/v1/collections')
-      return result.items.map(normalizeCollection)
+      const items: AdminCollectionRecord[] = []
+      const seenCursors = new Set<string>()
+      let cursor: string | undefined
+      do {
+        const result = await requestJson<CursorPage<AdminCollectionRecord>>(withQuery('/api/admin/v1/collections', { cursor }))
+        items.push(...result.items.map(normalizeCollection))
+        if (!result.nextCursor) break
+        if (seenCursors.has(result.nextCursor)) throw new CollectionsAdminError('invalid_pagination', 0, false)
+        seenCursors.add(result.nextCursor)
+        cursor = result.nextCursor
+      } while (true)
+      return items
     },
 
     async get(collectionId) {
-      return normalizeCollection(await requestJson<AdminCollectionRecord>(
-        `/api/admin/v1/collections/${encodeURIComponent(collectionId)}`,
-      ))
+      return normalizeCollection(await requestJson<AdminCollectionRecord>(`/api/admin/v1/collections/${encodeURIComponent(collectionId)}`))
     },
 
     async create(input, commandId = uuid()) {
       const headers = commandHeaders({ idempotencyKey: commandId })
       return normalizeCollection(await requestJson<AdminCollectionRecord>('/api/admin/v1/collections', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ ...input, description: input.description ?? null }),
+        method: 'POST', headers, body: JSON.stringify({ ...input, description: input.description ?? null }),
       }))
     },
 
     async patchMetadata(collection, input) {
-      const idempotencyKey = uuid()
-      const headers = commandHeaders({ ifMatch: collection.revision, idempotencyKey })
+      const headers = commandHeaders({ ifMatch: collection.revision, idempotencyKey: uuid() })
       return normalizeCollection(await requestJson<AdminCollectionRecord>(
         `/api/admin/v1/collections/${encodeURIComponent(collection.id)}`,
         { method: 'PATCH', headers, body: JSON.stringify(input) },
@@ -217,8 +166,7 @@ export function createBrowserCollectionsAdminClient(
     },
 
     async archive(collection) {
-      const idempotencyKey = uuid()
-      const headers = commandHeaders({ ifMatch: collection.revision, idempotencyKey })
+      const headers = commandHeaders({ ifMatch: collection.revision, idempotencyKey: uuid() })
       return normalizeCollection(await requestJson<AdminCollectionRecord>(
         `/api/admin/v1/collections/${encodeURIComponent(collection.id)}/archive`,
         { method: 'POST', headers },
@@ -226,8 +174,7 @@ export function createBrowserCollectionsAdminClient(
     },
 
     async restore(collection) {
-      const idempotencyKey = uuid()
-      const headers = commandHeaders({ ifMatch: collection.revision, idempotencyKey })
+      const headers = commandHeaders({ ifMatch: collection.revision, idempotencyKey: uuid() })
       return normalizeCollection(await requestJson<AdminCollectionRecord>(
         `/api/admin/v1/collections/${encodeURIComponent(collection.id)}/restore`,
         { method: 'POST', headers },
@@ -235,9 +182,7 @@ export function createBrowserCollectionsAdminClient(
     },
 
     async publishPreview(collectionId) {
-      return requestJson<PublishPreviewDto>(
-        `/api/admin/v1/collections/${encodeURIComponent(collectionId)}/publish-preview`,
-      )
+      return requestJson<PublishPreviewDto>(`/api/admin/v1/collections/${encodeURIComponent(collectionId)}/publish-preview`)
     },
 
     async publish(collection, input, commandId = uuid()) {
@@ -257,29 +202,25 @@ export function createBrowserCollectionsAdminClient(
 
     async members(collectionId, version, cursor) {
       return requestJson<CursorPage<MemberRowDto>>(withQuery(
-        `/api/admin/v1/collections/${encodeURIComponent(collectionId)}/members`,
-        { version, cursor },
+        `/api/admin/v1/collections/${encodeURIComponent(collectionId)}/members`, { version, cursor },
       ))
     },
 
     async draftDiff(collectionId, cursor) {
       return requestJson<CursorPage<DraftDiffRowDto>>(withQuery(
-        `/api/admin/v1/collections/${encodeURIComponent(collectionId)}/draft/diff`,
-        { cursor },
+        `/api/admin/v1/collections/${encodeURIComponent(collectionId)}/draft/diff`, { cursor },
       ))
     },
 
     async versions(collectionId, cursor) {
       return requestJson<CursorPage<VersionRowDto>>(withQuery(
-        `/api/admin/v1/collections/${encodeURIComponent(collectionId)}/versions`,
-        { cursor },
+        `/api/admin/v1/collections/${encodeURIComponent(collectionId)}/versions`, { cursor },
       ))
     },
 
     async activity(collectionId, cursor) {
       return requestJson<CursorPage<ActivityRowDto>>(withQuery(
-        `/api/admin/v1/collections/${encodeURIComponent(collectionId)}/activity`,
-        { cursor },
+        `/api/admin/v1/collections/${encodeURIComponent(collectionId)}/activity`, { cursor },
       ))
     },
   }
