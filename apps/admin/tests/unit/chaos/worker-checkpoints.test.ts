@@ -1,6 +1,7 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import {
   PAYLOAD_JOB_COLLECTION,
+  armStalePayloadJob,
   assertChaosTimings,
   assertDisposableChaosTarget,
   evaluateRecoveredScenario,
@@ -74,6 +75,52 @@ describe('worker checkpoint chaos harness', () => {
         'selection_manifests',
         'collection_exports',
       ])
+  })
+
+  test('arms domain lease and payload job inside one Mongo transaction', async () => {
+    const previous = process.env.CONCIERGE_CHAOS_WORKER_STOPPED
+    process.env.CONCIERGE_CHAOS_WORKER_STOPPED = '1'
+    try {
+      const session = { token: 'session-1' }
+      const withTransaction = vi.fn(async (callback: () => Promise<void>) => callback())
+      const endSession = vi.fn(async () => undefined)
+      const startSession = vi.fn(() => ({ ...session, withTransaction, endSession }))
+
+      const domain = {
+        _id: 'export-1', actorId: 'admin-1', idempotencyKey: 'idem-1', status: 'running',
+        payloadJobId: 'payload-1', leaseExpiresAt: new Date(), updatedAt: new Date(),
+      }
+      const payloadJob = {
+        _id: 'payload-1', processing: false, hasError: false, completedAt: null, meta: {},
+      }
+      const domainUpdate = vi.fn().mockResolvedValue({ matchedCount: 1 })
+      const jobUpdate = vi.fn().mockResolvedValue({ matchedCount: 1 })
+
+      const collections: Record<string, unknown> = {
+        collection_exports: {
+          findOne: vi.fn().mockResolvedValue(domain),
+          countDocuments: vi.fn().mockResolvedValue(1),
+          updateOne: domainUpdate,
+        },
+        [PAYLOAD_JOB_COLLECTION]: {
+          findOne: vi.fn().mockResolvedValue(payloadJob),
+          updateOne: jobUpdate,
+        },
+      }
+      const db = { collection: (name: string) => collections[name] }
+      const client = { startSession }
+
+      await armStalePayloadJob(client as never, db as never, 'export', 'export-1', null, 300)
+
+      expect(startSession).toHaveBeenCalledTimes(1)
+      expect(withTransaction).toHaveBeenCalledTimes(1)
+      expect(endSession).toHaveBeenCalledTimes(1)
+      expect(domainUpdate.mock.calls[0][2]).toMatchObject({ session: expect.objectContaining({ token: 'session-1' }) })
+      expect(jobUpdate.mock.calls[0][2]).toMatchObject({ session: expect.objectContaining({ token: 'session-1' }) })
+    } finally {
+      if (previous === undefined) delete process.env.CONCIERGE_CHAOS_WORKER_STOPPED
+      else process.env.CONCIERGE_CHAOS_WORKER_STOPPED = previous
+    }
   })
 
   test('draft recovery requires the target draft revision even after completed terminal status', () => {
