@@ -84,12 +84,13 @@ test('compacts old terminal operation items into deterministic summary before de
       statusCounts: { applied: 1, skipped: 2 },
       reasonCounts: { unavailable: 2 },
       sha256: expectedSha,
+      purgeStartedAt: now.toISOString(),
     }) } },
   )
   expect(updateOne.mock.invocationCallOrder[0]).toBeLessThan(deleteMany.mock.invocationCallOrder[0])
   expect(updateOne).toHaveBeenNthCalledWith(
     2,
-    expect.objectContaining({ _id: 'op-1', 'itemArchive.sha256': expectedSha }),
+    expect.objectContaining({ _id: 'op-1', 'itemArchive.sha256': expectedSha, 'itemArchive.purgeStartedAt': { $exists: true } }),
     { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 3 } },
   )
 })
@@ -119,7 +120,14 @@ test('keeps an archived parent retryable when item deletion fails', async () => 
   const first = await compactTerminalOperationItems(payload as never, now)
 
   expect(first).toEqual({ scannedOperations: 1, compactedOperations: 0, deletedItems: 0, preservedOperations: 1 })
-  expect(updateOne).not.toHaveBeenCalled()
+  expect(updateOne).toHaveBeenCalledWith(
+    expect.objectContaining({
+      _id: 'op-retry',
+      'itemArchive.sha256': itemArchive.sha256,
+      'itemArchive.purgeStartedAt': { $exists: false },
+    }),
+    { $set: { 'itemArchive.purgeStartedAt': now.toISOString() } },
+  )
   expect(deleteMany).toHaveBeenCalledTimes(1)
 })
 
@@ -135,16 +143,46 @@ test('rerun reuses the persisted archive and retries deletion without changing i
 
   expect(result).toEqual({ scannedOperations: 1, compactedOperations: 1, deletedItems: 1, preservedOperations: 0 })
   expect(deleteMany).toHaveBeenCalledWith({ operationId: 'op-retry' })
+  expect(updateOne).toHaveBeenCalledTimes(2)
+  expect(updateOne).toHaveBeenNthCalledWith(
+    1,
+    expect.objectContaining({ _id: 'op-retry', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: false } }),
+    { $set: { 'itemArchive.purgeStartedAt': now.toISOString() } },
+  )
+  expect(updateOne).toHaveBeenNthCalledWith(
+    2,
+    expect.objectContaining({ _id: 'op-retry', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: true } }),
+    { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 1 } },
+  )
+})
+
+test('recovers after a partial delete using the immutable pre-delete archive', async () => {
+  const originalItems = [
+    { curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 },
+    { curationId: 'cur-2', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 },
+    { curationId: 'cur-3', desiredState: 'remove', status: 'skipped', reasonCode: 'no_op', targetDraftRevision: 9 },
+  ]
+  const remainingItems = [originalItems[2]]
+  const itemArchive = { ...archiveFor(originalItems), purgeStartedAt: '2026-09-04T11:59:00.000Z' }
+  const { payload, updateOne, deleteMany } = harness({
+    operations: [{ _id: 'op-partial', status: 'completed_with_skips', updatedAt: old, itemArchive }],
+    items: remainingItems,
+  })
+
+  const result = await compactTerminalOperationItems(payload as never, now)
+
+  expect(result).toEqual({ scannedOperations: 1, compactedOperations: 1, deletedItems: 1, preservedOperations: 0 })
+  expect(deleteMany).toHaveBeenCalledWith({ operationId: 'op-partial' })
   expect(updateOne).toHaveBeenCalledTimes(1)
   expect(updateOne).toHaveBeenCalledWith(
-    expect.objectContaining({ _id: 'op-retry', 'itemArchive.sha256': itemArchive.sha256 }),
-    { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 1 } },
+    expect.objectContaining({ _id: 'op-partial', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: true } }),
+    { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 3 } },
   )
 })
 
 test('recovers the purge marker after rows were deleted but marker CAS crashed', async () => {
   const originalItems = [{ curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 }]
-  const itemArchive = archiveFor(originalItems)
+  const itemArchive = { ...archiveFor(originalItems), purgeStartedAt: '2026-09-04T11:59:00.000Z' }
   const { payload, updateOne, deleteMany } = harness({
     operations: [{ _id: 'op-after-delete', status: 'completed', updatedAt: old, itemArchive }],
     items: [],
@@ -155,15 +193,15 @@ test('recovers the purge marker after rows were deleted but marker CAS crashed',
   expect(result).toEqual({ scannedOperations: 1, compactedOperations: 1, deletedItems: 0, preservedOperations: 0 })
   expect(deleteMany).not.toHaveBeenCalled()
   expect(updateOne).toHaveBeenCalledWith(
-    expect.objectContaining({ _id: 'op-after-delete', 'itemArchive.sha256': itemArchive.sha256 }),
+    expect.objectContaining({ _id: 'op-after-delete', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: true } }),
     { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 1 } },
   )
 })
 
-test('never deletes rows when persisted archive digest does not match remaining detail', async () => {
+test('never starts purge when persisted archive digest does not match untouched detail', async () => {
   const items = [{ curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 }]
   const itemArchive = { ...archiveFor(items), sha256: '0'.repeat(64) }
-  const { payload, deleteMany } = harness({
+  const { payload, updateOne, deleteMany } = harness({
     operations: [{ _id: 'op-corrupt', status: 'completed', updatedAt: old, itemArchive }],
     items,
   })
@@ -171,6 +209,7 @@ test('never deletes rows when persisted archive digest does not match remaining 
   const result = await compactTerminalOperationItems(payload as never, now)
 
   expect(result.preservedOperations).toBe(1)
+  expect(updateOne).not.toHaveBeenCalled()
   expect(deleteMany).not.toHaveBeenCalled()
 })
 
@@ -185,8 +224,15 @@ test('marks an originally empty archived operation purged so it cannot starve la
 
   expect(result.compactedOperations).toBe(1)
   expect(deleteMany).not.toHaveBeenCalled()
-  expect(updateOne).toHaveBeenCalledWith(
-    expect.objectContaining({ _id: 'op-empty', 'itemArchive.sha256': itemArchive.sha256 }),
+  expect(updateOne).toHaveBeenCalledTimes(2)
+  expect(updateOne).toHaveBeenNthCalledWith(
+    1,
+    expect.objectContaining({ _id: 'op-empty', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: false } }),
+    { $set: { 'itemArchive.purgeStartedAt': now.toISOString() } },
+  )
+  expect(updateOne).toHaveBeenNthCalledWith(
+    2,
+    expect.objectContaining({ _id: 'op-empty', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: true } }),
     { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 0 } },
   )
 })
