@@ -98,6 +98,25 @@ function archiveMatches(archive: Record<string, unknown>, evidence: ReturnType<t
     && sameCounts(archive.reasonCounts, evidence.reasonCounts)
 }
 
+async function markPurgeStarted(
+  operations: DocumentModel,
+  operation: Record<string, unknown>,
+  sha256: string,
+  now: Date,
+): Promise<boolean> {
+  const marked = await operations.updateOne(
+    {
+      _id: operation.id ?? operation._id,
+      status: operation.status,
+      'itemArchive.sha256': sha256,
+      'itemArchive.purgeStartedAt': { $exists: false },
+      'itemArchive.itemsPurgedAt': { $exists: false },
+    },
+    { $set: { 'itemArchive.purgeStartedAt': now.toISOString() } },
+  )
+  return Number(marked.modifiedCount ?? 0) === 1
+}
+
 async function markItemsPurged(
   operations: DocumentModel,
   operation: Record<string, unknown>,
@@ -110,6 +129,7 @@ async function markItemsPurged(
       _id: operation.id ?? operation._id,
       status: operation.status,
       'itemArchive.sha256': sha256,
+      'itemArchive.purgeStartedAt': { $exists: true },
       'itemArchive.itemsPurgedAt': { $exists: false },
     },
     {
@@ -128,11 +148,11 @@ async function markItemsPurged(
  * the retention window are eligible. A deterministic digest/count summary is
  * persisted on the parent under CAS before any item row is deleted.
  *
- * Purge completion is tracked separately from summary persistence. If deletion
- * fails after the summary CAS, later maintenance runs verify the remaining rows
- * against that immutable summary and retry deletion. If deletion succeeded but
- * the completion-marker CAS crashed, an empty detail table is sufficient to
- * finish that marker from the already durable pre-delete summary.
+ * `purgeStartedAt` is persisted before the first destructive write. Before that
+ * marker, raw detail must still match the immutable summary exactly. After the
+ * marker, a subset of rows is an expected interrupted-delete state, so later
+ * maintenance runs delete whatever remains for the same operationId and finish
+ * `itemsPurgedAt` without recalculating or mutating the original evidence.
  */
 export async function compactTerminalOperationItems(
   payload: Payload,
@@ -167,12 +187,14 @@ export async function compactTerminalOperationItems(
     const rows = await itemsModel.find({ operationId }).sort({ curationId: 1, _id: 1 }).lean() as Record<string, unknown>[]
     const evidence = evidenceFor(rows)
     let archive = existingArchive(operation)
+    let purgeStarted = Boolean(archive && dateValue(archive.purgeStartedAt))
 
     if (!archive) {
       const itemArchive = {
         ...evidence,
         compactedAt: now.toISOString(),
         sourceUpdatedAt: updatedAt.toISOString(),
+        purgeStartedAt: now.toISOString(),
       }
       const persisted = await operations.updateOne(
         {
@@ -188,10 +210,24 @@ export async function compactTerminalOperationItems(
         continue
       }
       archive = itemArchive
-    } else if (rows.length > 0 && !archiveMatches(archive, evidence)) {
-      // Existing summary and remaining detail disagree. Retention must fail
-      // closed rather than destroy evidence that may indicate corruption or a
-      // partial/manual write outside the supported operation path.
+      purgeStarted = true
+    } else if (!purgeStarted) {
+      if (rows.length > 0 && !archiveMatches(archive, evidence)) {
+        // No destructive phase was ever recorded, so a mismatch here is not a
+        // legitimate partial purge. Preserve the detail for operator review.
+        preservedOperations += 1
+        continue
+      }
+      const started = await markPurgeStarted(operations, operation, String(archive.sha256), now)
+      if (!started) {
+        preservedOperations += 1
+        continue
+      }
+      archive = { ...archive, purgeStartedAt: now.toISOString() }
+      purgeStarted = true
+    }
+
+    if (!purgeStarted) {
       preservedOperations += 1
       continue
     }
@@ -201,6 +237,9 @@ export async function compactTerminalOperationItems(
         const deletion = await itemsModel.deleteMany({ operationId })
         const removed = Number(deletion.deletedCount ?? 0)
         if (removed !== rows.length) {
+          // A partial delete is safe but incomplete. `purgeStartedAt` keeps the
+          // parent retryable; the next run deletes the remaining subset.
+          deletedItems += removed
           preservedOperations += 1
           continue
         }
@@ -214,14 +253,14 @@ export async function compactTerminalOperationItems(
       const marked = await markItemsPurged(operations, operation, String(archive.sha256), now, purgedItemCount)
       if (!marked) {
         // Rows may already be gone, but leaving the completion marker absent is
-        // safe: the next run sees an empty detail set and can finish the CAS.
+        // safe: the next run can finish the CAS from the durable summary.
         preservedOperations += 1
         continue
       }
       compactedOperations += 1
     } catch {
-      // Summary stays durable and the missing completion marker keeps this
-      // operation eligible for a later verified retry.
+      // Summary + purgeStartedAt stay durable and keep this operation eligible
+      // for a later retry, including interruption after a partial delete.
       preservedOperations += 1
     }
   }
