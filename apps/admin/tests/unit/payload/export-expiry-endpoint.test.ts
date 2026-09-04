@@ -47,17 +47,20 @@ afterEach(() => {
   }
 })
 
-test('GET returns 410 for an expired complete export and never signs its object', async () => {
-  const expired = {
+function completeExport(expiresAt: Date) {
+  return {
     _id: 'bbbbbbbbbbbbbbbbbbbbbbbb', selectionId: 'ffffffffffffffffffffffff', actorId: 'admin-1',
     format: 'ndjson', status: 'complete', progress: { processed: 3 },
     key: 'cms/exports/selection/export.ndjson', contentType: 'application/x-ndjson', sha256: 'ab'.repeat(32),
-    expiresAt: new Date(Date.now() - 1_000), idempotencyKey: 'k', requestHash: 'h', requestId: 'r',
+    expiresAt, idempotencyKey: 'k', requestHash: 'h', requestId: 'r',
     payloadJobId: 'job-1', leaseOwner: null, leaseExpiresAt: null, fencingToken: 1,
   }
+}
+
+async function getExport(document: Record<string, unknown>) {
   const payload = {
     db: { collections: {
-      'collection-exports': { findOne: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(expired) }) },
+      'collection-exports': { findOne: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(document) }) },
     } },
   }
   const { exportEndpoints } = await import('../../../src/payload/endpoints/exports')
@@ -65,10 +68,26 @@ test('GET returns 410 for an expired complete export and never signs its object'
   const request = Object.assign(new Request('https://admin.example.test/api/admin/v1/exports/bbbbbbbbbbbbbbbbbbbbbbbb'), {
     payload, routeParams: { id: 'bbbbbbbbbbbbbbbbbbbbbbbb' },
   })
+  return endpoint!.handler(request as never)
+}
 
-  const response = await endpoint!.handler(request as never)
+test('GET returns 410 for an expired complete export and never signs its object', async () => {
+  const response = await getExport(completeExport(new Date(Date.now() - 1_000)))
 
   expect(response.status).toBe(410)
   expect(await response.json()).toMatchObject({ error: { code: 'export_expired' } })
   expect(readUrl).not.toHaveBeenCalled()
+})
+
+test('GET caps presigned URL TTL to the export lifetime still remaining', async () => {
+  const expiresAt = new Date(Date.now() + 45_000)
+  const response = await getExport(completeExport(expiresAt))
+
+  expect(response.status).toBe(200)
+  const body = await response.json()
+  expect(readUrl).toHaveBeenCalledTimes(1)
+  const [, effectiveTtl] = readUrl.mock.calls[0]
+  expect(effectiveTtl).toBeGreaterThan(0)
+  expect(effectiveTtl).toBeLessThanOrEqual(45)
+  expect(new Date(body.downloadExpiresAt).getTime()).toBeLessThanOrEqual(expiresAt.getTime())
 })
