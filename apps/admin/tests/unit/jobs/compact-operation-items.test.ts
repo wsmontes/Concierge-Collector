@@ -12,7 +12,7 @@ function canonical(items: Record<string, unknown>[]) {
     status: item.status,
     reasonCode: item.reasonCode ?? null,
     targetDraftRevision: item.targetDraftRevision,
-  })).join('\n') + '\n'
+  })).join('\n') + (items.length ? '\n' : '')
 }
 
 function archiveFor(items: Record<string, unknown>[]) {
@@ -76,7 +76,8 @@ test('compacts old terminal operation items into deterministic summary before de
 
   const expectedSha = createHash('sha256').update(canonical(items)).digest('hex')
   expect(result).toEqual({ scannedOperations: 1, compactedOperations: 1, deletedItems: 3, preservedOperations: 0 })
-  expect(updateOne).toHaveBeenCalledWith(
+  expect(updateOne).toHaveBeenNthCalledWith(
+    1,
     expect.objectContaining({ _id: 'op-1', status: 'completed_with_skips', itemArchive: { $exists: false } }),
     { $set: { itemArchive: expect.objectContaining({
       itemCount: 3,
@@ -86,6 +87,11 @@ test('compacts old terminal operation items into deterministic summary before de
     }) } },
   )
   expect(updateOne.mock.invocationCallOrder[0]).toBeLessThan(deleteMany.mock.invocationCallOrder[0])
+  expect(updateOne).toHaveBeenNthCalledWith(
+    2,
+    expect.objectContaining({ _id: 'op-1', 'itemArchive.sha256': expectedSha }),
+    { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 3 } },
+  )
 })
 
 test('does not delete item rows if parent summary CAS is not persisted', async () => {
@@ -128,8 +134,12 @@ test('rerun reuses the persisted archive and retries deletion without changing i
   const result = await compactTerminalOperationItems(payload as never, now)
 
   expect(result).toEqual({ scannedOperations: 1, compactedOperations: 1, deletedItems: 1, preservedOperations: 0 })
-  expect(updateOne).not.toHaveBeenCalled()
   expect(deleteMany).toHaveBeenCalledWith({ operationId: 'op-retry' })
+  expect(updateOne).toHaveBeenCalledTimes(1)
+  expect(updateOne).toHaveBeenCalledWith(
+    expect.objectContaining({ _id: 'op-retry', 'itemArchive.sha256': itemArchive.sha256 }),
+    { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 1 } },
+  )
 })
 
 test('never deletes rows when persisted archive digest does not match remaining detail', async () => {
@@ -146,7 +156,24 @@ test('never deletes rows when persisted archive digest does not match remaining 
   expect(deleteMany).not.toHaveBeenCalled()
 })
 
-test('scan includes old terminal operations even when archive already exists so failed deletion can retry', async () => {
+test('marks an already-empty archived operation purged so it cannot starve later scan candidates', async () => {
+  const itemArchive = archiveFor([])
+  const { payload, updateOne, deleteMany } = harness({
+    operations: [{ _id: 'op-empty', status: 'completed', updatedAt: old, itemArchive }],
+    items: [],
+  })
+
+  const result = await compactTerminalOperationItems(payload as never, now)
+
+  expect(result.compactedOperations).toBe(1)
+  expect(deleteMany).not.toHaveBeenCalled()
+  expect(updateOne).toHaveBeenCalledWith(
+    expect.objectContaining({ _id: 'op-empty', 'itemArchive.sha256': itemArchive.sha256 }),
+    { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 0 } },
+  )
+})
+
+test('scan includes only old terminal operations whose item purge is not complete', async () => {
   const { payload, operationFind } = harness({ operations: [], items: [] })
 
   await compactTerminalOperationItems(payload as never, now, { retentionDays: 90, batchSize: 23 })
@@ -155,5 +182,6 @@ test('scan includes old terminal operations even when archive already exists so 
   expect(operationFind).toHaveBeenCalledWith({
     status: { $in: expect.arrayContaining(['completed', 'completed_with_skips', 'failed', 'cancelled', 'conflicted', 'authorization_revoked']) },
     updatedAt: { $lt: cutoff },
+    'itemArchive.itemsPurgedAt': { $exists: false },
   })
 })
