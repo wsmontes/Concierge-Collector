@@ -1,4 +1,5 @@
 import { AdminHttpError } from './http/errors'
+import { readRetentionInt } from './retention-policy'
 
 export interface AdminEnv {
   collectorOrigins: string[]
@@ -73,6 +74,15 @@ function requiredPositiveIntEnv(name: string): number {
   return value
 }
 
+function requiredRetentionIntEnv(name: string, productionMinimum: number): number {
+  if (!process.env[name]?.trim()) throw new AdminHttpError(503, 'service_unavailable')
+  try {
+    return readRetentionInt(name, productionMinimum)
+  } catch {
+    throw new AdminHttpError(503, 'service_unavailable')
+  }
+}
+
 /**
  * Private artifact storage configuration, read LAZILY by the export route and
  * job (never at boot) so development and tests without S3 stay unaffected.
@@ -93,7 +103,7 @@ export function readArtifactStorageEnv(): ArtifactStorageEnv {
     forcePathStyle: optionalBooleanEnv('S3_FORCE_PATH_STYLE', false),
     exportPrefix: required('S3_EXPORT_PREFIX'),
     signedUrlTtlSeconds: requiredPositiveIntEnv('S3_SIGNED_URL_TTL_SECONDS'),
-    artifactTtlSeconds: requiredPositiveIntEnv('EXPORT_ARTIFACT_TTL_SECONDS'),
+    artifactTtlSeconds: requiredRetentionIntEnv('EXPORT_ARTIFACT_TTL_SECONDS', 604800),
   }
 }
 
