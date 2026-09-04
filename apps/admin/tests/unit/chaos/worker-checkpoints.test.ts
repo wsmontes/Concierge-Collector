@@ -49,6 +49,21 @@ describe('worker checkpoint chaos harness', () => {
       ])
   })
 
+  test('draft recovery requires the target draft revision even after completed terminal status', () => {
+    const result = evaluateRecoveredScenario('draft', {
+      domain: {
+        _id: 'op-1', collectionId: 'collection-1', idempotencyKey: 'idem-1',
+        status: 'completed', targetDraftRevision: 8, jobId: 'payload-1', fencingToken: 2,
+      },
+      payloadJob: { _id: 'payload-1', processing: false, hasError: false, completedAt: new Date() },
+      duplicateCount: 1,
+      related: { collection: { draftRevision: 7 } },
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.failures).toContain('draft_revision_not_advanced')
+  })
+
   test('publish recovery requires the promoted version and same domain intent', () => {
     const result = evaluateRecoveredScenario('publish', {
       domain: {
