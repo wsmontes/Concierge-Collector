@@ -1,165 +1,103 @@
 # Collections Production Closeout — Design
 
 **Date:** 2026-09-04
-**Status:** execution spec — owner delegated autonomous audit/planning/implementation
+**Status:** development/static closeout candidate — runtime qualification not executed in ChatGPT
 **Branch:** `feat/collections-production-closeout-20260904`
+**Baseline:** `main` at `b545626a9829e8f449eab783df541a7ca61e4bce`
 
 ## Goal
 
 Close the remaining software-development gaps required to operate the existing Concierge Collector + Collections Admin architecture end-to-end before production data volume becomes expensive to migrate.
 
-This is a convergence pass, not a redesign. The domain model, Payload/FastAPI split, Collector offline-first boundary, Collection versioning model, worker publication model and staged feature-flag rollout remain authoritative.
+This is a convergence pass, not a redesign. Runtime correctness is deliberately not self-attested here: the final Codex pass owns generated artifacts, typecheck/build/tests, real Mongo migrations/indexes, full-stack integration, Playwright, crash/chaos, backup/restore, load and staging evidence.
 
 ## Frozen architecture
 
-The closeout preserves these existing decisions:
+The closeout preserves these decisions:
 
 - Entity and Curation remain operational FastAPI/Mongo concerns.
 - Collection lifecycle, drafts, memberships, versions, operations, applications and credentials remain Payload/Admin concerns.
+- Collection ↔ Curation remains N:N. Curation never owns Collection membership, order or rank.
 - Published Collection associations exposed to Collector are read-only through FastAPI.
 - Collector draft mutation uses the narrow Payload bridge and the same queued/CAS operation path as Admin work.
 - Publication remains worker-driven, leased, fenced and idempotent.
-- Published versions remain immutable; restore of history creates draft intent rather than moving the published pointer backward.
-- Admin Web and Admin Worker are separate Render services using the same Admin image/database; only Admin Web receives a public domain.
-- `admin.concierge-collector.com` is the intended production Admin hostname.
+- Published versions remain immutable; restoring history creates new draft intent rather than moving the published pointer backward.
+- Collections remain online-only in Collector; no Dexie/offline queue is added.
+- Admin Web and private Admin Worker remain separate services. No Render Blueprint adoption is introduced.
 - Server-side feature flags fail closed in staging/production and are enabled by canary.
-- GitHub Actions remain intentionally out of scope because project quality gates are local/Codex-run.
+- GitHub Actions remain intentionally out of scope; release gates are local/Codex-run.
 
-## Superseded/deferred work that must NOT be revived in this closeout
+## Closeout result by original gap
 
-### Render Blueprint adoption
+| Gap | Development/static disposition | Runtime evidence still required |
+| --- | --- | --- |
+| A — schema readiness | `GET /ready` now combines Mongo ping with a read-only Payload migration/index compatibility check. It performs no DDL. Latest expected migration is `20260904_016_operation_retention_quarantine`. | Apply migrations to real disposable Mongo; prove 503 before incompatible schema and 200 after exact migration/index set. |
+| B — export TTL/object orphaning | Legacy `export_artifact_ttl` is removed. Cleanup is object-first, then CMS-reference deletion. Storage failure preserves the reference. Persistent cleanup backoff prevents one bad object from starving the batch. | S3-compatible DeleteObject failure injection, retry/backoff timing and object/reference inspection. |
+| C — operation-item growth | Old terminal detail is streamed through bounded cursors into deterministic count/reason/SHA evidence before deletion. `purgeStartedAt`/`itemsPurgedAt` make partial-delete recovery crash-safe. Permanent evidence contradictions are preserved and quarantined from later batches. | Real Mongo cursor/delete/CAS behavior, partial-delete/crash injection, large-volume memory/load observation. |
+| D — Admin audit growth | Old `audit_events` are written as deterministic private NDJSON-gzip, manifested with count/SHA/key, then removed. Manifest/upload failure preserves source. | Real S3 + Mongo archival, failure injection, restore/inspection. |
+| E — FastAPI authorization audit | Shared append-only `user_authz_audit_events` path covers manual changes, OAuth promotion/bootstrap and no-op/idempotent retries. Audit failure is fail-closed with compensation; ambiguous network failure checks `eventKey` before rollback. | Pytest + real Mongo indexes + auth downgrade/bootstrap integration. |
+| F — missing worker chaos harness | `apps/admin/tests/chaos/worker-checkpoints.mjs` exists for draft/publish/selection/export with strict `*-test`, remote opt-in and worker-stopped safety guards. It never manufactures replacement domain intents/jobs. | Real staging worker stop/arm/restart/verify for all four scenarios. |
+| G — inconsistent config/runbooks | `.env.example`, rollout, staging, production, backup/restore and Codex handoff enumerate storage/retention/recovery settings and conservative invariants. | Verify actual staging/production secret-store names and non-secret values match the versioned docs. |
 
-The original 2026-08-18 phase 07 planned `render.yaml` and image-runtime Blueprint adoption. The later rollout runbook explicitly does not authorize Blueprint adoption or recreation of existing services. The current deployment plan is Git-backed Admin Web + Worker services with staged flags.
+## Additional hardening discovered during closeout
 
-Therefore this closeout does **not** create `render.yaml`, migrate existing service IDs, or change the API/Collector runtime topology.
+### Payload job recovery is job-first
 
-### Framework rewrites and domain reconsideration
+Payload 3.86 still uses a durable `processing` boolean. A process can die after domain success but before Payload finalizes/deletes its internal job. Recovery therefore starts from bounded stuck `payload-jobs`, maps only the four known domain task slugs and validates the linked domain record before re-opening the same job.
 
-The following Baseline 1 deferred decisions remain deferred:
+This avoids the starvation bug caused by scanning the oldest domain intents first. Active/reclaimable domain records whose referenced Payload job is missing are detected separately through a Mongo `$lookup` that filters missing jobs before the bounded limit. The physical jobs collection name comes from the live Mongoose model rather than a hardcoded pluralization assumption.
 
-- rewriting the vanilla Collector framework;
-- replacing `synthetic` Curation semantics;
-- changing the vector-storage representation;
-- broad save/media orchestration redesign beyond already-established compatibility boundaries.
+A job tied to a terminal-success domain may be reopened idempotently so configured `deleteJobOnComplete` can finish cleanup. A job tied to a permanently failed/missing domain is classified once in job metadata so it does not monopolize the stuck-job batch.
 
-These are not blockers for Collections production.
+### Export cleanup backoff
 
-## Audit findings
+A permanently failing object key must not consume the first bounded cleanup slots forever. `collection_exports` therefore carries operational cleanup attempt/last-attempt/next-attempt metadata. DeleteObject failure preserves the record and schedules exponential retry (bounded to 24h); due records are selected with `export_cleanup_due`.
 
-### Already closed
+No provider error text or credential material is persisted.
 
-The current mainline already contains the substantial product surface:
+### Operation-retention quarantine
 
-- CMS auth handoff and live role revalidation;
-- Collection CRUD/lifecycle and optimistic concurrency;
-- immutable publish versions and membership intervals;
-- worker lease/fencing/takeover behavior;
-- Explorer, saved views, selection manifests and server-side scans;
-- bulk Collection operations and Operations Admin;
-- private selection exports;
-- consumer applications/credentials/distribution;
-- Collector published-association UI and single-Curation draft mutation;
-- Collections Admin list/detail UI, metadata editing, archive/restore, publish, versions, restore-as-draft, activity and distribution picker;
-- recovery reconciler, orphan staging retention, worker heartbeat and selection-retention split;
-- release gates, acceptance schema/verifier, backup/restore smoke and rollout/rollback runbooks.
+Permanent contradictions discovered before destructive retention — successful `selectedCount` disagreeing with intact detail, persisted archive evidence disagreeing with intact detail, or invalid immutable archive item count — are not retried forever. They are marked under `itemArchive.retentionBlocked*`, excluded by `operation_retention_due`, and all raw evidence is preserved for operator investigation.
 
-Architecture Baseline 1 has already been qualified with the repository standard/full gates before its promotion to main. This closeout must preserve those invariants.
+Transient Mongo/cursor/delete/CAS failures remain retryable and are not quarantined.
 
-### Gap A — readiness proves connectivity, not schema readiness
+### Maintenance writes do not renew operation age
 
-`GET /ready` currently pings MongoDB and returns ready. The phase-07 contract requires readiness to also prove that required CMS migrations/indexes are present without running migrations as a side effect.
+Retention-only writes use Mongoose `{ timestamps: false }`. `itemArchive`, purge-start and purge-completion bookkeeping is not a semantic operation edit and must not move `updatedAt`, otherwise a failed 90-day purge could disappear for another retention window.
 
-Risk: a newly deployed Admin process can be declared ready before a required migration/index exists, allowing traffic into an incompatible schema.
+### Export-expired worker lifecycle
 
-Closeout requirement:
+`export_expired` is a deliberate terminal domain outcome, not a transient worker failure. The export task returns terminal `failed` output for that exact 410 condition so Payload can complete/delete the internal job. Other conflicts, 5xx and unknown errors continue to propagate to Payload retry policy.
 
-- add a read-only CMS schema-readiness checker;
-- require the latest expected migration(s) and critical indexes used by Collections;
-- return 503 with safe component status when schema is not ready;
-- never migrate or repair from `/ready`.
+### Generated Payload artifacts are now a gate
 
-### Gap B — export reference TTL can orphan object-storage data
+The root release gate runs `check:admin-generated` before Admin typecheck/build. That check executes Payload's official type generator, compares the generated output with the checked-in file and always restores the original checkout before returning. Stale generated output fails with an instruction to run the official generator and commit its deterministic diff.
 
-Migration `20260822_008_exports` installs `export_artifact_ttl` directly on CMS export records. The `ArtifactStore` comments state object deletion/lifecycle is best-effort/out-of-scope. Mongo TTL can therefore remove the only CMS reference before confirmed `DeleteObject`.
+## Migration sequence introduced by this closeout
 
-The original production-hardening contract is stricter: delete the private object first, confirm success, and only then purge the CMS record.
+The closeout migration tail is:
 
-Closeout requirement:
+```text
+20260904_011_export_cleanup_retention
+20260904_012_operation_item_retention
+20260904_013_audit_archival
+20260904_014_staging_retention_scan
+20260904_015_export_cleanup_backoff
+20260904_016_operation_retention_quarantine
+```
 
-- replace the export TTL with a normal expiry lookup index;
-- maintenance task scans expired completed/failed export records in bounded batches;
-- when a stored key exists, call `ArtifactStore.delete(key)` first;
-- delete the CMS export record only after object deletion succeeds (or when no object was ever materialized);
-- preserve records on storage failure for retry/operator visibility.
+Critical new/changed indexes include:
 
-### Gap C — high-volume operation item detail has no bounded retention
+- `export_expiry_status` and `export_cleanup_due` on `collection_exports`;
+- `operation_retention_due` on `collection_operations`;
+- `staging_retention_scan` on `collection_draft_changes`;
+- `audit_archive_scan` on `audit_events`;
+- `audit_archive_batch_unique` on `audit_archive_manifests`;
+- existing Collections queue/lease/slug/heartbeat indexes required by schema readiness.
 
-`collection_operation_items` is intentionally item-level and may grow proportional to bulk editorial work. The original hardening contract specified 90-day retention after terminal operations, but current code only purges orphan draft staging.
-
-Closeout requirement:
-
-- compact terminal operation items older than the configured retention window into a deterministic summary artifact before deletion;
-- retain counts by item status and reason plus a SHA-256 digest over the canonical item stream so evidence remains verifiable;
-- store the compact summary durably on the parent operation (not as a new product-domain object);
-- delete item rows only after the summary is persisted under CAS-safe conditions;
-- never compact nonterminal operations.
-
-This keeps the existing domain model while bounding the highest-cardinality operational table.
-
-### Gap D — Admin audit history has no archival boundary
-
-`audit_events` is append-only and intentionally has no TTL. At production scale it grows indefinitely. The original hardening contract specified a 365-day hot-retention window with private NDJSON-gzip archival before purge.
-
-Closeout requirement:
-
-- add a scheduled audit archival task using the existing private artifact-store boundary;
-- write deterministic NDJSON-gzip batches with count/SHA metadata;
-- persist an archive manifest in CMS before source deletion;
-- delete source events only after successful artifact upload + manifest persistence;
-- emit an `audit.archive.completed` event outside the archived source batch;
-- retain product records (Collections/versions/memberships/applications/credentials) indefinitely.
-
-A small CMS archive-manifest collection is operational evidence, not a new product domain.
-
-### Gap E — operational user authorization changes are not persistently audited
-
-`authorize_user.py` directly updates `users.authorized`/`users.role`; OAuth allowlist promotion also updates those fields directly. Phase 07 specified a single append-only `user_authz_audit_events` path with idempotent `eventKey`.
-
-Closeout requirement:
-
-- implement shared `append_authz_change` logic;
-- call it from manual authorization CLI and OAuth allowlist-driven changes;
-- record actor/target, before/after authorized+role, source, request/correlation ID and timestamp;
-- never store token/cookie/credential material;
-- make retries idempotent by unique `eventKey`;
-- introspection/read-only authorization checks must not generate mutation-audit events.
-
-### Gap F — staging acceptance references a chaos command that does not exist
-
-The acceptance/hardening plan names `apps/admin/tests/chaos/worker-checkpoints.mjs`, but there is no chaos harness in the repository.
-
-Closeout requirement:
-
-- add the deterministic worker-checkpoint chaos driver expected by the staging gate;
-- cover draft operation, publish, selection materialization and export checkpoint/recovery scenarios through existing domain/test helpers or HTTP/runtime hooks;
-- make it fail closed when the disposable test environment is not explicitly configured;
-- produce machine-readable evidence suitable for the existing 20-criterion acceptance record.
-
-The harness may require Codex/runtime execution later; writing it is part of this development closeout.
-
-### Gap G — rollout configuration does not enumerate all now-required artifact/retention settings consistently
-
-The current `.env.example` contains export storage and several recovery settings, while the latest staging/production plans enumerate only a subset. Once export cleanup/audit archival are hard requirements, deployment configuration must be explicit.
-
-Closeout requirement:
-
-- version the new retention/archive environment names in `.env.example`;
-- update staging and production runbooks/plans to list required non-secret names and safe defaults;
-- keep secret values outside Git.
+The legacy export TTL must be absent after migration.
 
 ## Retention defaults
-
-Production defaults remain aligned with the existing hardening plan:
 
 - worker heartbeat: 7 days;
 - unused selection validity: 24 hours;
@@ -169,46 +107,52 @@ Production defaults remain aligned with the existing hardening plan:
 - orphan staged draft rows: 30 days;
 - Admin audit hot history: 365 days.
 
-Retention settings may be shortened in disposable staging for qualification. Production must not silently shorten evidence-retention windows.
+Maintenance runs in bounded batches. Production must not silently shorten evidence-retention windows. Disposable staging may use shorter windows only to exercise behavior and must record the override in evidence.
+
+## Audit archival ordering is intentionally fail-safe
+
+Unlike export cleanup and operation-retention corruption handling, Admin audit archival intentionally does not skip past an inconsistent oldest batch. An existing archive manifest whose count/SHA/key does not match the deterministic batch is an integrity incident; proceeding to newer batches could make the gap less visible. The worker therefore preserves source rows and requires operator investigation rather than optimizing throughput around a broken audit chain.
+
+## Explicitly deferred / non-blocking work
+
+These items are outside the Collections production closeout and must not be revived as release blockers without a separate decision:
+
+- Render Blueprint adoption/service recreation;
+- GitHub Actions adoption;
+- Collector framework rewrite;
+- synthetic-Curation semantics redesign;
+- vector-storage representation redesign;
+- broad media/save orchestration redesign;
+- FastAPI authorization-audit external cold archival: the Python service has no existing shared S3 artifact-store boundary, so the append-only hot audit collection and indexes remain authoritative for this release rather than creating a second storage architecture;
+- Google Places injection into `AIOrchestrator`: `place_id_*` workflows deliberately return 501 until Places is wired; audio/image/text workflows are unaffected and this feature is unrelated to Collections.
 
 ## Readiness contract
 
 `GET /health` remains liveness and must not require Mongo.
 
-`GET /ready` is read-only and returns 200 only when:
+`GET /ready` is read-only and may return 200 only when:
 
 1. CMS Mongo ping succeeds;
-2. the latest expected Payload migration marker is present;
-3. critical Collections indexes required by the deployed code are present.
+2. migration `20260904_016_operation_retention_quarantine` is recorded;
+3. every critical index signature expected by the deployed code is present, including key order, uniqueness and TTL attributes where applicable.
 
-A failure returns 503 with safe component names/status only. It does not expose connection strings, credentials, database contents or stack traces.
+A failure returns 503 with safe component status only. Readiness never creates indexes, runs migrations or repairs data.
 
-## Storage/archive contract
+## Verification boundary
 
-The existing private S3-compatible store remains the storage abstraction. No public ACL is introduced.
+No test/build/migration/staging result is inferred from source inspection. The final Codex handoff must produce fresh evidence for the exact candidate SHA by running, at minimum:
 
-Operational archives use separate logical key namespaces below the configured private prefix:
+```bash
+npm ci
+npm run generate:types --workspace=@concierge/admin
+npm run generate:importmap --workspace=@concierge/admin
+npm run generate:contracts
+npm run check:admin-generated
+npm run check:contracts
+npm run verify
+npm run verify:full
+```
 
-- `exports/...` (existing selection export behavior);
-- `operations/...` only if a future full artifact is required; closeout compaction stores summary on the parent operation and therefore does not require object storage;
-- `audit/...` for compressed Admin audit archives.
+and then the migration/readiness/failure-injection, backup/restore, four real worker chaos scenarios, load/security/UI qualification and 20/20 staging acceptance described in `docs/runbooks/collections-codex-integration-gate.md`.
 
-Signed URLs remain only for explicitly authorized export reads. Audit archive objects are worker-only and are never exposed by a public endpoint in this closeout.
-
-## Verification strategy
-
-Development here writes regression/unit/integration/chaos tests but does not claim runtime qualification.
-
-Codex handoff remains responsible for executing and fixing failures in:
-
-- `npm run verify`;
-- `npm run verify:full`;
-- real Mongo migrations/index verification;
-- Admin Web + Worker + FastAPI integration;
-- Playwright;
-- worker crash/restart and chaos harness;
-- backup/restore smoke;
-- load/benchmark runs;
-- Render staging qualification and production deployment.
-
-No production-complete claim is valid until those commands produce fresh evidence for the exact candidate SHA.
+Only that executed qualification can promote this development/static candidate toward production deployment and merge to `main`.
