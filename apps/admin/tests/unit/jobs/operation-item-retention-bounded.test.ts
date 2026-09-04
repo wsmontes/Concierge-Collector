@@ -58,6 +58,7 @@ test('hashes large operation detail through a bounded cursor instead of material
     1,
     expect.objectContaining({ _id: 'op-large', itemArchive: { $exists: false } }),
     { $set: { itemArchive: expect.objectContaining({ itemCount: 5_000, sha256: expect.stringMatching(/^[a-f0-9]{64}$/) }) } },
+    { timestamps: false },
   )
 })
 
@@ -97,4 +98,5 @@ test('retry after purgeStartedAt skips rehashing a potentially huge remaining su
   expect(itemFind).not.toHaveBeenCalled()
   expect(deleteMany).toHaveBeenCalledWith({ operationId: 'op-retry-large' })
   expect(countDocuments).toHaveBeenCalledWith({ operationId: 'op-retry-large' })
+  expect(updateOne.mock.calls[0][2]).toEqual({ timestamps: false })
 })
