@@ -105,6 +105,38 @@ def test_manual_authz_change_rolls_back_if_audit_write_fails(in_memory_db, monke
     assert user["role"] == "curator"
 
 
+def test_ambiguous_audit_write_is_confirmed_before_privilege_compensation(in_memory_db, monkeypatch):
+    from app.core.authz_audit import apply_user_authz_change
+
+    in_memory_db._collections.clear()
+    email = _seed(in_memory_db, email="ambiguous-audit@example.test")
+    original_update = in_memory_db.user_authz_audit_events.update_one
+
+    def commit_then_disconnect(*args, **kwargs):
+        original_update(*args, **kwargs)
+        raise RuntimeError("network reply lost after commit")
+
+    monkeypatch.setattr(in_memory_db.user_authz_audit_events, "update_one", commit_then_disconnect)
+
+    changed = apply_user_authz_change(
+        in_memory_db,
+        email=email,
+        authorized=True,
+        role="admin",
+        actor_id="cli:wagner",
+        source="authorize_user",
+        request_id="req-ambiguous-commit",
+    )
+
+    assert changed["authorized"] is True
+    assert changed["role"] == "admin"
+    user = in_memory_db.users.find_one({"email": email})
+    assert user is not None
+    assert user["authorized"] is True
+    assert user["role"] == "admin"
+    assert in_memory_db.user_authz_audit_events.count_documents({"targetEmail": email}) == 1
+
+
 def test_repeating_same_request_is_idempotent_and_noop_change_adds_no_event(in_memory_db):
     from app.core.authz_audit import append_authz_change, apply_user_authz_change
 
