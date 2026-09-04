@@ -97,8 +97,13 @@ def get_openai_service(request: Request):
 
 # Dependency to get AI orchestrator
 def get_ai_orchestrator(db=Depends(get_database), openai_service=Depends(get_openai_service)):
-    """Get AI orchestrator instance"""
-    # TODO: Add places_service when available
+    """Get AI orchestrator instance.
+
+    Google Places wiring is intentionally deferred outside the Collections
+    production closeout. Workflows that require `place_id` fail explicitly with
+    HTTP 501 until a Places service is injected; audio/image/text workflows are
+    unaffected.
+    """
     return AIOrchestrator(db, openai_service, places_service=None)
 
 
