@@ -44,6 +44,10 @@ function operation(overrides: Record<string, unknown> = {}) {
   }
 }
 
+async function* cursorFor(items: Record<string, unknown>[]) {
+  for (const item of items) yield item
+}
+
 function harness(input: {
   operations: Record<string, unknown>[]
   items: Record<string, unknown>[]
@@ -52,24 +56,33 @@ function harness(input: {
   deletedCount?: number
 }) {
   const updateOne = vi.fn().mockResolvedValue({ modifiedCount: input.persist === false ? 0 : 1 })
+  let remaining = input.items.length
   const deleteMany = vi.fn().mockImplementation(async () => {
     if (input.deleteFails) throw new Error('delete failed')
-    return { deletedCount: input.deletedCount ?? input.items.length }
+    const removed = input.deletedCount ?? remaining
+    remaining = Math.max(0, remaining - removed)
+    return { deletedCount: removed }
   })
+  const countDocuments = vi.fn().mockImplementation(async () => remaining)
   const operationFind = vi.fn().mockReturnValue({
     sort: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(input.operations) }) }),
   })
+  const cursor = vi.fn(() => cursorFor(input.items))
+  const batchSize = vi.fn().mockReturnValue({ cursor })
   const itemFind = vi.fn().mockReturnValue({
-    sort: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(input.items) }),
+    sort: vi.fn().mockReturnValue({ batchSize }),
   })
   return {
     payload: { db: { collections: {
       'collection-operations': { find: operationFind, updateOne },
-      'collection-operation-items': { find: itemFind, deleteMany },
+      'collection-operation-items': { find: itemFind, deleteMany, countDocuments },
     } } },
     operationFind,
+    itemFind,
+    cursor,
     updateOne,
     deleteMany,
+    countDocuments,
   }
 }
 
@@ -79,7 +92,7 @@ test('persists deterministic evidence before deleting old successful operation i
     { curationId: 'cur-2', desiredState: 'add', status: 'skipped', reasonCode: 'unavailable', targetDraftRevision: 7 },
     { curationId: 'cur-3', desiredState: 'add', status: 'skipped', reasonCode: 'unavailable', targetDraftRevision: 7 },
   ]
-  const { payload, updateOne, deleteMany } = harness({
+  const { payload, updateOne, deleteMany, countDocuments } = harness({
     operations: [operation({ _id: 'op-summary', status: 'completed_with_skips', selectedCount: 3 })],
     items,
   })
@@ -100,6 +113,7 @@ test('persists deterministic evidence before deleting old successful operation i
     }) } },
   )
   expect(updateOne.mock.invocationCallOrder[0]).toBeLessThan(deleteMany.mock.invocationCallOrder[0])
+  expect(countDocuments).toHaveBeenCalledWith({ operationId: 'op-summary' })
   expect(updateOne).toHaveBeenNthCalledWith(
     2,
     expect.objectContaining({ _id: 'op-summary', 'itemArchive.sha256': expectedSha, 'itemArchive.purgeStartedAt': { $exists: true } }),
@@ -175,6 +189,24 @@ test('recovers after a partial delete using the original pre-delete archive', as
   )
 })
 
+test('keeps partial delete retryable until zero detail rows remain', async () => {
+  const originalItems = [
+    { curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 },
+    { curationId: 'cur-2', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 },
+  ]
+  const itemArchive = { ...archiveFor(originalItems), purgeStartedAt: '2026-09-04T11:59:00.000Z' }
+  const { payload, updateOne } = harness({
+    operations: [operation({ _id: 'op-partial-delete', selectedCount: 2, itemArchive })],
+    items: originalItems,
+    deletedCount: 1,
+  })
+
+  const result = await compactTerminalOperationItems(payload as never, now)
+
+  expect(result).toEqual({ scannedOperations: 1, compactedOperations: 0, deletedItems: 1, preservedOperations: 1 })
+  expect(updateOne).not.toHaveBeenCalled()
+})
+
 test('recovers completion marker after rows were deleted but marker CAS crashed', async () => {
   const originalItems = [{ curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 }]
   const itemArchive = { ...archiveFor(originalItems), purgeStartedAt: '2026-09-04T11:59:00.000Z' }
@@ -183,7 +215,7 @@ test('recovers completion marker after rows were deleted but marker CAS crashed'
   const result = await compactTerminalOperationItems(payload as never, now)
 
   expect(result).toEqual({ scannedOperations: 1, compactedOperations: 1, deletedItems: 0, preservedOperations: 0 })
-  expect(deleteMany).not.toHaveBeenCalled()
+  expect(deleteMany).toHaveBeenCalledWith({ operationId: 'op-after-delete' })
   expect(updateOne).toHaveBeenCalledWith(
     expect.objectContaining({ _id: 'op-after-delete', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: true } }),
     { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 1 } },
@@ -202,7 +234,7 @@ test('never starts purge when persisted archive digest disagrees with untouched 
   expect(deleteMany).not.toHaveBeenCalled()
 })
 
-test('marks an originally empty archived operation purged so it cannot starve later candidates', async () => {
+test('marks an originally empty archived failed operation purged so it cannot starve later candidates', async () => {
   const itemArchive = archiveFor([])
   const { payload, updateOne, deleteMany } = harness({
     operations: [operation({ _id: 'op-empty', status: 'failed', selectedCount: 3, itemArchive })],
@@ -212,7 +244,7 @@ test('marks an originally empty archived operation purged so it cannot starve la
   const result = await compactTerminalOperationItems(payload as never, now)
 
   expect(result.compactedOperations).toBe(1)
-  expect(deleteMany).not.toHaveBeenCalled()
+  expect(deleteMany).toHaveBeenCalledWith({ operationId: 'op-empty' })
   expect(updateOne).toHaveBeenNthCalledWith(
     2,
     expect.objectContaining({ _id: 'op-empty', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: true } }),
