@@ -1,6 +1,6 @@
 import type { Payload } from 'payload'
 
-export const LATEST_CMS_MIGRATION = '20260904_013_audit_archival'
+export const LATEST_CMS_MIGRATION = '20260904_014_worker_heartbeat_retention'
 
 const REQUIRED_INDEXES: Readonly<Record<string, readonly string[]>> = {
   collections: ['collections_slug_unique'],
@@ -9,6 +9,7 @@ const REQUIRED_INDEXES: Readonly<Record<string, readonly string[]>> = {
   'collection-exports': ['export_expiry_status'],
   'audit-events': ['audit_archive_scan'],
   'audit-archive-manifests': ['audit_archive_batch_unique'],
+  'worker-heartbeats': ['worker_heartbeat_ttl'],
 }
 
 export interface CmsSchemaReadiness {
