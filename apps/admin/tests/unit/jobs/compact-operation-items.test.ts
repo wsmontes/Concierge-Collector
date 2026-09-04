@@ -4,6 +4,7 @@ import { compactTerminalOperationItems } from '../../../src/jobs/operation-item-
 
 const now = new Date('2026-09-04T12:00:00.000Z')
 const old = new Date('2026-05-01T12:00:00.000Z')
+const retentionWriteOptions = { timestamps: false }
 
 function canonical(items: Record<string, unknown>[]) {
   return items.map((item) => JSON.stringify({
@@ -111,6 +112,7 @@ test('persists deterministic evidence before deleting old successful operation i
       sha256: expectedSha,
       purgeStartedAt: now.toISOString(),
     }) } },
+    retentionWriteOptions,
   )
   expect(updateOne.mock.invocationCallOrder[0]).toBeLessThan(deleteMany.mock.invocationCallOrder[0])
   expect(countDocuments).toHaveBeenCalledWith({ operationId: 'op-summary' })
@@ -118,6 +120,7 @@ test('persists deterministic evidence before deleting old successful operation i
     2,
     expect.objectContaining({ _id: 'op-summary', 'itemArchive.sha256': expectedSha, 'itemArchive.purgeStartedAt': { $exists: true } }),
     { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 3 } },
+    retentionWriteOptions,
   )
 })
 
@@ -146,6 +149,7 @@ test('keeps an archived operation retryable when item deletion fails', async () 
   expect(updateOne).toHaveBeenCalledWith(
     expect.objectContaining({ _id: 'op-retry', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: false } }),
     { $set: { 'itemArchive.purgeStartedAt': now.toISOString() } },
+    retentionWriteOptions,
   )
   expect(deleteMany).toHaveBeenCalledTimes(1)
 })
@@ -163,6 +167,7 @@ test('rerun reuses the immutable archive and completes a retry', async () => {
     2,
     expect.objectContaining({ _id: 'op-retry', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: true } }),
     { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 1 } },
+    retentionWriteOptions,
   )
 })
 
@@ -186,6 +191,7 @@ test('recovers after a partial delete using the original pre-delete archive', as
   expect(updateOne).toHaveBeenCalledWith(
     expect.objectContaining({ _id: 'op-partial', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: true } }),
     { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 3 } },
+    retentionWriteOptions,
   )
 })
 
@@ -219,6 +225,7 @@ test('recovers completion marker after rows were deleted but marker CAS crashed'
   expect(updateOne).toHaveBeenCalledWith(
     expect.objectContaining({ _id: 'op-after-delete', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: true } }),
     { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 1 } },
+    retentionWriteOptions,
   )
 })
 
@@ -249,6 +256,7 @@ test('marks an originally empty archived failed operation purged so it cannot st
     2,
     expect.objectContaining({ _id: 'op-empty', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: true } }),
     { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 0 } },
+    retentionWriteOptions,
   )
 })
 
