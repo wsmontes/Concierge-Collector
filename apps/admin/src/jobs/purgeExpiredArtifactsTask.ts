@@ -205,7 +205,10 @@ export const purgeExpiredArtifactsTask: TaskConfig<{
     { name: 'stagingDeleted', type: 'number', required: true },
     { name: 'stagingPreserved', type: 'number', required: true },
   ],
-  schedule: [{ cron: '17 3 * * *', queue: 'maintenance' }],
+  // One bounded batch per hour avoids unbounded maintenance work while giving
+  // expired exports, operation detail and orphan staging enough drain capacity
+  // to recover from bursts rather than accumulating behind a once-daily cap.
+  schedule: [{ cron: '17 * * * *', queue: 'maintenance' }],
   handler: async ({ req }) => {
     const now = new Date()
     const exportsSummary = await purgeExpiredExports(req.payload, null, now, {
