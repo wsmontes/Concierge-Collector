@@ -25,6 +25,11 @@ const DEFAULT_BATCH_SIZE = 100
 const DETAIL_CURSOR_BATCH_SIZE = 1_000
 const RETENTION_WRITE_OPTIONS = { timestamps: false } as const
 
+type RetentionBlockedReason =
+  | 'detail_count_mismatch'
+  | 'archive_evidence_mismatch'
+  | 'invalid_archive_item_count'
+
 export interface OperationItemRetentionOptions {
   retentionDays?: number
   batchSize?: number
@@ -124,6 +129,32 @@ function archiveMatches(archive: Record<string, unknown>, evidence: Awaited<Retu
     && sameCounts(archive.reasonCounts, evidence.reasonCounts)
 }
 
+async function quarantineRetention(
+  operations: DocumentModel,
+  operation: Record<string, unknown>,
+  reason: RetentionBlockedReason,
+  now: Date,
+  details: Record<string, unknown> = {},
+  guard: Record<string, unknown> = {},
+): Promise<void> {
+  await operations.updateOne(
+    {
+      _id: operation.id ?? operation._id,
+      status: operation.status,
+      'itemArchive.retentionBlockedAt': { $exists: false },
+      ...guard,
+    },
+    {
+      $set: {
+        'itemArchive.retentionBlockedAt': now.toISOString(),
+        'itemArchive.retentionBlockedReason': reason,
+        ...details,
+      },
+    },
+    RETENTION_WRITE_OPTIONS,
+  )
+}
+
 async function markPurgeStarted(
   operations: DocumentModel,
   operation: Record<string, unknown>,
@@ -137,6 +168,7 @@ async function markPurgeStarted(
       'itemArchive.sha256': sha256,
       'itemArchive.purgeStartedAt': { $exists: false },
       'itemArchive.itemsPurgedAt': { $exists: false },
+      'itemArchive.retentionBlockedAt': { $exists: false },
     },
     { $set: { 'itemArchive.purgeStartedAt': now.toISOString() } },
     RETENTION_WRITE_OPTIONS,
@@ -158,6 +190,7 @@ async function markItemsPurged(
       'itemArchive.sha256': sha256,
       'itemArchive.purgeStartedAt': { $exists: true },
       'itemArchive.itemsPurgedAt': { $exists: false },
+      'itemArchive.retentionBlockedAt': { $exists: false },
     },
     {
       $set: {
@@ -178,10 +211,11 @@ async function markItemsPurged(
  *
  * Before the destructive phase, raw detail is streamed in canonical order to a
  * SHA/count summary. Successful operations must have `selectedCount` equal to
- * that intact item count; otherwise retention preserves the rows for operator
- * review. Failed/cancelled materialization may legitimately stop with partial
- * item detail. A cursor/read failure preserves only that operation and does not
- * prevent later candidates in the same bounded batch from being maintained.
+ * that intact item count. A permanent evidence contradiction is quarantined in
+ * `itemArchive.retentionBlocked*`: all source detail remains available for
+ * operator investigation, but that corrupt operation no longer monopolizes the
+ * oldest slots of every maintenance batch. Cursor/read/delete/CAS failures stay
+ * retryable and are never quarantined merely for being transient.
  *
  * Retention metadata writes disable Mongoose timestamps. These writes are not
  * semantic operation edits and must not renew `updatedAt`; otherwise a failed
@@ -210,6 +244,7 @@ export async function compactTerminalOperationItems(
     status: { $in: [...TERMINAL_OPERATION_STATUSES] },
     updatedAt: { $lt: cutoff },
     'itemArchive.itemsPurgedAt': { $exists: false },
+    'itemArchive.retentionBlockedAt': { $exists: false },
   }).sort({ updatedAt: 1, _id: 1 }).limit(batchSize).lean() as Record<string, unknown>[]
 
   let compactedOperations = 0
@@ -243,6 +278,22 @@ export async function compactTerminalOperationItems(
         successful &&
         (!Number.isInteger(selectedCount) || selectedCount < 0 || evidence.itemCount !== selectedCount)
       ) {
+        try {
+          await quarantineRetention(
+            operations,
+            operation,
+            'detail_count_mismatch',
+            now,
+            {
+              'itemArchive.retentionExpectedItemCount': Number.isInteger(selectedCount) ? selectedCount : null,
+              'itemArchive.retentionObservedItemCount': evidence.itemCount,
+              'itemArchive.retentionObservedSha256': evidence.sha256,
+            },
+            { updatedAt },
+          )
+        } catch {
+          // Even quarantine metadata is fail-safe: raw detail stays untouched.
+        }
         preservedOperations += 1
         continue
       }
@@ -273,7 +324,22 @@ export async function compactTerminalOperationItems(
       } else {
         if (!archiveMatches(archive, evidence)) {
           // No destructive phase was ever recorded, so a mismatch here cannot
-          // be a legitimate partial purge.
+          // be a legitimate partial purge. Preserve both archive and raw rows.
+          try {
+            await quarantineRetention(
+              operations,
+              operation,
+              'archive_evidence_mismatch',
+              now,
+              {
+                'itemArchive.retentionObservedItemCount': evidence.itemCount,
+                'itemArchive.retentionObservedSha256': evidence.sha256,
+              },
+              { 'itemArchive.sha256': archive.sha256 },
+            )
+          } catch {
+            // Preserve and retry classification later if Mongo is unavailable.
+          }
           preservedOperations += 1
           continue
         }
@@ -306,6 +372,22 @@ export async function compactTerminalOperationItems(
 
       const archivedItemCount = Number(archive.itemCount)
       if (!Number.isInteger(archivedItemCount) || archivedItemCount < 0) {
+        try {
+          await quarantineRetention(
+            operations,
+            operation,
+            'invalid_archive_item_count',
+            now,
+            {},
+            {
+              'itemArchive.sha256': archive.sha256,
+              'itemArchive.purgeStartedAt': { $exists: true },
+            },
+          )
+        } catch {
+          // The source rows may already be gone, but the invalid immutable
+          // archive remains visible and retryable for quarantine classification.
+        }
         preservedOperations += 1
         continue
       }
