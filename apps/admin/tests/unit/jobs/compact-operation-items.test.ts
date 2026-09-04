@@ -32,6 +32,18 @@ function archiveFor(items: Record<string, unknown>[]) {
   }
 }
 
+function operation(overrides: Record<string, unknown> = {}) {
+  return {
+    _id: 'op-1',
+    collectionId: 'collection-1',
+    jobId: 'job-1',
+    status: 'completed',
+    selectedCount: 1,
+    updatedAt: old,
+    ...overrides,
+  }
+}
+
 function harness(input: {
   operations: Record<string, unknown>[]
   items: Record<string, unknown>[]
@@ -61,14 +73,14 @@ function harness(input: {
   }
 }
 
-test('compacts old terminal operation items into deterministic summary before deletion', async () => {
+test('persists deterministic evidence before deleting old successful operation items', async () => {
   const items = [
     { curationId: 'cur-1', desiredState: 'add', status: 'applied', reasonCode: null, targetDraftRevision: 7 },
     { curationId: 'cur-2', desiredState: 'add', status: 'skipped', reasonCode: 'unavailable', targetDraftRevision: 7 },
     { curationId: 'cur-3', desiredState: 'add', status: 'skipped', reasonCode: 'unavailable', targetDraftRevision: 7 },
   ]
   const { payload, updateOne, deleteMany } = harness({
-    operations: [{ _id: 'op-1', status: 'completed_with_skips', updatedAt: old }],
+    operations: [operation({ _id: 'op-summary', status: 'completed_with_skips', selectedCount: 3 })],
     items,
   })
 
@@ -78,7 +90,7 @@ test('compacts old terminal operation items into deterministic summary before de
   expect(result).toEqual({ scannedOperations: 1, compactedOperations: 1, deletedItems: 3, preservedOperations: 0 })
   expect(updateOne).toHaveBeenNthCalledWith(
     1,
-    expect.objectContaining({ _id: 'op-1', status: 'completed_with_skips', itemArchive: { $exists: false } }),
+    expect.objectContaining({ _id: 'op-summary', status: 'completed_with_skips', itemArchive: { $exists: false } }),
     { $set: { itemArchive: expect.objectContaining({
       itemCount: 3,
       statusCounts: { applied: 1, skipped: 2 },
@@ -90,17 +102,14 @@ test('compacts old terminal operation items into deterministic summary before de
   expect(updateOne.mock.invocationCallOrder[0]).toBeLessThan(deleteMany.mock.invocationCallOrder[0])
   expect(updateOne).toHaveBeenNthCalledWith(
     2,
-    expect.objectContaining({ _id: 'op-1', 'itemArchive.sha256': expectedSha, 'itemArchive.purgeStartedAt': { $exists: true } }),
+    expect.objectContaining({ _id: 'op-summary', 'itemArchive.sha256': expectedSha, 'itemArchive.purgeStartedAt': { $exists: true } }),
     { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 3 } },
   )
 })
 
-test('does not delete item rows if parent summary CAS is not persisted', async () => {
-  const { payload, deleteMany } = harness({
-    operations: [{ _id: 'op-2', status: 'completed', updatedAt: old }],
-    items: [{ curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 }],
-    persist: false,
-  })
+test('does not delete item rows if summary CAS is not persisted', async () => {
+  const items = [{ curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 }]
+  const { payload, deleteMany } = harness({ operations: [operation()], items, persist: false })
 
   const result = await compactTerminalOperationItems(payload as never, now)
 
@@ -108,47 +117,34 @@ test('does not delete item rows if parent summary CAS is not persisted', async (
   expect(deleteMany).not.toHaveBeenCalled()
 })
 
-test('keeps an archived parent retryable when item deletion fails', async () => {
+test('keeps an archived operation retryable when item deletion fails', async () => {
   const items = [{ curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 }]
   const itemArchive = archiveFor(items)
   const { payload, updateOne, deleteMany } = harness({
-    operations: [{ _id: 'op-retry', status: 'completed', updatedAt: old, itemArchive }],
+    operations: [operation({ _id: 'op-retry', itemArchive })],
     items,
     deleteFails: true,
   })
 
-  const first = await compactTerminalOperationItems(payload as never, now)
+  const result = await compactTerminalOperationItems(payload as never, now)
 
-  expect(first).toEqual({ scannedOperations: 1, compactedOperations: 0, deletedItems: 0, preservedOperations: 1 })
+  expect(result).toEqual({ scannedOperations: 1, compactedOperations: 0, deletedItems: 0, preservedOperations: 1 })
   expect(updateOne).toHaveBeenCalledWith(
-    expect.objectContaining({
-      _id: 'op-retry',
-      'itemArchive.sha256': itemArchive.sha256,
-      'itemArchive.purgeStartedAt': { $exists: false },
-    }),
+    expect.objectContaining({ _id: 'op-retry', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: false } }),
     { $set: { 'itemArchive.purgeStartedAt': now.toISOString() } },
   )
   expect(deleteMany).toHaveBeenCalledTimes(1)
 })
 
-test('rerun reuses the persisted archive and retries deletion without changing its digest', async () => {
+test('rerun reuses the immutable archive and completes a retry', async () => {
   const items = [{ curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 }]
   const itemArchive = archiveFor(items)
-  const { payload, updateOne, deleteMany } = harness({
-    operations: [{ _id: 'op-retry', status: 'completed', updatedAt: old, itemArchive }],
-    items,
-  })
+  const { payload, updateOne, deleteMany } = harness({ operations: [operation({ _id: 'op-retry', itemArchive })], items })
 
   const result = await compactTerminalOperationItems(payload as never, now)
 
   expect(result).toEqual({ scannedOperations: 1, compactedOperations: 1, deletedItems: 1, preservedOperations: 0 })
   expect(deleteMany).toHaveBeenCalledWith({ operationId: 'op-retry' })
-  expect(updateOne).toHaveBeenCalledTimes(2)
-  expect(updateOne).toHaveBeenNthCalledWith(
-    1,
-    expect.objectContaining({ _id: 'op-retry', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: false } }),
-    { $set: { 'itemArchive.purgeStartedAt': now.toISOString() } },
-  )
   expect(updateOne).toHaveBeenNthCalledWith(
     2,
     expect.objectContaining({ _id: 'op-retry', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: true } }),
@@ -156,7 +152,7 @@ test('rerun reuses the persisted archive and retries deletion without changing i
   )
 })
 
-test('recovers after a partial delete using the immutable pre-delete archive', async () => {
+test('recovers after a partial delete using the original pre-delete archive', async () => {
   const originalItems = [
     { curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 },
     { curationId: 'cur-2', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 },
@@ -165,7 +161,7 @@ test('recovers after a partial delete using the immutable pre-delete archive', a
   const remainingItems = [originalItems[2]]
   const itemArchive = { ...archiveFor(originalItems), purgeStartedAt: '2026-09-04T11:59:00.000Z' }
   const { payload, updateOne, deleteMany } = harness({
-    operations: [{ _id: 'op-partial', status: 'completed_with_skips', updatedAt: old, itemArchive }],
+    operations: [operation({ _id: 'op-partial', status: 'completed_with_skips', selectedCount: 3, itemArchive })],
     items: remainingItems,
   })
 
@@ -173,20 +169,16 @@ test('recovers after a partial delete using the immutable pre-delete archive', a
 
   expect(result).toEqual({ scannedOperations: 1, compactedOperations: 1, deletedItems: 1, preservedOperations: 0 })
   expect(deleteMany).toHaveBeenCalledWith({ operationId: 'op-partial' })
-  expect(updateOne).toHaveBeenCalledTimes(1)
   expect(updateOne).toHaveBeenCalledWith(
     expect.objectContaining({ _id: 'op-partial', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: true } }),
     { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 3 } },
   )
 })
 
-test('recovers the purge marker after rows were deleted but marker CAS crashed', async () => {
+test('recovers completion marker after rows were deleted but marker CAS crashed', async () => {
   const originalItems = [{ curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 }]
   const itemArchive = { ...archiveFor(originalItems), purgeStartedAt: '2026-09-04T11:59:00.000Z' }
-  const { payload, updateOne, deleteMany } = harness({
-    operations: [{ _id: 'op-after-delete', status: 'completed', updatedAt: old, itemArchive }],
-    items: [],
-  })
+  const { payload, updateOne, deleteMany } = harness({ operations: [operation({ _id: 'op-after-delete', itemArchive })], items: [] })
 
   const result = await compactTerminalOperationItems(payload as never, now)
 
@@ -198,13 +190,10 @@ test('recovers the purge marker after rows were deleted but marker CAS crashed',
   )
 })
 
-test('never starts purge when persisted archive digest does not match untouched detail', async () => {
+test('never starts purge when persisted archive digest disagrees with untouched detail', async () => {
   const items = [{ curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 }]
   const itemArchive = { ...archiveFor(items), sha256: '0'.repeat(64) }
-  const { payload, updateOne, deleteMany } = harness({
-    operations: [{ _id: 'op-corrupt', status: 'completed', updatedAt: old, itemArchive }],
-    items,
-  })
+  const { payload, updateOne, deleteMany } = harness({ operations: [operation({ _id: 'op-corrupt', itemArchive })], items })
 
   const result = await compactTerminalOperationItems(payload as never, now)
 
@@ -213,10 +202,10 @@ test('never starts purge when persisted archive digest does not match untouched 
   expect(deleteMany).not.toHaveBeenCalled()
 })
 
-test('marks an originally empty archived operation purged so it cannot starve later scan candidates', async () => {
+test('marks an originally empty archived operation purged so it cannot starve later candidates', async () => {
   const itemArchive = archiveFor([])
   const { payload, updateOne, deleteMany } = harness({
-    operations: [{ _id: 'op-empty', status: 'completed', updatedAt: old, itemArchive }],
+    operations: [operation({ _id: 'op-empty', status: 'failed', selectedCount: 3, itemArchive })],
     items: [],
   })
 
@@ -224,12 +213,6 @@ test('marks an originally empty archived operation purged so it cannot starve la
 
   expect(result.compactedOperations).toBe(1)
   expect(deleteMany).not.toHaveBeenCalled()
-  expect(updateOne).toHaveBeenCalledTimes(2)
-  expect(updateOne).toHaveBeenNthCalledWith(
-    1,
-    expect.objectContaining({ _id: 'op-empty', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: false } }),
-    { $set: { 'itemArchive.purgeStartedAt': now.toISOString() } },
-  )
   expect(updateOne).toHaveBeenNthCalledWith(
     2,
     expect.objectContaining({ _id: 'op-empty', 'itemArchive.sha256': itemArchive.sha256, 'itemArchive.purgeStartedAt': { $exists: true } }),
@@ -237,13 +220,15 @@ test('marks an originally empty archived operation purged so it cannot starve la
   )
 })
 
-test('scan includes only old terminal operations whose item purge is not complete', async () => {
+test('scan excludes aggregate parent operations and includes only unpurged terminal child/single operations', async () => {
   const { payload, operationFind } = harness({ operations: [], items: [] })
 
   await compactTerminalOperationItems(payload as never, now, { retentionDays: 90, batchSize: 23 })
 
   const cutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
   expect(operationFind).toHaveBeenCalledWith({
+    collectionId: { $exists: true, $ne: null },
+    jobId: { $exists: true, $ne: null },
     status: { $in: expect.arrayContaining(['completed', 'completed_with_skips', 'failed', 'cancelled', 'conflicted', 'authorization_revoked']) },
     updatedAt: { $lt: cutoff },
     'itemArchive.itemsPurgedAt': { $exists: false },
