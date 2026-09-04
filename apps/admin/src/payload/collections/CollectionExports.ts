@@ -6,6 +6,10 @@ import type { CollectionConfig } from 'payload'
  * post-upload `sha256` are persisted. `expiresAt` is a maintenance scan key,
  * not a Mongo TTL: cleanup deletes the private object first and removes this
  * reference only after DeleteObject succeeds (or when no object was created).
+ *
+ * Cleanup retry fields are operational only. A failed DeleteObject keeps the
+ * reference and schedules bounded exponential backoff so one poisoned object
+ * cannot monopolize every maintenance batch.
  */
 export const CollectionExports: CollectionConfig = {
   slug: 'collection-exports',
@@ -21,9 +25,12 @@ export const CollectionExports: CollectionConfig = {
     { name: 'key', type: 'text' },
     { name: 'contentType', type: 'text' },
     { name: 'sha256', type: 'text' },
-    // Migration 011 replaces the legacy TTL with the plain
-    // `export_expiry_status` maintenance index.
+    // Migration 011 removed the legacy TTL. Migration 015 adds the due-cleanup
+    // compound index that includes the retry backoff field below.
     { name: 'expiresAt', type: 'date', required: true },
+    { name: 'cleanupAttempts', type: 'number' },
+    { name: 'cleanupLastAttemptAt', type: 'date' },
+    { name: 'cleanupNextAttemptAt', type: 'date' },
     { name: 'idempotencyKey', type: 'text', required: true },
     { name: 'requestHash', type: 'text', required: true },
     { name: 'requestId', type: 'text', required: true },
