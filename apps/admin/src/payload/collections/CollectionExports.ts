@@ -3,9 +3,9 @@ import type { CollectionConfig } from 'payload'
 /**
  * One selection-export attempt. The record is the CMS-side reference for an
  * artifact stored in private object storage: only `key`, `contentType` and the
- * post-upload `sha256` are persisted, and `expiresAt` bounds the reference
- * (TTL index). Object purge relies on bucket lifecycle rules (out of scope for
- * v1) plus this TTL.
+ * post-upload `sha256` are persisted. `expiresAt` is a maintenance scan key,
+ * not a Mongo TTL: cleanup deletes the private object first and removes this
+ * reference only after DeleteObject succeeds (or when no object was created).
  */
 export const CollectionExports: CollectionConfig = {
   slug: 'collection-exports',
@@ -21,10 +21,9 @@ export const CollectionExports: CollectionConfig = {
     { name: 'key', type: 'text' },
     { name: 'contentType', type: 'text' },
     { name: 'sha256', type: 'text' },
-    // The TTL purge index on expiresAt is created by migration 008
-   // (export_artifact_ttl, expireAfterSeconds: 0); a plain auto-index here
-   // would conflict with it.
-   { name: 'expiresAt', type: 'date', required: true },
+    // Migration 011 replaces the legacy TTL with the plain
+    // `export_expiry_status` maintenance index.
+    { name: 'expiresAt', type: 'date', required: true },
     { name: 'idempotencyKey', type: 'text', required: true },
     { name: 'requestHash', type: 'text', required: true },
     { name: 'requestId', type: 'text', required: true },
