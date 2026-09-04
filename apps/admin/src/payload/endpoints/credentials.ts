@@ -9,9 +9,6 @@ import { withAdmin } from '../../http/with-admin'
 /**
  * Admin-only show-once credential command surface: issue (against an
  * application), rotate with an explicit overlap window and revoke.
- * These routes were moved here from `payload/endpoints/applications.ts`
- * without behavior changes; registration order in payload.config.ts keeps
- * them adjacent to the application routes.
  */
 
 function guarded(handler: (request: PayloadRequest, actorId: string) => Promise<Response>) {
@@ -80,7 +77,9 @@ function rotateInput(value: Record<string, unknown>, credentialId: string, actor
 function credentialsModel(request: PayloadRequest) {
   const model = request.payload.db.collections['consumer-credentials']
   if (!model) throw new Error('Missing CMS collection model: consumer-credentials')
-  return model
+  return model as unknown as {
+    findOne(query: Record<string, unknown>): { lean(): Promise<Record<string, unknown> | null> }
+  }
 }
 
 /** Credential issue/rotate/revoke surface, each guarded and audited. */
@@ -90,7 +89,7 @@ export function credentialEndpoints(): Endpoint[] {
       const context = commandContext(request.headers, actorId)
       const applicationId = routeId(request)
       const existing = credentialsModel(request)
-      const duplicate = await (existing as { findOne(query: Record<string, unknown>): { lean(): Promise<unknown> } }).findOne({ applicationId, issueIdempotencyKey: context.idempotencyKey }).lean()
+      const duplicate = await existing.findOne({ applicationId, issueIdempotencyKey: context.idempotencyKey }).lean()
       // The raw secret can never be replayed. A repeated request must be
       // resolved by issuing a new credential deliberately, not silently.
       if (duplicate) throw new AdminHttpError(409, 'unavailable_confirmation_required')
@@ -101,7 +100,14 @@ export function credentialEndpoints(): Endpoint[] {
       const context = commandContext(request.headers, actorId)
       const credentialId = routeId(request)
       const existing = credentialsModel(request)
-      const duplicate = await (existing as { findOne(query: Record<string, unknown>): { lean(): Promise<unknown> } }).findOne({ issueIdempotencyKey: context.idempotencyKey }).lean()
+      const source = await existing.findOne({ _id: credentialId }).lean()
+      if (!source || typeof source.applicationId !== 'string') throw new AdminHttpError(404, 'not_found')
+      // Idempotency uniqueness is per Application. A key used by another
+      // consumer Application must not block this rotation.
+      const duplicate = await existing.findOne({
+        applicationId: source.applicationId,
+        issueIdempotencyKey: context.idempotencyKey,
+      }).lean()
       if (duplicate) throw new AdminHttpError(409, 'unavailable_confirmation_required')
       const result = await rotateCredential(credentialId, rotateInput(await body(request as unknown as Request), credentialId, actorId, context.idempotencyKey), new PayloadCredentialRepository(request.payload, actorId, context.requestId))
       return Response.json({ credential: result.credential, secret_once: result.secretOnce }, { status: 201, headers: { 'Cache-Control': 'private, no-store' } })

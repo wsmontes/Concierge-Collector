@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import type { CollectionDistributionClient } from '../../collections/distribution-client'
 import { ActivityView, type ActivityRow } from './ActivityView'
+import { CollectionDistributionView } from './CollectionDistributionView'
 import { DraftDiffView, type DraftDiffRow } from './DraftDiffView'
 import { MembersView, type MemberRow } from './MembersView'
 import { VersionsView, type VersionRow } from './VersionsView'
@@ -28,6 +30,25 @@ export interface CollectionReadPreview {
   versions?: VersionRow[]
 }
 
+export interface CollectionPaginationPreview {
+  activity?: { hasMore: boolean; loading?: boolean }
+  diff?: { hasMore: boolean; loading?: boolean }
+  members?: { hasMore: boolean; loading?: boolean }
+  versions?: { hasMore: boolean; loading?: boolean }
+}
+
+export interface CollectionViewActions {
+  onArchive?: () => void
+  onEditMetadata?: () => void
+  onLoadMoreActivity?: () => void
+  onLoadMoreDiff?: () => void
+  onLoadMoreMembers?: () => void
+  onLoadMoreVersions?: () => void
+  onPublish?: () => void
+  onRestore?: () => void
+  onRestoreVersionAsDraft?: (version: number) => void
+}
+
 const TABS: readonly CollectionTab[] = ['Overview', 'Members', 'Draft Changes', 'Versions', 'Distribution', 'Activity']
 
 function count(value: number) {
@@ -35,7 +56,19 @@ function count(value: number) {
 }
 
 /** Compact, keyboard-accessible Collection review shell. All lists remain paginated server reads. */
-export function CollectionViews({ collection, preview = {} }: { collection: CollectionViewRecord; preview?: CollectionReadPreview }) {
+export function CollectionViews({
+  collection,
+  preview = {},
+  pagination = {},
+  actions = {},
+  distributionClient,
+}: {
+  collection: CollectionViewRecord
+  preview?: CollectionReadPreview
+  pagination?: CollectionPaginationPreview
+  actions?: CollectionViewActions
+  distributionClient?: CollectionDistributionClient
+}) {
   const [tab, setTab] = useState<CollectionTab>('Overview')
   const archived = collection.lifecycle === 'archived'
   const publishing = collection.draftState === 'publishing'
@@ -48,13 +81,18 @@ export function CollectionViews({ collection, preview = {} }: { collection: Coll
           <h1 id="collection-title">{collection.title}</h1>
           <p><span>{count(collection.draftSelectedCount)} selected</span> · draft revision {collection.draftRevision}</p>
         </div>
-        {archived ? (
-          <button type="button">Restore collection</button>
-        ) : (
-          <button type="button" disabled={publishing} aria-label="Publish new version">
-            {publishing ? 'Publishing…' : 'Publish new version'}
-          </button>
-        )}
+        <div className="collection-views__actions">
+          {archived ? (
+            <button type="button" onClick={actions.onRestore}>Restore collection</button>
+          ) : <>
+            <a href={`/admin/explorer?collection=${encodeURIComponent(collection.id)}`}>Add Curations</a>
+            <button type="button" onClick={actions.onEditMetadata}>Edit metadata</button>
+            <button type="button" onClick={actions.onArchive}>Archive collection</button>
+            <button type="button" disabled={publishing} aria-label="Publish new version" onClick={actions.onPublish}>
+              {publishing ? 'Publishing…' : 'Publish new version'}
+            </button>
+          </>}
+        </div>
       </header>
       {archived && <p role="status">Archived collections are read-only until restored.</p>}
       <div role="tablist" aria-label="Collection review">
@@ -72,11 +110,38 @@ export function CollectionViews({ collection, preview = {} }: { collection: Coll
           diff={preview.diff ?? []}
           onNavigate={setTab}
         />}
-        {tab === 'Members' && <MembersView items={preview.members ?? []} />}
-        {tab === 'Draft Changes' && <DraftDiffView items={preview.diff ?? []} />}
-        {tab === 'Versions' && <VersionsView items={preview.versions ?? []} />}
-        {tab === 'Distribution' && <p>Live availability is checked at publish and distribution time.</p>}
-        {tab === 'Activity' && <ActivityView items={preview.activity ?? []} />}
+        {tab === 'Members' && <MembersView
+          items={preview.members ?? []}
+          hasMore={pagination.members?.hasMore}
+          loading={pagination.members?.loading}
+          onLoadMore={actions.onLoadMoreMembers}
+        />}
+        {tab === 'Draft Changes' && <DraftDiffView
+          items={preview.diff ?? []}
+          hasMore={pagination.diff?.hasMore}
+          loading={pagination.diff?.loading}
+          onLoadMore={actions.onLoadMoreDiff}
+        />}
+        {tab === 'Versions' && <VersionsView
+          items={preview.versions ?? []}
+          currentPublishedVersion={collection.currentPublishedVersion}
+          hasMore={pagination.versions?.hasMore}
+          loading={pagination.versions?.loading}
+          onLoadMore={actions.onLoadMoreVersions}
+          onRestoreAsDraft={actions.onRestoreVersionAsDraft}
+        />}
+        {tab === 'Distribution' && <CollectionDistributionView
+          collectionId={collection.id}
+          lifecycle={collection.lifecycle}
+          currentPublishedVersion={collection.currentPublishedVersion}
+          client={distributionClient}
+        />}
+        {tab === 'Activity' && <ActivityView
+          items={preview.activity ?? []}
+          hasMore={pagination.activity?.hasMore}
+          loading={pagination.activity?.loading}
+          onLoadMore={actions.onLoadMoreActivity}
+        />}
       </div>
     </section>
   )

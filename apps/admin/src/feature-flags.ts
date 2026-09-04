@@ -1,5 +1,5 @@
 import type { Endpoint, PayloadRequest } from 'payload'
-import { AdminHttpError } from './http/errors'
+import { AdminHttpError, adminErrorResponse } from './http/errors'
 
 export type CollectionsFeatureFlag =
   | 'cms_auth'
@@ -41,9 +41,7 @@ export function featureEnabled(name: CollectionsFeatureFlag): boolean {
 }
 
 export function requireFeature(name: CollectionsFeatureFlag): void {
-  if (!featureEnabled(name)) {
-    throw new AdminHttpError(503, 'feature_disabled', { flag: name })
-  }
+  if (!featureEnabled(name)) throw new AdminHttpError(503, 'feature_disabled', { flag: name })
 }
 
 /** Wrap Payload custom endpoints without trusting client/UI feature state. */
@@ -53,7 +51,11 @@ export function guardFeatureEndpoints(name: CollectionsFeatureFlag, endpoints: E
     return {
       ...endpoint,
       handler: async (request: PayloadRequest) => {
-        requireFeature(name)
+        try {
+          requireFeature(name)
+        } catch (error) {
+          return adminErrorResponse(error)
+        }
         return handler(request)
       },
     }

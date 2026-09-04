@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "environment": "staging",
+  "generatedAt": "2026-09-02T12:00:00.000Z",
+  "commitSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "runtimeGates": [
+    "npm run verify:full",
+    "cms-backup-restore-smoke:fixture",
+    "load-chaos-security-contract:fixture"
+  ],
+  "criteria": [
+    { "id": 1, "status": "pass", "evidence": ["tests/domain/collection-aggregate"], "notes": "fixture" },
+    { "id": 2, "status": "pass", "evidence": ["tests/domain/slug-immutability"], "notes": "fixture" },
+    { "id": 3, "status": "pass", "evidence": ["tests/integration/membership-scale"], "notes": "fixture" },
+    { "id": 4, "status": "pass", "evidence": ["tests/e2e/draft-isolation"], "notes": "fixture" },
+    { "id": 5, "status": "pass", "evidence": ["tests/e2e/publish-resume-atomic"], "notes": "fixture" },
+    { "id": 6, "status": "pass", "evidence": ["tests/e2e/version-reads"], "notes": "fixture" },
+    { "id": 7, "status": "pass", "evidence": ["tests/e2e/archive-restore"], "notes": "fixture" },
+    { "id": 8, "status": "pass", "evidence": ["tests/distribution/live-hydration"], "notes": "fixture" },
+    { "id": 9, "status": "pass", "evidence": ["tests/distribution/unavailable-counts"], "notes": "fixture" },
+    { "id": 10, "status": "pass", "evidence": ["tests/explorer/large-result-selection"], "notes": "fixture" },
+    { "id": 11, "status": "pass", "evidence": ["tests/selections/immutable-manifest"], "notes": "fixture" },
+    { "id": 12, "status": "pass", "evidence": ["tests/chaos/bulk-resume"], "notes": "fixture" },
+    { "id": 13, "status": "pass", "evidence": ["tests/concurrency/operation-ordering"], "notes": "fixture" },
+    { "id": 14, "status": "pass", "evidence": ["tests/e2e/collector-associations"], "notes": "fixture" },
+    { "id": 15, "status": "pass", "evidence": ["tests/collector/online-only"], "notes": "fixture" },
+    { "id": 16, "status": "pass", "evidence": ["tests/distribution/consumer-credentials"], "notes": "fixture" },
+    { "id": 17, "status": "pass", "evidence": ["tests/contracts/public-dto-only"], "notes": "fixture" },
+    { "id": 18, "status": "pass", "evidence": ["docs/evidence/database-ownership"], "notes": "fixture" },
+    { "id": 19, "status": "pass", "evidence": ["tests/security/cms-handoff"], "notes": "fixture" },
+    { "id": 20, "status": "pass", "evidence": ["npm run verify:full", "tests/chaos", "tests/load", "tests/security", "tests/contracts"], "notes": "fixture" }
+  ]
+}

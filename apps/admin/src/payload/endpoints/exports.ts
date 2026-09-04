@@ -5,6 +5,7 @@ import { asRecord, createExport } from '../../exports/export-selection'
 import type { ExportRecord } from '../../exports/types'
 import { AdminHttpError, adminErrorResponse } from '../../http/errors'
 import { withAdmin } from '../../http/with-admin'
+import { retainSelectionForAudit } from '../../selections/retention'
 import { createS3ArtifactStore } from '../../storage/s3-artifact-store'
 import type { StoredArtifact } from '../../storage/artifact-store'
 
@@ -67,10 +68,23 @@ export function exportEndpoints(): Endpoint[] {
           const requestId = adminRequest.headers.get('x-request-id')?.trim()
           if (!idempotencyKey || !requestId) throw new AdminHttpError(400, 'invalid_request')
           const format = formatValue(await body(adminRequest))
-          // Fail closed when export storage is not configured for this service.
+          // Fail closed before touching retention when export storage is not
+          // configured for this service.
           const artifactTtlSeconds = readArtifactStorageEnv().artifactTtlSeconds
+          const selectedId = selectionId(request)
+          const consumedAt = new Date()
+
+          // Retention is intentionally committed BEFORE export evidence. If
+          // the later export transaction fails, the only side effect is extra
+          // retention. The opposite ordering could leave an audit-relevant
+          // export pointing at a Selection still subject to its original TTL.
+          await retainSelectionForAudit(request.payload, {
+            selectionId: selectedId,
+            actorId: actor.user_id,
+            now: consumedAt,
+          })
           const record = await createExport(request.payload, {
-            selectionId: selectionId(request),
+            selectionId: selectedId,
             actorId: actor.user_id,
             format,
             idempotencyKey,
@@ -87,9 +101,7 @@ export function exportEndpoints(): Endpoint[] {
           const document = await modelFor(request).findOne({ _id: exportId(request), actorId: actor.user_id }).lean()
           if (!document) throw new AdminHttpError(404, 'not_found')
           const record = asRecord(document)
-          if (record.status !== 'complete') {
-            return Response.json(publicExport(record))
-          }
+          if (record.status !== 'complete') return Response.json(publicExport(record))
           // A fresh short-lived URL per read; never a permanent public URL.
           const env = readArtifactStorageEnv()
           const store = createS3ArtifactStore(env)

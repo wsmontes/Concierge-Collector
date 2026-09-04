@@ -16,6 +16,7 @@ const DEFAULT_CODES: Record<AdminErrorStatus, string> = {
 
 const ADMIN_ERROR_CODES = {
   invalid_request: 400,
+  collection_not_grantable: 400,
   authentication_required: 401,
   authorization_denied: 403,
   authorization_revoked: 403,
@@ -61,5 +62,8 @@ export function adminErrorResponse(error: unknown): Response {
   const status = known?.status ?? 503
   const code = known?.code ?? DEFAULT_CODES[503]
 
-  return Response.json({ error: { code, ...(known?.details ?? {}) } }, { status })
+  return Response.json(
+    { error: { code, ...(known?.details ?? {}) } },
+    { status, headers: { 'Cache-Control': 'private, no-store' } },
+  )
 }

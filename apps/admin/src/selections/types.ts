@@ -25,6 +25,7 @@ export interface SelectionManifestRecord {
   checkpointCursor: string | null
   excludedIds: string[]
   expiresAt: Date
+  retainedUntil?: Date | null
   fencingToken: number
   filters: NormalizedCurationFilters | null
   id: string

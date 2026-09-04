@@ -36,6 +36,7 @@
     "check:contracts": "node scripts/release/run-python.mjs scripts/export_admin_openapi.py --check && npm run check --workspace=@concierge/fastapi-client",
     "verify": "node scripts/release/release-gate.mjs",
     "verify:full": "node scripts/release/release-gate.mjs --full",
+    "verify:collections:acceptance": "node scripts/operations/verify-collections-acceptance.mjs",
     "hooks:enable": "node scripts/release/enable-hooks.mjs"
   },
   "devDependencies": {

@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import { AdminHttpError } from '../http/errors'
 import { collectionCommandHash } from '../collections/idempotency'
 import { asRecord as asSelectionRecord } from '../selections/materialize-selection'
+import { retainSelectionForAudit } from '../selections/retention'
 import type { SelectionManifestRecord } from '../selections/types'
 import { hashRequest, normalizeExplicitCurationIds, draftOperationRequestHash } from './idempotency'
 import { FastApiCatalogClient } from './catalog-client'
@@ -89,7 +90,8 @@ async function draftLockedError(payload: Payload, collectionId: string): Promise
 /**
  * The manifest a selection-driven operation applies against: immutable,
  * owned by the acting admin, `ready` and unexpired. Expired manifests are gone
- * forever — the intent must be re-created.
+ * forever — the intent must be re-created. Once accepted for an operation,
+ * deletion retention is extended independently of the original validity TTL.
  */
 export async function requireReadyManifest(payload: Payload, selectionId: string, actorId: string): Promise<SelectionManifestRecord> {
   const manifests = modelFor(payload, 'selection-manifests')
@@ -98,6 +100,7 @@ export async function requireReadyManifest(payload: Payload, selectionId: string
   const selection = asSelectionRecord(document)
   if (new Date(selection.expiresAt).getTime() <= Date.now()) throw new AdminHttpError(410, 'selection_expired')
   if (selection.status !== 'ready') throw new AdminHttpError(409, 'conflict')
+  await retainSelectionForAudit(payload, { selectionId, actorId })
   return selection
 }
 

@@ -9,6 +9,7 @@ import { readEnv } from '../../env'
 import { cancelDraftOperation } from '../../operations/apply-draft-operation'
 import { enqueueDraftOperation, enqueueMultiTarget, enqueueSelectionOperation } from '../../operations/enqueue'
 import type { ParentOperationRecord, ParentSummary } from '../../operations/types'
+import { assertOperationOwnedBy, publicStandaloneOperation } from '../../operations/visibility'
 
 type DocumentModel = Model<Record<string, unknown>>
 
@@ -61,6 +62,13 @@ function operationModels(request: PayloadRequest) {
   return model as unknown as DocumentModel
 }
 
+async function loadOperation(request: PayloadRequest, operationId: string): Promise<Record<string, unknown> | null> {
+  const model = operationModels(request)
+  const raw = model.collection as unknown as { findOne(query: Record<string, unknown>): Promise<Record<string, unknown> | null> }
+  return await raw.findOne({ _id: operationId })
+    ?? await model.findById(operationId).lean() as unknown as Record<string, unknown> | null
+}
+
 function readCollectorOrigin(request: PayloadRequest): boolean {
   const origin = request.headers.get('origin')
   return Boolean(origin && readEnv().collectorOrigins.includes(origin))
@@ -105,25 +113,24 @@ function sumProgress(children: Array<Record<string, unknown>>): Record<string, n
   for (const child of children) {
     const progress = child.progress as Record<string, number> | undefined
     if (!progress) continue
-    for (const key of ['processed', 'skipped', 'failed'] as const) {
-      totals[key] += Number(progress[key] ?? 0)
-    }
+    for (const key of ['processed', 'skipped', 'failed'] as const) totals[key] += Number(progress[key] ?? 0)
   }
   return totals
 }
 
-/** Loads a parent and aggregates its children's outcomes at read time. */
-async function parentWithSummary(request: PayloadRequest, parentId: string): Promise<{ parent: ParentOperationRecord; summary: ParentSummary; children: Array<Record<string, unknown>> } | null> {
+/** Loads an actor-owned parent and aggregates only that actor's children. */
+async function parentWithSummary(
+  request: PayloadRequest,
+  parentId: string,
+  actorId: string,
+): Promise<{ parent: ParentOperationRecord; summary: ParentSummary; children: Array<Record<string, unknown>> } | null> {
   const operations = operationModels(request)
-  // Parents are written with deliberate string _ids via the raw collection
-  // (createParentOperation). Payload's findById coerces to ObjectId and never
-  // matches them — read through the raw collection instead.
   const raw = operations.collection as unknown as { findOne(query: Record<string, unknown>): Promise<Record<string, unknown> | null> }
-  const parent = await raw.findOne({ _id: parentId })
+  const parent = await raw.findOne({ _id: parentId, actorId })
   if (!parent) return null
   const value = parent as Record<string, unknown>
   if (value.parentOperationId) return null
-  const children = await operations.find({ parentOperationId: parentId }).lean() as Array<Record<string, unknown>>
+  const children = await operations.find({ parentOperationId: parentId, actorId }).lean() as Array<Record<string, unknown>>
   return { parent: { ...value, id: idOf(value) } as unknown as ParentOperationRecord, summary: parentSummary(children), children }
 }
 
@@ -134,40 +141,36 @@ export function operationEndpoints(): Endpoint[] {
       method: 'post', path: '/admin/v1/collections/:id/draft/operations',
       handler: async (request: PayloadRequest) => {
         try {
-        const value = await body(request as unknown as Request)
-        if (Object.keys(value).some((key) => !['action', 'curationIds', 'curation_ids', 'draft_revision', 'mode', 'selection_id'].includes(key))) throw new AdminHttpError(400, 'invalid_request')
-        // The Collector-facing contract is snake_case. Keep camelCase only for
-        // already-issued Admin clients while the CMS UI is being introduced.
-        if (value.curationIds !== undefined && value.curation_ids !== undefined) throw new AdminHttpError(400, 'invalid_request')
-        const curationIds = value.curation_ids ?? value.curationIds
-        const key = request.headers.get('idempotency-key')?.trim()
-        const requestId = request.headers.get('x-request-id')?.trim()
-        const baseDraftRevision = parseIfMatch(request.headers)
-        if (!key || !requestId || (value.mode !== 'explicit' && value.mode !== 'selection') || (value.action !== 'add' && value.action !== 'remove') || !Number.isInteger(value.draft_revision) || value.draft_revision !== baseDraftRevision) {
-          throw new AdminHttpError(400, 'invalid_request')
-        }
-        const selectionMode = value.mode === 'selection'
-        if (selectionMode) {
-          // The Collector guard stays explicit and cardinality-one; a manifest
-          // never flows through the Collector-facing contract.
-          if (curationIds !== undefined || typeof value.selection_id !== 'string') throw new AdminHttpError(400, 'invalid_request')
-          const actor = await authenticateAdminRequest(request as unknown as Request)
-          const operation = await enqueueSelectionOperation(request.payload, {
-            collectionId: routeId(request), selectionId: value.selection_id, action: value.action,
-            idempotencyKey: key, actorId: actor.user_id, requestId,
+          const value = await body(request as unknown as Request)
+          if (Object.keys(value).some((key) => !['action', 'curationIds', 'curation_ids', 'draft_revision', 'mode', 'selection_id'].includes(key))) throw new AdminHttpError(400, 'invalid_request')
+          if (value.curationIds !== undefined && value.curation_ids !== undefined) throw new AdminHttpError(400, 'invalid_request')
+          const curationIds = value.curation_ids ?? value.curationIds
+          const key = request.headers.get('idempotency-key')?.trim()
+          const requestId = request.headers.get('x-request-id')?.trim()
+          const baseDraftRevision = parseIfMatch(request.headers)
+          if (!key || !requestId || (value.mode !== 'explicit' && value.mode !== 'selection') || (value.action !== 'add' && value.action !== 'remove') || !Number.isInteger(value.draft_revision) || value.draft_revision !== baseDraftRevision) {
+            throw new AdminHttpError(400, 'invalid_request')
+          }
+          const selectionMode = value.mode === 'selection'
+          if (selectionMode) {
+            if (curationIds !== undefined || typeof value.selection_id !== 'string') throw new AdminHttpError(400, 'invalid_request')
+            const actor = await authenticateAdminRequest(request as unknown as Request)
+            const operation = await enqueueSelectionOperation(request.payload, {
+              collectionId: routeId(request), selectionId: value.selection_id, action: value.action,
+              idempotencyKey: key, actorId: actor.user_id, requestId,
+            })
+            return Response.json(publicStandaloneOperation(operation as unknown as Record<string, unknown>), { status: 202 })
+          }
+          if (!Array.isArray(curationIds)) throw new AdminHttpError(400, 'invalid_request')
+          const actor = await authenticateAdminRequest(request as unknown as Request, {
+            allowCollectorBearer: true,
+            explicitCurationIds: curationIds as string[],
           })
-          return Response.json(operation, { status: 202 })
-        }
-        if (!Array.isArray(curationIds)) throw new AdminHttpError(400, 'invalid_request')
-        const actor = await authenticateAdminRequest(request as unknown as Request, {
-          allowCollectorBearer: true,
-          explicitCurationIds: curationIds as string[],
-        })
-        const operation = await enqueueDraftOperation(request.payload, {
-          collectionId: routeId(request), action: value.action, curationIds,
-          baseDraftRevision, idempotencyKey: key, actorId: actor.user_id, requestId,
-        })
-        return Response.json(operation, { status: 202 })
+          const operation = await enqueueDraftOperation(request.payload, {
+            collectionId: routeId(request), action: value.action, curationIds,
+            baseDraftRevision, idempotencyKey: key, actorId: actor.user_id, requestId,
+          })
+          return Response.json(publicStandaloneOperation(operation as unknown as Record<string, unknown>), { status: 202 })
         } catch (error) {
           return adminErrorResponse(error)
         }
@@ -181,33 +184,21 @@ export function operationEndpoints(): Endpoint[] {
           if (Object.keys(value).some((key) => !['collectionIds', 'action', 'idempotencyKey'].includes(key))) throw new AdminHttpError(400, 'invalid_request')
           const key = (request.headers.get('idempotency-key')?.trim()) ?? (typeof value.idempotencyKey === 'string' ? value.idempotencyKey : undefined)
           const requestId = request.headers.get('x-request-id')?.trim()
-          if (!key || !requestId || !Array.isArray(value.collectionIds) || value.collectionIds.some((id) => typeof id !== 'string') || (value.action !== 'add' && value.action !== 'remove')) {
-            throw new AdminHttpError(400, 'invalid_request')
-          }
+          if (!key || !requestId || !Array.isArray(value.collectionIds) || value.collectionIds.some((id) => typeof id !== 'string') || (value.action !== 'add' && value.action !== 'remove')) throw new AdminHttpError(400, 'invalid_request')
           const actor = await authenticateAdminRequest(request as unknown as Request)
           const collectionIds = value.collectionIds as string[]
           const ifMatch = request.headers.get('if-match')
           if (ifMatch !== null) {
-            // Optional single-Collection precondition: pin the intent to the
-            // draft revision the picker showed. Across Collections there is no
-            // single atomic revision, so the precondition is only meaningful
-            // for a single target (revisions are otherwise captured enqueue-time).
             if (collectionIds.length !== 1) throw new AdminHttpError(400, 'invalid_request')
             const pinned = parseIfMatch(request.headers)
             const collections = request.payload.db.collections['collections']
             if (!collections) throw new Error('Missing collections model')
             const target = await (collections as unknown as { findById(id: string): { lean(): Promise<unknown> } }).findById(collectionIds[0]).lean() as Record<string, unknown> | null
-            if (!target || Number(target.draftRevision) !== pinned || target.lifecycle === 'archived' || target.draftState === 'publishing') {
-              throw new AdminHttpError(412, 'revision_conflict')
-            }
+            if (!target || Number(target.draftRevision) !== pinned || target.lifecycle === 'archived' || target.draftState === 'publishing') throw new AdminHttpError(412, 'revision_conflict')
           }
           const parent = await enqueueMultiTarget(request.payload, {
-            selectionId: routeId(request, 'selectionId'),
-            collectionIds,
-            action: value.action,
-            idempotencyKey: key,
-            actorId: actor.user_id,
-            requestId,
+            selectionId: routeId(request, 'selectionId'), collectionIds, action: value.action,
+            idempotencyKey: key, actorId: actor.user_id, requestId,
           })
           return Response.json({ operationId: parent.id }, { status: 202 })
         } catch (error) {
@@ -225,16 +216,13 @@ export function operationEndpoints(): Endpoint[] {
           const operations = operationModels(request)
           const after = cursorParam(request)
           const rows = await operations.find({
-            actorId: actor.user_id,
-            mode: 'selection',
-            parentOperationId: null,
-            status: 'active',
+            actorId: actor.user_id, mode: 'selection', parentOperationId: null, status: 'active',
             ...(after ? { _id: { $gt: after } } : {}),
           }).sort({ _id: 1 }).limit(ACTIVE_LIST_LIMIT + 1).lean() as Array<Record<string, unknown>>
           const page = rows.slice(0, ACTIVE_LIST_LIMIT)
           const parentIds = page.map(idOf)
           const aggregated = await operations.aggregate([
-            { $match: { parentOperationId: { $in: parentIds } } },
+            { $match: { parentOperationId: { $in: parentIds }, actorId: actor.user_id } },
             { $group: { _id: '$parentOperationId', children: { $push: { status: '$status', progress: '$progress' } } } },
           ]).exec() as Array<{ _id: string; children: Array<Record<string, unknown>> }>
           const byParent = new Map(aggregated.map((row) => [String(row._id), row.children]))
@@ -245,17 +233,14 @@ export function operationEndpoints(): Endpoint[] {
             const summary = parentSummary(children)
             const status = effectiveParentStatus(summary)
             if (status !== 'active') {
-              // Self-heal a parent whose children all finished without the
-              // terminalization path (e.g. worker crash between commit and
-              // reconcile); it no longer belongs in the active list.
-              void operations.updateOne({ _id: id, status: 'active' }, { $set: { status, updatedAt: new Date() } })
+              void operations.updateOne({ _id: id, actorId: actor.user_id, status: 'active' }, { $set: { status, updatedAt: new Date() } })
               return null
             }
             return {
-              id, action: value.action, selectionId: value.selectionId ?? null, selectionHash: value.selectionHash ?? null,
+              id, action: value.action, selectionId: value.selectionId ?? null,
               status, parentSummary: summary, progress: sumProgress(children),
               cancellable: children.some((child) => cancellableStatuses.has(String(child.status))),
-              requestId: value.requestId, createdAt: value.createdAt, updatedAt: value.updatedAt,
+              createdAt: value.createdAt, updatedAt: value.updatedAt,
             }
           }).filter((item): item is NonNullable<typeof item> => item !== null)
           return Response.json({ items, nextCursor: rows.length > ACTIVE_LIST_LIMIT ? nextCursor(idOf(rows[ACTIVE_LIST_LIMIT - 1])) : null })
@@ -268,49 +253,39 @@ export function operationEndpoints(): Endpoint[] {
       method: 'get', path: '/admin/v1/operations/:id',
       handler: async (request: PayloadRequest) => {
         try {
-        const actor = await authenticateAdminRequest(request as unknown as Request, { allowCollectorBearer: true, allowCollectorOperationRead: true })
-        const operationId = routeId(request)
-        // Two _id conventions coexist in collection_operations: parents are
-        // written with deliberate string _ids (createParentOperation) while
-        // draft operations use payload's ObjectId _ids. Match either.
-        const model = operationModels(request)
-        const raw = model.collection as unknown as { findOne(query: Record<string, unknown>): Promise<Record<string, unknown> | null> }
-        const value = await raw.findOne({ _id: operationId })
-          ?? await model.findById(operationId).lean() as unknown as Record<string, unknown> | null
-        if (!value) throw new AdminHttpError(404, 'not_found')
-        const operation = value as Record<string, unknown>
-        const isCollector = readCollectorOrigin(request)
-        if (isCollector && (operation.actorId !== actor.user_id || operation.mode !== 'explicit' || operation.selectedCount !== 1)) {
-          throw new AdminHttpError(404, 'not_found')
-        }
-        if (isCollector) return Response.json({ id: operationId, status: operation.status, progress: operation.progress, errorCode: operation.errorCode ?? null })
-        // A child of a parent is summarized by its parent: the UI tracks bulk
-        // intents, not the per-Collection fan-out.
-        const parentId = operation.parentOperationId
-        if (typeof parentId === 'string') {
-          const summarized = await parentWithSummary(request, parentId)
-          if (!summarized) throw new AdminHttpError(404, 'not_found')
-          const { parent, summary, children } = summarized
-          return Response.json({
-            id: parent.id, status: effectiveParentStatus(summary), parentSummary: summary,
-            progress: sumProgress(children),
-            cancellable: children.some((child) => ['queued', 'materializing', 'staging', 'validating'].includes(String(child.status))),
-            action: parent.action, selectionId: parent.selectionId, selectionHash: parent.selectionHash,
-            requestId: parent.requestId, createdAt: parent.createdAt, updatedAt: parent.updatedAt,
-          })
-        }
-        // Only selection parents (mode 'selection', no parentOperationId) are
-        // aggregate-by-read: they never store a terminal status (see enqueue.ts).
-        // Standalone draft operations keep their authoritative stored status.
-        if (operation.mode === 'selection') {
-          const children = await operationModels(request).find({ parentOperationId: operationId }).lean() as Array<Record<string, unknown>>
-          const summary = parentSummary(children)
-          return Response.json({
-            ...operation, id: idOf(operation), status: effectiveParentStatus(summary),
-            parentSummary: summary, progress: sumProgress(children),
-          })
-        }
-        return Response.json({ ...operation, id: idOf(operation) })
+          const actor = await authenticateAdminRequest(request as unknown as Request, { allowCollectorBearer: true, allowCollectorOperationRead: true })
+          const operationId = routeId(request)
+          const operation = await loadOperation(request, operationId)
+          if (!operation) throw new AdminHttpError(404, 'not_found')
+          assertOperationOwnedBy(operation, actor.user_id)
+          const isCollector = readCollectorOrigin(request)
+          if (isCollector && (operation.mode !== 'explicit' || Number(operation.selectedCount) !== 1)) throw new AdminHttpError(404, 'not_found')
+          if (isCollector) return Response.json({ id: operationId, status: operation.status, progress: operation.progress, errorCode: operation.errorCode ?? null })
+
+          const parentId = operation.parentOperationId
+          if (typeof parentId === 'string') {
+            const summarized = await parentWithSummary(request, parentId, actor.user_id)
+            if (!summarized) throw new AdminHttpError(404, 'not_found')
+            const { parent, summary, children } = summarized
+            return Response.json({
+              id: parent.id, status: effectiveParentStatus(summary), parentSummary: summary,
+              progress: sumProgress(children),
+              cancellable: children.some((child) => ['queued', 'materializing', 'staging', 'validating'].includes(String(child.status))),
+              action: parent.action, selectionId: parent.selectionId,
+              createdAt: parent.createdAt, updatedAt: parent.updatedAt,
+            })
+          }
+          if (operation.mode === 'selection') {
+            const children = await operationModels(request).find({ parentOperationId: operationId, actorId: actor.user_id }).lean() as Array<Record<string, unknown>>
+            const summary = parentSummary(children)
+            return Response.json({
+              id: idOf(operation), status: effectiveParentStatus(summary), parentSummary: summary,
+              progress: sumProgress(children), action: operation.action, selectionId: operation.selectionId ?? null,
+              cancellable: children.some((child) => ['queued', 'materializing', 'staging', 'validating'].includes(String(child.status))),
+              createdAt: operation.createdAt, updatedAt: operation.updatedAt,
+            })
+          }
+          return Response.json(publicStandaloneOperation(operation))
         } catch (error) {
           return adminErrorResponse(error)
         }
@@ -318,7 +293,13 @@ export function operationEndpoints(): Endpoint[] {
     },
     {
       method: 'post', path: '/admin/v1/operations/:id/cancel',
-      handler: guard(async (request) => Response.json(await cancelDraftOperation(request.payload, routeId(request)))),
+      handler: guard(async (request, actor) => {
+        const operationId = routeId(request)
+        const operation = await loadOperation(request, operationId)
+        if (!operation) throw new AdminHttpError(404, 'not_found')
+        assertOperationOwnedBy(operation, actor.user_id)
+        return Response.json(await cancelDraftOperation(request.payload, operationId))
+      }),
     },
   ]
 }

@@ -1,0 +1,111 @@
+.explorer-filter-form,
+.explorer-saved-views {
+  border: 1px solid var(--theme-elevation-150, #d7d7d7);
+  border-radius: 10px;
+  background: var(--theme-elevation-0, #fff);
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.explorer-filter-form__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.explorer-filter-form label,
+.explorer-saved-views label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.explorer-filter-form input,
+.explorer-saved-views input,
+.explorer-saved-views select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--theme-elevation-250, #c7c7c7);
+  border-radius: 7px;
+  background: var(--theme-elevation-0, #fff);
+  color: inherit;
+  padding: 7px 9px;
+}
+
+.explorer-filter-form__statuses {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  border: 0;
+  padding: 12px 0 0;
+  margin: 0;
+}
+
+.explorer-filter-form__statuses legend {
+  width: 100%;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.explorer-filter-form__statuses label {
+  display: inline-flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.explorer-filter-form__statuses input {
+  width: auto;
+  min-height: auto;
+}
+
+.explorer-filter-form__actions,
+.explorer-saved-views__controls,
+.explorer-saved-views__save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.explorer-saved-views {
+  display: grid;
+  gap: 8px;
+}
+
+.explorer-saved-views h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.explorer-saved-views p {
+  margin: 4px 0 0;
+}
+
+.explorer-saved-views__controls label,
+.explorer-saved-views__save label {
+  min-width: min(320px, 100%);
+  flex: 1;
+}
+
+@media (max-width: 680px) {
+  .explorer-filter-form__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .explorer-filter-form__actions,
+  .explorer-saved-views__controls,
+  .explorer-saved-views__save {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .explorer-saved-views__controls label,
+  .explorer-saved-views__save label {
+    min-width: 0;
+  }
+}

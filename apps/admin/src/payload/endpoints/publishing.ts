@@ -3,6 +3,7 @@ import type { CmsIdentity } from '../../auth/fastapi-authz-client'
 import { AdminHttpError } from '../../http/errors'
 import { withAdmin } from '../../http/with-admin'
 import { enqueuePublish, restoreVersionAsDraft } from '../../publishing/publish-collection'
+import { getPublishPreview } from '../../publishing/publish-preview'
 
 function collectionId(request: PayloadRequest): string {
   const id = request.routeParams?.id
@@ -34,29 +35,41 @@ function guard(handler: (request: PayloadRequest, actor: CmsIdentity) => Promise
   return (request: PayloadRequest) => guarded(request as unknown as Request)
 }
 
-export function publishingEndpoints(): Endpoint[] {
-  return [{
-    method: 'post', path: '/admin/v1/collections/:id/publish',
-    handler: guard(async (request, actor) => {
-      const value = await requestBody(request as unknown as Request)
-      const idempotencyKey = request.headers.get('idempotency-key')?.trim()
-      const requestId = request.headers.get('x-request-id')?.trim()
-      const expectedUnavailableCount = value.expectedUnavailableCount
-      if (!idempotencyKey || !requestId || typeof value.confirmUnavailable !== 'boolean' ||
-        (expectedUnavailableCount !== undefined &&
-          (typeof expectedUnavailableCount !== 'number' || !Number.isInteger(expectedUnavailableCount) || expectedUnavailableCount < 0))) {
-        throw new AdminHttpError(400, 'invalid_request')
-      }
-      const job = await enqueuePublish(request.payload, {
-        collectionId: collectionId(request), ifMatch: ifMatch(request.headers), idempotencyKey, requestId,
-        actorId: actor.user_id, confirmUnavailable: value.confirmUnavailable,
-        expectedUnavailableCount: expectedUnavailableCount as number | undefined,
-      })
-      return Response.json(job, { status: 202 })
-    }),
-  },
-  {
-    method: 'post', path: '/admin/v1/collections/:id/versions/:version/restore-as-draft',
+export function publishingEndpoints({
+  preview = getPublishPreview,
+}: {
+  preview?: typeof getPublishPreview
+} = {}): Endpoint[] {
+  return [
+    {
+      method: 'get', path: '/admin/v1/collections/:id/publish-preview',
+      handler: guard(async (request, actor) => Response.json(await preview(request.payload, {
+        collectionId: collectionId(request),
+        actorId: actor.user_id,
+      }))),
+    },
+    {
+      method: 'post', path: '/admin/v1/collections/:id/publish',
+      handler: guard(async (request, actor) => {
+        const value = await requestBody(request as unknown as Request)
+        const idempotencyKey = request.headers.get('idempotency-key')?.trim()
+        const requestId = request.headers.get('x-request-id')?.trim()
+        const expectedUnavailableCount = value.expectedUnavailableCount
+        if (!idempotencyKey || !requestId || typeof value.confirmUnavailable !== 'boolean' ||
+          (expectedUnavailableCount !== undefined &&
+            (typeof expectedUnavailableCount !== 'number' || !Number.isInteger(expectedUnavailableCount) || expectedUnavailableCount < 0))) {
+          throw new AdminHttpError(400, 'invalid_request')
+        }
+        const job = await enqueuePublish(request.payload, {
+          collectionId: collectionId(request), ifMatch: ifMatch(request.headers), idempotencyKey, requestId,
+          actorId: actor.user_id, confirmUnavailable: value.confirmUnavailable,
+          expectedUnavailableCount: expectedUnavailableCount as number | undefined,
+        })
+        return Response.json(job, { status: 202 })
+      }),
+    },
+    {
+      method: 'post', path: '/admin/v1/collections/:id/versions/:version/restore-as-draft',
       handler: guard(async (request, actor) => {
         const requestId = request.headers.get('x-request-id')?.trim()
         const rawVersion = request.routeParams?.version

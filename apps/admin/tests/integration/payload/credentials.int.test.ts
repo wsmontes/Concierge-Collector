@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { Types } from 'mongoose'
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest'
 
 const hasTestMongo = Boolean(
@@ -15,6 +16,7 @@ integrationSuite('consumer credential lifecycle', () => {
   let PayloadCredentialRepository: typeof import('../../../src/applications/repository').PayloadCredentialRepository
   let ConsumerApplicationService: typeof import('../../../src/applications/service').ConsumerApplicationService
   let applications: import('mongoose').Model<Record<string, unknown>>
+  let collections: import('mongoose').Model<Record<string, unknown>>
   let credentials: import('mongoose').Model<Record<string, unknown>>
   let auditEvents: import('mongoose').Model<Record<string, unknown>>
   let connection: import('mongoose').Connection
@@ -27,12 +29,35 @@ integrationSuite('consumer credential lifecycle', () => {
     return (bytes) => Buffer.alloc(bytes, size)
   }
 
+  async function seedPublishedCollection(): Promise<string> {
+    const id = new Types.ObjectId().toHexString()
+    await collections.create({
+      _id: id,
+      slug: `credential-integration-${id}`,
+      title: `Credential integration ${id}`,
+      lifecycle: 'published',
+      currentPublishedVersion: 1,
+      draftBaseVersion: 1,
+      draftEpoch: `epoch-${id}`,
+      draftRevision: 0,
+      publishFencingToken: 0,
+      operationSequenceCounter: 0,
+      draftState: 'clean',
+      publishedSelectedCount: 0,
+      draftSelectedCount: 0,
+      revision: 1,
+      everPublished: true,
+    })
+    return id
+  }
+
   async function createApplication(key: string) {
+    const collectionId = await seedPublishedCollection()
     const created = await service.create(
       {
         name: `integration-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         owner: 'integration',
-        allowedCollectionIds: ['0123456789abcdef01234567'],
+        allowedCollectionIds: [collectionId],
         defaultRequestsPerMinute: 60,
       },
       { actorId: 'admin-1', idempotencyKey: `app-${key}`, requestId: `request-${key}` },
@@ -76,6 +101,7 @@ integrationSuite('consumer credential lifecycle', () => {
     ConsumerApplicationService = serviceModule.ConsumerApplicationService
     service = new ConsumerApplicationService(payload)
     applications = payload.db.collections['consumer-applications'] as unknown as import('mongoose').Model<Record<string, unknown>>
+    collections = payload.db.collections.collections as unknown as import('mongoose').Model<Record<string, unknown>>
     credentials = payload.db.collections['consumer-credentials'] as unknown as import('mongoose').Model<Record<string, unknown>>
     auditEvents = payload.db.collections['audit-events'] as unknown as import('mongoose').Model<Record<string, unknown>>
     connection = payload.db.connection
@@ -85,6 +111,7 @@ integrationSuite('consumer credential lifecycle', () => {
     if (!hasTestMongo) return
     await Promise.all([
       applications.deleteMany({}),
+      collections.deleteMany({}),
       credentials.deleteMany({}),
       auditEvents.deleteMany({}),
     ])
