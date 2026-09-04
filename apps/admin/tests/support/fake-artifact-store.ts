@@ -9,13 +9,13 @@ export interface CapturedPut extends ArtifactPutRequest {
 /**
  * In-memory ArtifactStore for integration tests. It mirrors the S3 adapter's
  * contract: the body is consumed exactly once, the SHA-256 is computed over
- * the bytes that were actually streamed, and it is only exposed after a
- * completed upload. `readUrl` returns a private-looking signed URL so tests
- * can assert the export never exposes `public-read` access.
+ * the bytes actually streamed, `readUrl` respects the caller-requested TTL,
+ * and confirmed deletes are observable through `deleteCalls`.
  */
 export class FakeArtifactStore implements ArtifactStore {
   putCalls: CapturedPut[] = []
-  private sequence = 0
+  readUrlCalls: Array<{ artifact: StoredArtifact; ttlSeconds: number }> = []
+  deleteCalls: string[] = []
 
   async put(request: ArtifactPutRequest): Promise<StoredArtifact> {
     const chunks: Buffer[] = []
@@ -26,7 +26,6 @@ export class FakeArtifactStore implements ArtifactStore {
       bytes += buffer.length
     }
     const body = Buffer.concat(chunks, bytes)
-    this.sequence += 1
     const artifact: StoredArtifact = {
       key: `fake-bucket/private/${request.key}`,
       contentType: request.contentType,
@@ -37,11 +36,12 @@ export class FakeArtifactStore implements ArtifactStore {
     return artifact
   }
 
-  async readUrl(artifact: StoredArtifact): Promise<string> {
-    return `https://fake-store.invalid/private/${artifact.key}?X-Amz-Expires=300&X-Amz-Signature=deadbeef&X-Amz-Credential=fake/private`
+  async readUrl(artifact: StoredArtifact, ttlSeconds = 300): Promise<string> {
+    this.readUrlCalls.push({ artifact, ttlSeconds })
+    return `https://fake-store.invalid/private/${artifact.key}?X-Amz-Expires=${ttlSeconds}&X-Amz-Signature=deadbeef&X-Amz-Credential=fake/private`
   }
 
-  async delete(_key: string): Promise<void> {
-    // No-op: purge is out of scope for v1 (record TTL + bucket lifecycle).
+  async delete(key: string): Promise<void> {
+    this.deleteCalls.push(key)
   }
 }
