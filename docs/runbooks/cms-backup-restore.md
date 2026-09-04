@@ -65,6 +65,7 @@ db.collections.countDocuments({})
 db.collection_versions.countDocuments({ status: 'published' })
 db.collection_memberships.countDocuments({})
 db.audit_events.countDocuments({})
+db.audit_archive_manifests.countDocuments({})
 ```
 
 For a known published Collection, verify that `currentPublishedVersion`, the corresponding `collection_versions.membershipHash`, and membership interval counts agree with the source evidence.
@@ -87,10 +88,13 @@ db.dropDatabase()
 
 ## Retention notes
 
-Operational retention is intentionally conservative:
+Operational retention is intentionally conservative and must not undermine restore evidence:
 
-- CMS login/session and selection/export TTLs are managed by their existing migrations/expiry fields.
+- CMS transient login/session records and selection validity/retention are managed by their dedicated migrations/expiry fields.
 - Worker heartbeats are retained for seven days by migration `20260902_009_operational_retention`.
-- staged draft rows older than `CMS_ORPHAN_STAGING_RETENTION_DAYS` are purged only when their owning operation is terminal or missing.
+- Export records no longer use Mongo TTL. `expiresAt` is a maintenance scan key: private object deletion must succeed before the CMS export reference is removed.
+- Staged draft rows older than `CMS_ORPHAN_STAGING_RETENTION_DAYS` are purged only when their owning operation is terminal or missing.
+- Terminal operation-item detail is compacted after `CMS_OPERATION_ITEM_RETENTION_DAYS` only after the parent stores deterministic counts and SHA-256 evidence.
+- Admin audit events older than `CMS_AUDIT_RETENTION_DAYS` are archived to private deterministic NDJSON-gzip and manifested before hot-row deletion; `audit_events` itself has no TTL.
 - Collection versions, membership intervals, applications and credentials have no TTL.
-- audit events and old operation items are not deleted until an archive/compaction artifact exists and is verified; accumulation is preferred over destructive retention without evidence.
+- `audit_archive_manifests` and operation `itemArchive` summaries are part of the evidence needed to reason about retention after restore and should be included in backup/restore inspection.
