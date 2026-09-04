@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
 import { COLLECTIONS_ACCEPTANCE_CRITERIA, validateCollectionsAcceptanceEvidence } from '../scripts/operations/acceptance-schema.mjs'
 import { verifyCollectionsAcceptance } from '../scripts/operations/verify-collections-acceptance.mjs'
 
-const FIXTURE = new URL('./fixtures/complete-collections-acceptance.json', import.meta.url)
+const FIXTURE = fileURLToPath(new URL('./fixtures/complete-collections-acceptance.json', import.meta.url.replace(/^http:\/\/[^/]+/, `file://${process.cwd()}`)))
 const COMMIT = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 
 async function fixture() {
