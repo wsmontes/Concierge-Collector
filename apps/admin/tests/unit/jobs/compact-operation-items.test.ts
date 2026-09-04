@@ -229,7 +229,7 @@ test('recovers completion marker after rows were deleted but marker CAS crashed'
   )
 })
 
-test('never starts purge when persisted archive digest disagrees with untouched detail', async () => {
+test('quarantines persisted archive digest disagreement without starting purge', async () => {
   const items = [{ curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 }]
   const itemArchive = { ...archiveFor(items), sha256: '0'.repeat(64) }
   const { payload, updateOne, deleteMany } = harness({ operations: [operation({ _id: 'op-corrupt', itemArchive })], items })
@@ -237,7 +237,17 @@ test('never starts purge when persisted archive digest disagrees with untouched 
   const result = await compactTerminalOperationItems(payload as never, now)
 
   expect(result.preservedOperations).toBe(1)
-  expect(updateOne).not.toHaveBeenCalled()
+  expect(updateOne).toHaveBeenCalledWith(
+    expect.objectContaining({
+      _id: 'op-corrupt',
+      'itemArchive.sha256': '0'.repeat(64),
+      'itemArchive.retentionBlockedAt': { $exists: false },
+    }),
+    { $set: expect.objectContaining({
+      'itemArchive.retentionBlockedReason': 'archive_evidence_mismatch',
+    }) },
+    retentionWriteOptions,
+  )
   expect(deleteMany).not.toHaveBeenCalled()
 })
 
@@ -260,7 +270,7 @@ test('marks an originally empty archived failed operation purged so it cannot st
   )
 })
 
-test('scan excludes aggregate parent operations and includes only unpurged terminal child/single operations', async () => {
+test('scan excludes aggregate parent, purged and quarantined operations', async () => {
   const { payload, operationFind } = harness({ operations: [], items: [] })
 
   await compactTerminalOperationItems(payload as never, now, { retentionDays: 90, batchSize: 23 })
@@ -272,5 +282,6 @@ test('scan excludes aggregate parent operations and includes only unpurged termi
     status: { $in: expect.arrayContaining(['completed', 'completed_with_skips', 'failed', 'cancelled', 'conflicted', 'authorization_revoked']) },
     updatedAt: { $lt: cutoff },
     'itemArchive.itemsPurgedAt': { $exists: false },
+    'itemArchive.retentionBlockedAt': { $exists: false },
   })
 })
