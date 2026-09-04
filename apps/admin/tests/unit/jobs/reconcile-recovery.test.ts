@@ -21,7 +21,7 @@ function jobsModel(stuckJobs: Record<string, unknown>[], updateOne = vi.fn()) {
       limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(stuckJobs) }),
     }),
   })
-  return { find, updateOne }
+  return { collection: { name: 'payload-jobs-physical' }, find, updateOne }
 }
 
 function payloadWith(
