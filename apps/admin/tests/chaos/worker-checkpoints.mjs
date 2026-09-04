@@ -8,6 +8,7 @@ import { MongoClient, ObjectId } from 'mongodb'
 const DEFAULT_TIMEOUT_MS = 120_000
 const DEFAULT_POLL_MS = 1_000
 const DEFAULT_STALE_SECONDS = 300
+export const PAYLOAD_JOB_COLLECTION = 'payload-jobs'
 
 const SCENARIOS = Object.freeze({
   draft: {
@@ -217,9 +218,9 @@ Phases:
   --phase verify     Poll after worker restart until the original intent reaches its success invariant or timeout.
 
 Safety environment:
-  CMS_MONGODB_URL                 required
-  CMS_MONGODB_DB_NAME             required and must end in -test
-  CONCIERGE_ALLOW_REMOTE_CHAOS=1  required for Atlas/other remote Mongo
+  CMS_MONGODB_URL                  required
+  CMS_MONGODB_DB_NAME              required and must end in -test
+  CONCIERGE_ALLOW_REMOTE_CHAOS=1   required for Atlas/other remote Mongo
   CONCIERGE_CHAOS_WORKER_STOPPED=1 required for --phase arm
 
 Options:
@@ -267,7 +268,7 @@ async function readSnapshot(db, scenario, id) {
   const payloadJobId = domain?.[definition.jobField]
   const payloadJob = payloadJobId == null
     ? null
-    : await findById(db.collection('payload_jobs'), String(payloadJobId))
+    : await findById(db.collection(PAYLOAD_JOB_COLLECTION), String(payloadJobId))
   return {
     domain,
     payloadJob,
@@ -321,7 +322,7 @@ async function armStalePayloadJob(db, scenario, id, checkpoint, staleSeconds) {
   const meta = payloadJob.meta && typeof payloadJob.meta === 'object' && !Array.isArray(payloadJob.meta)
     ? payloadJob.meta
     : {}
-  const jobResult = await db.collection('payload_jobs').updateOne(
+  const jobResult = await db.collection(PAYLOAD_JOB_COLLECTION).updateOne(
     { _id: payloadJob._id, completedAt: payloadJob.completedAt ?? null },
     {
       $set: {
