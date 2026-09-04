@@ -22,6 +22,7 @@ test('hashes large operation detail through a bounded cursor instead of material
   const sortItems = vi.fn().mockReturnValue({ batchSize })
   const itemFind = vi.fn().mockReturnValue({ sort: sortItems })
   const deleteMany = vi.fn().mockResolvedValue({ deletedCount: 5_000 })
+  const countDocuments = vi.fn().mockResolvedValue(0)
   const operationFind = vi.fn().mockReturnValue({
     sort: vi.fn().mockReturnValue({
       limit: vi.fn().mockReturnValue({
@@ -36,7 +37,7 @@ test('hashes large operation detail through a bounded cursor instead of material
   const payload = {
     db: { collections: {
       'collection-operations': { find: operationFind, updateOne },
-      'collection-operation-items': { find: itemFind, deleteMany },
+      'collection-operation-items': { find: itemFind, deleteMany, countDocuments },
     } },
   }
 
@@ -52,6 +53,7 @@ test('hashes large operation detail through a bounded cursor instead of material
   expect(sortItems).toHaveBeenCalledWith({ curationId: 1, _id: 1 })
   expect(batchSize).toHaveBeenCalledWith(1_000)
   expect(cursor).toHaveBeenCalledTimes(1)
+  expect(countDocuments).toHaveBeenCalledWith({ operationId: 'op-large' })
   expect(updateOne).toHaveBeenNthCalledWith(
     1,
     expect.objectContaining({ _id: 'op-large', itemArchive: { $exists: false } }),
@@ -62,6 +64,7 @@ test('hashes large operation detail through a bounded cursor instead of material
 test('retry after purgeStartedAt skips rehashing a potentially huge remaining subset', async () => {
   const itemFind = vi.fn(() => { throw new Error('detail must not be rescanned after destructive phase starts') })
   const deleteMany = vi.fn().mockResolvedValue({ deletedCount: 127 })
+  const countDocuments = vi.fn().mockResolvedValue(0)
   const operationFind = vi.fn().mockReturnValue({
     sort: vi.fn().mockReturnValue({
       limit: vi.fn().mockReturnValue({
@@ -83,7 +86,7 @@ test('retry after purgeStartedAt skips rehashing a potentially huge remaining su
   const payload = {
     db: { collections: {
       'collection-operations': { find: operationFind, updateOne },
-      'collection-operation-items': { find: itemFind, deleteMany },
+      'collection-operation-items': { find: itemFind, deleteMany, countDocuments },
     } },
   }
 
@@ -93,4 +96,5 @@ test('retry after purgeStartedAt skips rehashing a potentially huge remaining su
   expect(result.deletedItems).toBe(127)
   expect(itemFind).not.toHaveBeenCalled()
   expect(deleteMany).toHaveBeenCalledWith({ operationId: 'op-retry-large' })
+  expect(countDocuments).toHaveBeenCalledWith({ operationId: 'op-retry-large' })
 })
