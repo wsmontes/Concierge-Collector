@@ -59,18 +59,17 @@ test('reopens stale Payload job after durable domain success so Payload can fini
       $set: expect.objectContaining({
         processing: false,
         hasError: false,
-        completedAt: null,
-        waitUntil: now,
         meta: expect.objectContaining({ recoveredAfterDomainSuccess: true }),
       }),
+      $unset: { completedAt: 1, waitUntil: 1 },
     }),
   )
 })
 
-test('reopens completedAt leftover after domain success because completed jobs are otherwise invisible to runner', async () => {
+test('reopens completedAt leftover after domain success by physically unsetting completion marker', async () => {
   const job = {
     _id: 'payload-completed-leftover', taskSlug: 'export-selection', processing: false,
-    hasError: false, completedAt: stale, updatedAt: stale, meta: {},
+    hasError: false, completedAt: stale, waitUntil: stale, updatedAt: stale, meta: {},
   }
   const jobs = jobsModel([job])
   const payload = payloadFor('collection-exports', {
@@ -82,8 +81,15 @@ test('reopens completedAt leftover after domain success because completed jobs a
   expect(result.recovered).toBe(1)
   expect(jobs.updateOne).toHaveBeenCalledWith(
     { _id: job._id, completedAt: { $ne: null } },
-    expect.objectContaining({ $set: expect.objectContaining({ completedAt: null, processing: false }) }),
+    expect.objectContaining({
+      $set: expect.objectContaining({ processing: false, hasError: false }),
+      $unset: { completedAt: 1, waitUntil: 1 },
+    }),
   )
+  const update = jobs.updateOne.mock.calls[0][1]
+  expect(update.$set).not.toHaveProperty('completedAt')
+  expect(update.$set).not.toHaveProperty('waitUntil')
+  expect(update.$set).not.toHaveProperty('taskStatus')
 })
 
 test('failed terminal domain job remains stored but is classified out of future automatic recovery scans', async () => {
