@@ -4,6 +4,7 @@ import type { Model } from 'mongoose'
 import type { Payload, TaskConfig } from 'payload'
 import type { ArtifactStore } from '../storage/artifact-store'
 import { createS3ArtifactStore } from '../storage/s3-artifact-store'
+import { compactTerminalOperationItems } from './operation-item-retention'
 
 type DocumentModel = Model<Record<string, unknown>>
 
@@ -20,6 +21,8 @@ const TERMINAL_OPERATIONS = [
 const DEFAULT_RETENTION_DAYS = 30
 const DEFAULT_BATCH_SIZE = 500
 const DEFAULT_EXPORT_PURGE_BATCH_SIZE = 100
+const DEFAULT_OPERATION_ITEM_RETENTION_DAYS = 90
+const DEFAULT_OPERATION_ITEM_BATCH_SIZE = 100
 
 export interface OrphanStagingPurgeSummary {
   scanned: number
@@ -169,6 +172,10 @@ export const purgeExpiredArtifactsTask: TaskConfig<{
     exportScanned: number
     exportDeleted: number
     exportPreserved: number
+    operationScanned: number
+    operationCompacted: number
+    operationItemsDeleted: number
+    operationPreserved: number
     stagingScanned: number
     stagingDeleted: number
     stagingPreserved: number
@@ -180,6 +187,10 @@ export const purgeExpiredArtifactsTask: TaskConfig<{
     { name: 'exportScanned', type: 'number', required: true },
     { name: 'exportDeleted', type: 'number', required: true },
     { name: 'exportPreserved', type: 'number', required: true },
+    { name: 'operationScanned', type: 'number', required: true },
+    { name: 'operationCompacted', type: 'number', required: true },
+    { name: 'operationItemsDeleted', type: 'number', required: true },
+    { name: 'operationPreserved', type: 'number', required: true },
     { name: 'stagingScanned', type: 'number', required: true },
     { name: 'stagingDeleted', type: 'number', required: true },
     { name: 'stagingPreserved', type: 'number', required: true },
@@ -190,6 +201,10 @@ export const purgeExpiredArtifactsTask: TaskConfig<{
     const exportsSummary = await purgeExpiredExports(req.payload, null, now, {
       batchSize: positiveInt('CMS_EXPORT_PURGE_BATCH_SIZE', DEFAULT_EXPORT_PURGE_BATCH_SIZE),
     })
+    const operationSummary = await compactTerminalOperationItems(req.payload, now, {
+      retentionDays: positiveInt('CMS_OPERATION_ITEM_RETENTION_DAYS', DEFAULT_OPERATION_ITEM_RETENTION_DAYS),
+      batchSize: positiveInt('CMS_OPERATION_ITEM_BATCH_SIZE', DEFAULT_OPERATION_ITEM_BATCH_SIZE),
+    })
     const stagingSummary = await purgeOrphanStaging(req.payload, now, {
       retentionDays: positiveInt('CMS_ORPHAN_STAGING_RETENTION_DAYS', DEFAULT_RETENTION_DAYS),
       batchSize: positiveInt('CMS_ORPHAN_STAGING_BATCH_SIZE', DEFAULT_BATCH_SIZE),
@@ -199,6 +214,10 @@ export const purgeExpiredArtifactsTask: TaskConfig<{
         exportScanned: exportsSummary.scanned,
         exportDeleted: exportsSummary.deleted,
         exportPreserved: exportsSummary.preserved,
+        operationScanned: operationSummary.scannedOperations,
+        operationCompacted: operationSummary.compactedOperations,
+        operationItemsDeleted: operationSummary.deletedItems,
+        operationPreserved: operationSummary.preservedOperations,
         stagingScanned: stagingSummary.scanned,
         stagingDeleted: stagingSummary.deleted,
         stagingPreserved: stagingSummary.preserved,
