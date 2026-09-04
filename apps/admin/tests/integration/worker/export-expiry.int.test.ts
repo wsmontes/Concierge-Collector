@@ -63,7 +63,7 @@ integrationSuite('selection export expiry boundary', () => {
     return selection.id
   }
 
-  test('worker refuses an export whose artifact lifetime elapsed in the queue', async () => {
+  test('worker terminally fails an export whose artifact lifetime elapsed in the queue', async () => {
     const harness = await createSelectionHarness()
     const selectionId = await readySelection(harness)
     const client = hydrationClient()
@@ -86,7 +86,11 @@ integrationSuite('selection export expiry boundary', () => {
     })).rejects.toMatchObject({ status: 410, code: 'export_expired' })
 
     expect(store.putCalls).toHaveLength(0)
-    expect(await exportsModel.findOne({ _id: record.id }).lean()).toMatchObject({ status: 'running' })
+    expect(await exportsModel.findOne({ _id: record.id }).lean()).toMatchObject({
+      status: 'failed',
+      key: null,
+      leaseExpiresAt: null,
+    })
   })
 
   test('terminal worker URL never outlives the export absolute expiry', async () => {
