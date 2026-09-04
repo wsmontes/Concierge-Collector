@@ -2,6 +2,8 @@
 
 import type { Model } from 'mongoose'
 import type { Payload, TaskConfig } from 'payload'
+import type { ArtifactStore } from '../storage/artifact-store'
+import { createS3ArtifactStore } from '../storage/s3-artifact-store'
 
 type DocumentModel = Model<Record<string, unknown>>
 
@@ -17,6 +19,7 @@ const TERMINAL_OPERATIONS = [
 ]
 const DEFAULT_RETENTION_DAYS = 30
 const DEFAULT_BATCH_SIZE = 500
+const DEFAULT_EXPORT_PURGE_BATCH_SIZE = 100
 
 export interface OrphanStagingPurgeSummary {
   scanned: number
@@ -26,6 +29,16 @@ export interface OrphanStagingPurgeSummary {
 
 export interface OrphanStagingPurgeOptions {
   retentionDays?: number
+  batchSize?: number
+}
+
+export interface ExportPurgeSummary {
+  scanned: number
+  deleted: number
+  preserved: number
+}
+
+export interface ExportPurgeOptions {
   batchSize?: number
 }
 
@@ -40,6 +53,61 @@ function positiveInt(name: string, fallback: number): number {
   if (!raw) return fallback
   const value = Number(raw)
   return Number.isInteger(value) && value > 0 ? value : fallback
+}
+
+/**
+ * Purges expired export references conservatively. When an artifact key exists,
+ * object storage is deleted first; the CMS reference is removed only after the
+ * DeleteObject call succeeds. A failed storage cleanup therefore remains
+ * visible/retryable instead of becoming an untraceable orphan object.
+ *
+ * Queued/running exports are never selected even if their expiry timestamp has
+ * passed: recovery/reconciliation owns those nonterminal records.
+ */
+export async function purgeExpiredExports(
+  payload: Payload,
+  store: ArtifactStore | null,
+  now = new Date(),
+  options: ExportPurgeOptions = {},
+): Promise<ExportPurgeSummary> {
+  const batchSize = options.batchSize ?? DEFAULT_EXPORT_PURGE_BATCH_SIZE
+  const exportsModel = modelFor(payload, 'collection-exports')
+  const candidates = await exportsModel.find({
+    expiresAt: { $lte: now },
+    status: { $in: ['complete', 'failed'] },
+  }).sort({ expiresAt: 1, _id: 1 }).limit(batchSize).lean() as Record<string, unknown>[]
+
+  let deleted = 0
+  let preserved = 0
+  let resolvedStore = store
+
+  for (const row of candidates) {
+    const id = row.id ?? row._id
+    if (id === null || id === undefined) {
+      preserved += 1
+      continue
+    }
+    const key = typeof row.key === 'string' && row.key ? row.key : null
+    try {
+      if (key) {
+        resolvedStore ??= createS3ArtifactStore()
+        await resolvedStore.delete(key)
+      }
+      const result = await exportsModel.deleteOne({
+        _id: id,
+        expiresAt: { $lte: now },
+        status: row.status,
+      })
+      if (Number(result.deletedCount ?? 0) === 1) deleted += 1
+      else preserved += 1
+    } catch {
+      // Fail safe: retain the CMS record so maintenance can retry and operators
+      // still have the object key/evidence needed to investigate storage.
+      preserved += 1
+    }
+  }
+
+  return { scanned: candidates.length, deleted, preserved }
 }
 
 /**
@@ -97,20 +165,44 @@ export async function purgeOrphanStaging(
 
 export const purgeExpiredArtifactsTask: TaskConfig<{
   input: Record<string, never>
-  output: OrphanStagingPurgeSummary
+  output: {
+    exportScanned: number
+    exportDeleted: number
+    exportPreserved: number
+    stagingScanned: number
+    stagingDeleted: number
+    stagingPreserved: number
+  }
 }> = {
   slug: 'purge-expired-artifacts',
   inputSchema: [],
   outputSchema: [
-    { name: 'scanned', type: 'number', required: true },
-    { name: 'deleted', type: 'number', required: true },
-    { name: 'preserved', type: 'number', required: true },
+    { name: 'exportScanned', type: 'number', required: true },
+    { name: 'exportDeleted', type: 'number', required: true },
+    { name: 'exportPreserved', type: 'number', required: true },
+    { name: 'stagingScanned', type: 'number', required: true },
+    { name: 'stagingDeleted', type: 'number', required: true },
+    { name: 'stagingPreserved', type: 'number', required: true },
   ],
   schedule: [{ cron: '17 3 * * *', queue: 'maintenance' }],
-  handler: async ({ req }) => ({
-    output: await purgeOrphanStaging(req.payload, new Date(), {
+  handler: async ({ req }) => {
+    const now = new Date()
+    const exportsSummary = await purgeExpiredExports(req.payload, null, now, {
+      batchSize: positiveInt('CMS_EXPORT_PURGE_BATCH_SIZE', DEFAULT_EXPORT_PURGE_BATCH_SIZE),
+    })
+    const stagingSummary = await purgeOrphanStaging(req.payload, now, {
       retentionDays: positiveInt('CMS_ORPHAN_STAGING_RETENTION_DAYS', DEFAULT_RETENTION_DAYS),
       batchSize: positiveInt('CMS_ORPHAN_STAGING_BATCH_SIZE', DEFAULT_BATCH_SIZE),
-    }),
-  }),
+    })
+    return {
+      output: {
+        exportScanned: exportsSummary.scanned,
+        exportDeleted: exportsSummary.deleted,
+        exportPreserved: exportsSummary.preserved,
+        stagingScanned: stagingSummary.scanned,
+        stagingDeleted: stagingSummary.deleted,
+        stagingPreserved: stagingSummary.preserved,
+      },
+    }
+  },
 }
