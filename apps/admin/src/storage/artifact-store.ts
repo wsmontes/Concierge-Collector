@@ -29,8 +29,12 @@ export interface StoredArtifact {
 
 export interface ArtifactStore {
   put(request: ArtifactPutRequest): Promise<StoredArtifact>
-  /** Short-lived private read URL; only exposed by explicitly authorized routes. */
-  readUrl(artifact: StoredArtifact): Promise<string>
+  /**
+   * Short-lived private read URL; only exposed by explicitly authorized routes.
+   * Callers may request a smaller TTL when the logical artifact expires sooner;
+   * implementations must never exceed their configured maximum.
+   */
+  readUrl(artifact: StoredArtifact, ttlSeconds?: number): Promise<string>
   /**
    * Confirmed object purge boundary. Callers retain their CMS reference when
    * this operation fails so cleanup remains traceable and retryable.
