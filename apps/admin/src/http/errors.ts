@@ -26,6 +26,7 @@ const ADMIN_ERROR_CODES = {
   idempotency_conflict: 409,
   unavailable_confirmation_required: 409,
   selection_expired: 410,
+  export_expired: 410,
   revision_conflict: 412,
   precondition_failed: 412,
   locked: 423,
