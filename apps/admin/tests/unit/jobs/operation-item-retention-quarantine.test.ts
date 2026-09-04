@@ -129,7 +129,8 @@ test('retention scan excludes previously quarantined operations before applying 
   }))
 })
 
-test('invalid immutable itemCount after destructive phase is quarantined rather than retried forever', async () => {
+test('invalid immutable itemCount after destructive phase is quarantined before deleting any remaining detail', async () => {
+  const remainingDetail = detail()
   const { payload, updateOne, itemModel } = harness({
     _id: 'op-invalid-archive-count', collectionId: 'collection-1', jobId: 'job-1',
     status: 'failed', selectedCount: 5, updatedAt: old,
@@ -137,13 +138,16 @@ test('invalid immutable itemCount after destructive phase is quarantined rather 
       itemCount: 'not-a-count', statusCounts: {}, reasonCounts: {}, sha256: 'a'.repeat(64),
       purgeStartedAt: '2026-09-03T00:00:00.000Z',
     },
-  }, [])
-  itemModel.deleteMany.mockResolvedValue({ deletedCount: 0 })
+  }, remainingDetail)
+  itemModel.deleteMany.mockResolvedValue({ deletedCount: remainingDetail.length })
   itemModel.countDocuments.mockResolvedValue(0)
 
   const result = await compactTerminalOperationItems(payload as never, now)
 
   expect(result.preservedOperations).toBe(1)
+  expect(result.deletedItems).toBe(0)
+  expect(itemModel.deleteMany).not.toHaveBeenCalled()
+  expect(itemModel.countDocuments).not.toHaveBeenCalled()
   expect(updateOne).toHaveBeenCalledWith(
     expect.objectContaining({
       _id: 'op-invalid-archive-count',
