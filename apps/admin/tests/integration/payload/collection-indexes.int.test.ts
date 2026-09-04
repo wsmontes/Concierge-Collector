@@ -56,5 +56,10 @@ integrationSuite('Collections CMS indexes', () => {
       key: { batchKey: 1 },
       unique: true,
     })
+
+    expect(await byName('worker_heartbeats', 'worker_heartbeat_ttl')).toMatchObject({
+      key: { observedAt: 1 },
+      expireAfterSeconds: 7 * 24 * 60 * 60,
+    })
   })
 })
