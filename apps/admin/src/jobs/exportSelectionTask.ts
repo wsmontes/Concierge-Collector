@@ -1,11 +1,10 @@
-import type { TaskConfig } from 'payload'
+import type { Payload, TaskConfig } from 'payload'
 import { createExport, runExportSelection } from '../exports/export-selection'
 import { FastApiExportHydrationClient } from '../exports/hydration-client'
 import type { ExportFormat, ExportHydrationClient, ExportStatus } from '../exports/types'
 import { AdminHttpError } from '../http/errors'
 import type { ArtifactStore } from '../storage/artifact-store'
 import { createS3ArtifactStore } from '../storage/s3-artifact-store'
-import type { Payload } from 'payload'
 
 function workerId(): string {
   return process.env.CMS_WORKER_ID?.trim() || 'cms-admin-worker'
@@ -34,6 +33,37 @@ export interface ExportTaskRunDependencies {
   store?: ArtifactStore
 }
 
+interface ExportTaskHandlerDependencies {
+  owner?: string
+  run?: typeof runExportSelection
+  store?: ArtifactStore
+}
+
+/**
+ * Bridges domain semantics to Payload's job lifecycle. An expired export has
+ * already been persisted as terminal `failed` by `runExportSelection`; throwing
+ * that deliberate 410 would only make Payload schedule an unnecessary retry.
+ * Every other failure remains retryable and is rethrown unchanged.
+ */
+export async function handleExportSelectionTask(
+  payload: Payload,
+  exportId: string,
+  dependencies: ExportTaskHandlerDependencies = {},
+): Promise<{ status: string }> {
+  const store = dependencies.store ?? createS3ArtifactStore()
+  const owner = dependencies.owner ?? workerId()
+  const run = dependencies.run ?? runExportSelection
+  try {
+    const result = await run(payload, exportId, owner, { store })
+    return { status: result?.status ?? 'not_claimed' }
+  } catch (error) {
+    if (error instanceof AdminHttpError && error.status === 410 && error.code === 'export_expired') {
+      return { status: 'failed' }
+    }
+    throw error
+  }
+}
+
 type ExportTask = TaskConfig<{ input: { exportId: string; selectionId: string }; output: { status: string } }> & {
   /** Direct invocation used by integration tests; production only uses `handler`. */
   run(input: { selectionId: string; format: ExportFormat }, dependencies?: ExportTaskRunDependencies): Promise<ExportTaskRunResult>
@@ -47,12 +77,9 @@ export const exportSelectionTask: ExportTask = {
     { name: 'exportId', type: 'text', required: true },
   ],
   outputSchema: [{ name: 'status', type: 'text', required: true }],
-  handler: async ({ input, req }) => {
-    const result = await runExportSelection(req.payload, input.exportId, workerId(), {
-      store: createS3ArtifactStore(),
-    })
-    return { output: { status: result?.status ?? 'not_claimed' } }
-  },
+  handler: async ({ input, req }) => ({
+    output: await handleExportSelectionTask(req.payload, input.exportId),
+  }),
   run: async (input, dependencies = {}) => {
     const payload = dependencies.payload ?? (await currentPayload())
     const client = dependencies.client ?? new FastApiExportHydrationClient()
