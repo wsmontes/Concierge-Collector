@@ -19,7 +19,11 @@ function jobsModel(stuckJobs: Record<string, unknown>[]) {
       limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(stuckJobs) }),
     }),
   })
-  return { find, updateOne: vi.fn().mockResolvedValue({ modifiedCount: 1 }) }
+  return {
+    collection: { name: 'payload-jobs-physical' },
+    find,
+    updateOne: vi.fn().mockResolvedValue({ modifiedCount: 1 }),
+  }
 }
 
 function payloadFor(
