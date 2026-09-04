@@ -1,14 +1,17 @@
 import { afterEach, expect, test } from 'vitest'
-import { readRetentionInt } from '../../src/retention-policy'
+import { readPositiveInt, readRetentionInt } from '../../src/retention-policy'
 
 const originalDbName = process.env.CMS_MONGODB_DB_NAME
 const originalAuditDays = process.env.CMS_AUDIT_RETENTION_DAYS
+const originalBatch = process.env.CMS_TEST_BATCH_SIZE
 
 afterEach(() => {
   if (originalDbName === undefined) delete process.env.CMS_MONGODB_DB_NAME
   else process.env.CMS_MONGODB_DB_NAME = originalDbName
   if (originalAuditDays === undefined) delete process.env.CMS_AUDIT_RETENTION_DAYS
   else process.env.CMS_AUDIT_RETENTION_DAYS = originalAuditDays
+  if (originalBatch === undefined) delete process.env.CMS_TEST_BATCH_SIZE
+  else process.env.CMS_TEST_BATCH_SIZE = originalBatch
 })
 
 test('uses the production minimum when retention override is absent', () => {
@@ -54,4 +57,20 @@ test('allows production retention to be lengthened explicitly', () => {
   process.env.CMS_AUDIT_RETENTION_DAYS = '730'
 
   expect(readRetentionInt('CMS_AUDIT_RETENTION_DAYS', 365)).toBe(730)
+})
+
+test('reads positive operational integers with a default when unset', () => {
+  delete process.env.CMS_TEST_BATCH_SIZE
+  expect(readPositiveInt('CMS_TEST_BATCH_SIZE', 100)).toBe(100)
+
+  process.env.CMS_TEST_BATCH_SIZE = '250'
+  expect(readPositiveInt('CMS_TEST_BATCH_SIZE', 100)).toBe(250)
+})
+
+test('rejects malformed or zero operational integers instead of silently using defaults', () => {
+  process.env.CMS_TEST_BATCH_SIZE = 'garbage'
+  expect(() => readPositiveInt('CMS_TEST_BATCH_SIZE', 100)).toThrow(/must be a positive integer/)
+
+  process.env.CMS_TEST_BATCH_SIZE = '0'
+  expect(() => readPositiveInt('CMS_TEST_BATCH_SIZE', 100)).toThrow(/must be a positive integer/)
 })
