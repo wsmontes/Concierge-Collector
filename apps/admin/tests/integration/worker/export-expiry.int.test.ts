@@ -93,6 +93,48 @@ integrationSuite('selection export expiry boundary', () => {
     })
   })
 
+  test('expiry during upload keeps object key and digest on a terminal failed record for cleanup', async () => {
+    const harness = await createSelectionHarness()
+    const selectionId = await readySelection(harness)
+    const client = hydrationClient()
+    const store = new FakeArtifactStore()
+    const readUrl = vi.spyOn(store, 'readUrl')
+    const { createExport, runExportSelection } = await import('../../../src/exports/export-selection')
+
+    const record = await createExport(payload, {
+      selectionId,
+      actorId: 'admin-1',
+      format: 'ndjson',
+      idempotencyKey: 'expires-during-upload',
+      requestId: 'expires-during-upload-request',
+    }, client, { artifactTtlSeconds: 604800 })
+    const expiresAt = new Date(Date.now() + 30_000)
+    await exportsModel.updateOne({ _id: record.id }, { $set: { expiresAt } })
+
+    const beforeExpiry = expiresAt.getTime() - 5_000
+    vi.spyOn(Date, 'now')
+      .mockReturnValueOnce(beforeExpiry)
+      .mockReturnValueOnce(beforeExpiry)
+      .mockReturnValue(expiresAt.getTime() + 1_000)
+
+    await expect(runExportSelection(payload, record.id, 'cms-admin-worker', {
+      store,
+      client,
+      signedUrlTtlSeconds: 300,
+    })).rejects.toMatchObject({ status: 410, code: 'export_expired' })
+
+    expect(store.putCalls).toHaveLength(1)
+    expect(readUrl).not.toHaveBeenCalled()
+    const persisted = await exportsModel.findOne({ _id: record.id }).lean()
+    expect(persisted).toMatchObject({
+      status: 'failed',
+      key: store.putCalls[0].artifact.key,
+      contentType: store.putCalls[0].artifact.contentType,
+      sha256: store.putCalls[0].artifact.sha256,
+      leaseExpiresAt: null,
+    })
+  })
+
   test('terminal worker URL never outlives the export absolute expiry', async () => {
     const harness = await createSelectionHarness()
     const selectionId = await readySelection(harness)
