@@ -60,13 +60,16 @@ test('recovers failed Payload job only when its active domain lease is reclaimab
       $set: expect.objectContaining({
         processing: false,
         hasError: false,
-        completedAt: null,
         totalTried: 0,
-        waitUntil: now,
         meta: expect.objectContaining({ recoveryCount: 2 }),
       }),
+      $unset: { completedAt: 1, waitUntil: 1 },
     }),
   )
+  const update = updateOne.mock.calls[0][1]
+  expect(update.$set).not.toHaveProperty('completedAt')
+  expect(update.$set).not.toHaveProperty('waitUntil')
+  expect(update.$set).not.toHaveProperty('taskStatus')
 })
 
 test('healthy queued Payload jobs are outside the recovery candidate set', async () => {
@@ -114,7 +117,7 @@ test('recovers stale processing Payload job after active domain lease expires', 
   expect(result.recovered).toBe(1)
   expect(updateOne).toHaveBeenCalledWith(
     { _id: job._id, processing: true, updatedAt: { $lte: new Date('2026-09-02T11:58:00.000Z') } },
-    expect.any(Object),
+    expect.objectContaining({ $unset: { completedAt: 1, waitUntil: 1 } }),
   )
 })
 
