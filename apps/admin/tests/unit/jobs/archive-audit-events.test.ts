@@ -29,10 +29,19 @@ function harness(
     order.push('completion-event')
     return { upsertedCount: 1 }
   })
-  const manifestUpdateOne = vi.fn().mockImplementation(async () => {
+  let manifestDocument: Record<string, unknown> | null = null
+  const manifestUpdateOne = vi.fn().mockImplementation(async (_filter, update) => {
     order.push('manifest')
     if (options.manifestFails) throw new Error('manifest failed')
+    manifestDocument ??= { ...update.$setOnInsert }
     return { upsertedCount: 1 }
+  })
+  const manifestFindOne = vi.fn().mockImplementation(() => {
+    const lean = vi.fn().mockImplementation(async () => manifestDocument)
+    return {
+      lean,
+      session: vi.fn().mockReturnValue({ lean }),
+    }
   })
   const deleteMany = vi.fn().mockImplementation(async () => {
     order.push('delete-source')
@@ -54,7 +63,7 @@ function harness(
           countDocuments,
         },
         'audit-archive-manifests': {
-          findOne: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }),
+          findOne: manifestFindOne,
           updateOne: manifestUpdateOne,
         },
       },
@@ -80,7 +89,7 @@ function harness(
     }),
   }
   return {
-    payload, store, order, uploaded, manifestUpdateOne, deleteMany,
+    payload, store, order, uploaded, manifestUpdateOne, manifestFindOne, deleteMany,
     auditUpdateOne, countDocuments, session,
   }
 }
@@ -96,8 +105,8 @@ const oldEvents = [
   },
 ]
 
-test('uploads deterministic gzip then atomically manifests, purges source and emits completion audit', async () => {
-  const { payload, store, order, uploaded, manifestUpdateOne, deleteMany, session } = harness(oldEvents)
+test('uploads deterministic gzip then atomically manifests, verifies, purges source and emits completion audit', async () => {
+  const { payload, store, order, uploaded, manifestUpdateOne, manifestFindOne, deleteMany, session } = harness(oldEvents)
 
   const result = await archiveAuditEvents(payload as never, store as never, now, { retentionDays: 365, batchSize: 100 })
 
@@ -107,6 +116,7 @@ test('uploads deterministic gzip then atomically manifests, purges source and em
     'verify-source-purge', 'completion-event', 'end-session',
   ])
   expect(session.withTransaction).toHaveBeenCalledTimes(1)
+  expect(manifestFindOne).toHaveBeenCalledTimes(2)
   expect(deleteMany).toHaveBeenCalledWith(
     { _id: { $in: ['audit-1', 'audit-2'] } },
     { session },
