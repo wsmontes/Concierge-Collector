@@ -1,6 +1,6 @@
 import type { Payload } from 'payload'
 
-export const LATEST_CMS_MIGRATION = '20260904_014_worker_heartbeat_retention'
+export const LATEST_CMS_MIGRATION = '20260904_013_audit_archival'
 
 const REQUIRED_INDEXES: Readonly<Record<string, readonly string[]>> = {
   collections: ['collections_slug_unique'],
