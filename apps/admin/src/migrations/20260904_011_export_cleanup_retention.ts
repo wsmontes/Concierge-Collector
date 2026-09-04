@@ -39,9 +39,14 @@ export async function up({ payload }: MigrateUpArgs): Promise<void> {
   await raw.createIndex({ expiresAt: 1, status: 1 }, { name: LOOKUP })
 }
 
+/**
+ * Rollback is intentionally non-destructive. Removing the lookup index may
+ * disable efficient maintenance in an older artifact, but recreating the old
+ * TTL would reintroduce the known object-orphaning failure mode. Production
+ * rollback is forward-only per the Collections rollback runbook.
+ */
 export async function down({ payload }: MigrateDownArgs): Promise<void> {
   if (payload.db.name !== 'mongoose') return
   const raw = model(payload).collection as unknown as RawIndexes
   await dropIfPresent(raw, LOOKUP)
-  await raw.createIndex({ expiresAt: 1 }, { name: OLD_TTL, expireAfterSeconds: 0 })
 }
