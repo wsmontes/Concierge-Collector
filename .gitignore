@@ -206,6 +206,7 @@ scripts/fetch_render_logs.py
 archive/
 # Superpowers plugin local state (SDD progress, scratch)
 .superpowers/
+.worktrees/
 
 # Scripts de diagnóstico locais (não versionar — podem conter credenciais)
 concierge-api-v3/delete_orphaned_curation.py
