@@ -16,6 +16,7 @@ function domainModel(domain: Record<string, unknown> | null = null, missingRows:
 
 function jobsModel(stuck: Record<string, unknown>[]) {
   return {
+    collection: { name: 'payload-jobs-physical' },
     find: vi.fn().mockReturnValue({
       sort: vi.fn().mockReturnValue({
         limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(stuck) }),
@@ -102,6 +103,9 @@ test('missing domain intents are filtered by lookup before the bounded limit', a
   expect(lookupIndex).toBeGreaterThanOrEqual(0)
   expect(missingMatchIndex).toBeGreaterThan(lookupIndex)
   expect(limitIndex).toBeGreaterThan(missingMatchIndex)
+  expect(pipeline[lookupIndex]).toEqual(expect.objectContaining({
+    $lookup: expect.objectContaining({ from: 'payload-jobs-physical' }),
+  }))
 })
 
 test('stuck-job scan excludes already classified unrecoverable jobs before its limit', async () => {
