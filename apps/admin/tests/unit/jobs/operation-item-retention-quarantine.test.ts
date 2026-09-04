@@ -129,13 +129,13 @@ test('retention scan excludes previously quarantined operations before applying 
   }))
 })
 
-test('invalid immutable itemCount after destructive phase is quarantined before deleting any remaining detail', async () => {
+test('numeric-looking string itemCount after destructive phase is quarantined before deleting remaining detail', async () => {
   const remainingDetail = detail()
   const { payload, updateOne, itemModel } = harness({
     _id: 'op-invalid-archive-count', collectionId: 'collection-1', jobId: 'job-1',
     status: 'failed', selectedCount: 5, updatedAt: old,
     itemArchive: {
-      itemCount: 'not-a-count', statusCounts: {}, reasonCounts: {}, sha256: 'a'.repeat(64),
+      itemCount: '1', statusCounts: {}, reasonCounts: {}, sha256: 'a'.repeat(64),
       purgeStartedAt: '2026-09-03T00:00:00.000Z',
     },
   }, remainingDetail)
