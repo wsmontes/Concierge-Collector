@@ -7,7 +7,7 @@ type DocumentModel = Model<Record<string, unknown>>
 const DEFAULT_STALE_PROCESSING_MS = 3 * 60 * 1000
 const DEFAULT_MAX_RECOVERIES = 3
 const SCAN_LIMIT = 200
-const PAYLOAD_JOB_COLLECTION = 'payload-jobs'
+const PAYLOAD_JOB_SLUG = 'payload-jobs'
 
 type StuckReason = 'failed' | 'completed' | 'processing'
 
@@ -131,11 +131,14 @@ async function domainForJob(
  * Detects active/reclaimable domain intents whose Payload job reference is
  * missing. The lookup/missing predicate runs before the limit, so thousands of
  * healthy old intents cannot hide a corrupt newer row from this diagnostic.
+ * The physical Mongo collection name is taken from the live Mongoose model;
+ * recovery does not assume how Payload pluralizes the `payload-jobs` slug.
  */
 async function missingDomainCandidates(
   payload: Payload,
   source: DomainSource,
   now: Date,
+  jobsCollectionName: string,
 ): Promise<Record<string, unknown>[]> {
   return modelFor(payload, source.slug).aggregate([
     {
@@ -150,7 +153,7 @@ async function missingDomainCandidates(
     },
     {
       $lookup: {
-        from: PAYLOAD_JOB_COLLECTION,
+        from: jobsCollectionName,
         localField: source.jobField,
         foreignField: '_id',
         as: '_recoveryJob',
@@ -257,7 +260,9 @@ export async function reconcileRecoverableJobs(
   const staleProcessingMs = options.staleProcessingMs ?? DEFAULT_STALE_PROCESSING_MS
   const maxRecoveries = options.maxRecoveries ?? DEFAULT_MAX_RECOVERIES
   const staleBefore = new Date(now.getTime() - staleProcessingMs)
-  const jobs = modelFor(payload, PAYLOAD_JOB_COLLECTION)
+  const jobs = modelFor(payload, PAYLOAD_JOB_SLUG)
+  const jobsCollectionName = jobs.collection.name
+  if (!jobsCollectionName) throw new Error('Payload jobs Mongo collection name unavailable')
   const summary: RecoverySummary = { recovered: 0, healthy: 0, exhausted: 0, missing: 0 }
 
   const stuckJobs = await stuckJobCandidates(jobs, staleBefore)
@@ -303,7 +308,7 @@ export async function reconcileRecoverableJobs(
   }
 
   for (const source of DOMAIN_SOURCES) {
-    const missing = await missingDomainCandidates(payload, source, now)
+    const missing = await missingDomainCandidates(payload, source, now, jobsCollectionName)
     summary.missing += missing.length
   }
 
