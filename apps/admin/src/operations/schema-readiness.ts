@@ -1,6 +1,6 @@
 import type { Payload } from 'payload'
 
-export const LATEST_CMS_MIGRATION = '20260904_014_staging_retention_scan'
+export const LATEST_CMS_MIGRATION = '20260904_015_export_cleanup_backoff'
 
 type IndexSignature = {
   name: string
@@ -25,6 +25,7 @@ const REQUIRED_INDEXES: Readonly<Record<string, readonly IndexSignature[]>> = {
   ],
   'collection-exports': [
     { name: 'export_expiry_status', key: { expiresAt: 1, status: 1 } },
+    { name: 'export_cleanup_due', key: { status: 1, cleanupNextAttemptAt: 1, expiresAt: 1, _id: 1 } },
   ],
   'audit-events': [
     { name: 'audit_archive_scan', key: { createdAt: 1, _id: 1 } },
