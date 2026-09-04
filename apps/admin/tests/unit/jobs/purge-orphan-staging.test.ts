@@ -4,10 +4,8 @@ import { purgeOrphanStaging } from '../../../src/jobs/purgeExpiredArtifactsTask'
 
 const now = new Date('2026-09-02T12:00:00.000Z')
 
-function payloadWith(input: {
-  staged: Record<string, unknown>[]
-  resumable: Record<string, unknown>[]
-}) {
+function payloadWith(eligible: Record<string, unknown>[]) {
+  const aggregate = vi.fn().mockResolvedValue(eligible)
   const deleteMany = vi.fn().mockImplementation(async (query: Record<string, unknown>) => {
     const ids = ((query._id as { $in?: unknown[] } | undefined)?.$in ?? [])
     return { deletedCount: ids.length }
@@ -15,50 +13,35 @@ function payloadWith(input: {
   return {
     payload: {
       db: { collections: {
-        'collection-draft-changes': {
-          find: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
-              limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(input.staged) }),
-            }),
-          }),
-          deleteMany,
-        },
-        'collection-operations': {
-          find: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(input.resumable) }),
-          }),
-        },
+        'collection-draft-changes': { aggregate, deleteMany },
       } },
     },
+    aggregate,
     deleteMany,
   }
 }
 
-test('deletes only old staged rows whose operation is terminal or missing', async () => {
+test('deletes the bounded set of staging rows already proven terminal or missing by aggregation', async () => {
   const objectId = new Types.ObjectId('65f000000000000000000099')
-  const { payload, deleteMany } = payloadWith({
-    staged: [
-      { _id: objectId, operationId: 'op-terminal' },
-      { _id: 'stage-2', operationId: 'op-resumable' },
-      { _id: 'stage-3', operationId: 'op-missing' },
-    ],
-    resumable: [{ _id: 'op-resumable', status: 'committing' }],
-  })
+  const { payload, deleteMany } = payloadWith([
+    { _id: objectId },
+    { _id: 'stage-missing-operation' },
+  ])
 
   const result = await purgeOrphanStaging(payload as never, now, { retentionDays: 30, batchSize: 100 })
 
-  expect(result).toEqual({ scanned: 3, deleted: 2, preserved: 1 })
-  expect(deleteMany).toHaveBeenCalledWith({ _id: { $in: [objectId, 'stage-3'] }, stageState: 'staged' })
+  expect(result).toEqual({ scanned: 2, deleted: 2, preserved: 0 })
+  expect(deleteMany).toHaveBeenCalledWith({
+    _id: { $in: [objectId, 'stage-missing-operation'] },
+    stageState: 'staged',
+  })
 })
 
-test('never deletes staging for a nonterminal operation even when the lease is old', async () => {
-  const { payload, deleteMany } = payloadWith({
-    staged: [{ _id: 'stage-1', operationId: 'op-queued' }],
-    resumable: [{ _id: 'op-queued', status: 'queued' }],
-  })
+test('never attempts deletion when no protected row passes the eligibility aggregation', async () => {
+  const { payload, deleteMany } = payloadWith([])
 
   const result = await purgeOrphanStaging(payload as never, now)
 
-  expect(result).toEqual({ scanned: 1, deleted: 0, preserved: 1 })
+  expect(result).toEqual({ scanned: 0, deleted: 0, preserved: 0 })
   expect(deleteMany).not.toHaveBeenCalled()
 })
