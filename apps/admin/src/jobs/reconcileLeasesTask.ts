@@ -23,6 +23,7 @@ export interface RecoverySummary {
 type DomainSource = {
   slug: string
   jobField: 'jobId' | 'payloadJobId'
+  taskSlug: string
   activeStatuses: string[]
   successStatuses: string[]
 }
@@ -31,28 +32,33 @@ const DOMAIN_SOURCES: readonly DomainSource[] = [
   {
     slug: 'collection-operations',
     jobField: 'jobId',
+    taskSlug: 'apply-draft-operation',
     activeStatuses: ['queued', 'materializing', 'staging', 'validating', 'committing'],
     successStatuses: ['committed', 'completed', 'completed_with_skips'],
   },
   {
     slug: 'collection-publish-jobs',
     jobField: 'payloadJobId',
+    taskSlug: 'publish-collection',
     activeStatuses: ['queued', 'running', 'committing'],
     successStatuses: ['completed'],
   },
   {
     slug: 'selection-manifests',
     jobField: 'payloadJobId',
+    taskSlug: 'materialize-selection',
     activeStatuses: ['queued', 'materializing'],
     successStatuses: ['ready'],
   },
   {
     slug: 'collection-exports',
     jobField: 'payloadJobId',
+    taskSlug: 'export-selection',
     activeStatuses: ['queued', 'running'],
     successStatuses: ['complete'],
   },
 ]
+const SOURCE_BY_TASK = new Map(DOMAIN_SOURCES.map((source) => [source.taskSlug, source]))
 
 function modelFor(payload: Payload, slug: string): DocumentModel {
   const model = payload.db.collections[slug]
@@ -89,39 +95,98 @@ function recoveryCas(jobId: string, reason: 'failed' | 'completed' | 'processing
   return { _id: jobId, processing: true, updatedAt: { $lte: staleBefore } }
 }
 
-function domainSucceeded(source: DomainSource, domain: Record<string, unknown>): boolean {
-  return source.successStatuses.includes(String(domain.status ?? ''))
-}
-
 async function domainCandidates(payload: Payload, source: DomainSource, now: Date): Promise<Record<string, unknown>[]> {
   return modelFor(payload, source.slug)
     .find({
-      status: { $in: [...source.activeStatuses, ...source.successStatuses] },
+      status: { $in: source.activeStatuses },
       $or: [
         { leaseExpiresAt: null },
         { leaseExpiresAt: { $lt: now } },
       ],
       [source.jobField]: { $exists: true, $ne: null },
     })
-    .select({ _id: 1, [source.jobField]: 1, status: 1, leaseExpiresAt: 1 })
+    .sort({ updatedAt: 1, _id: 1 })
+    .select({ _id: 1, [source.jobField]: 1, status: 1, leaseExpiresAt: 1, updatedAt: 1 })
     .limit(SCAN_LIMIT)
     .lean() as Promise<Record<string, unknown>[]>
 }
 
+async function terminalJobCandidates(jobs: DocumentModel, staleBefore: Date): Promise<Record<string, unknown>[]> {
+  return jobs.find({
+    taskSlug: { $in: DOMAIN_SOURCES.map((source) => source.taskSlug) },
+    $or: [
+      { hasError: true },
+      { completedAt: { $exists: true, $ne: null } },
+      { processing: true, updatedAt: { $lte: staleBefore } },
+    ],
+  }).sort({ updatedAt: 1, _id: 1 }).limit(SCAN_LIMIT).lean() as Promise<Record<string, unknown>[]>
+}
+
+async function successfulDomainForJob(
+  payload: Payload,
+  source: DomainSource,
+  jobId: string,
+): Promise<Record<string, unknown> | null> {
+  return modelFor(payload, source.slug).findOne({
+    [source.jobField]: jobId,
+    status: { $in: source.successStatuses },
+  }).lean() as Promise<Record<string, unknown> | null>
+}
+
+async function reopenJob(
+  jobs: DocumentModel,
+  job: Record<string, unknown>,
+  reason: 'failed' | 'completed' | 'processing',
+  staleBefore: Date,
+  now: Date,
+  maxRecoveries: number,
+  recoveredAfterDomainSuccess: boolean,
+): Promise<'recovered' | 'exhausted' | 'raced'> {
+  const jobId = String(job.id ?? job._id ?? '')
+  if (!jobId) return 'raced'
+  const priorRecoveries = recoveryCount(job)
+  if (priorRecoveries >= maxRecoveries) return 'exhausted'
+
+  const priorMeta = job.meta && typeof job.meta === 'object' && !Array.isArray(job.meta)
+    ? job.meta as Record<string, unknown>
+    : {}
+  const changed = await jobs.updateOne(
+    recoveryCas(jobId, reason, staleBefore),
+    {
+      $set: {
+        processing: false,
+        hasError: false,
+        error: null,
+        completedAt: null,
+        taskStatus: null,
+        totalTried: 0,
+        waitUntil: now,
+        meta: {
+          ...priorMeta,
+          recoveryCount: priorRecoveries + 1,
+          recoveredAt: now.toISOString(),
+          recoveryReason: reason,
+          ...(recoveredAfterDomainSuccess ? { recoveredAfterDomainSuccess: true } : {}),
+        },
+        updatedAt: now,
+      },
+    },
+  )
+  return changed.modifiedCount === 1 ? 'recovered' : 'raced'
+}
+
 /**
- * Re-opens only Payload jobs that are provably stuck while their domain lease
- * is already reclaimable. The same Payload job ID and domain checkpoint are
- * preserved, and a bounded recovery counter prevents an unavailable dependency
- * from creating an infinite loop.
+ * Re-opens only the SAME Payload job when it is provably stuck. Active domain
+ * intents are age-ordered and require a reclaimable domain lease; missing jobs
+ * remain operator-visible corruption and are never reconstructed.
  *
- * Successful domain states are also scanned because Payload 3.86 uses a
- * permanent `processing` boolean. A crash after the domain commit but before
- * the job runner finalizes/deletes its job can otherwise strand that internal
- * record forever. Reopening the same job is safe: the domain handler sees its
- * success terminal idempotently, returns without manufacturing new intent, and
- * Payload's configured `deleteJobOnComplete` removes the internal row. A
- * missing job for an already-successful domain is therefore normal cleanup;
- * only a missing job for an active domain is reported as corruption.
+ * Payload 3.86 uses a permanent `processing` boolean. A worker can therefore
+ * crash after committing the durable domain success but before Payload marks
+ * or deletes its internal job. Scanning every historical successful domain
+ * would starve forever, so this second path starts from the small set of stuck
+ * `payload-jobs`, maps only the four domain task slugs, and reopens a job only
+ * after its linked domain record proves a success terminal. The rerun is
+ * idempotent and lets configured `deleteJobOnComplete` finish internal cleanup.
  */
 export async function reconcileRecoverableJobs(
   payload: Payload,
@@ -139,11 +204,9 @@ export async function reconcileRecoverableJobs(
     for (const domain of candidates) {
       const jobId = String(domain[source.jobField] ?? '')
       if (!jobId) continue
-      const succeeded = domainSucceeded(source, domain)
       const job = await jobs.findById(jobId).lean() as Record<string, unknown> | null
       if (!job) {
-        if (succeeded) summary.healthy += 1
-        else summary.missing += 1
+        summary.missing += 1
         continue
       }
 
@@ -153,40 +216,27 @@ export async function reconcileRecoverableJobs(
         continue
       }
 
-      const priorRecoveries = recoveryCount(job)
-      if (priorRecoveries >= maxRecoveries) {
-        summary.exhausted += 1
-        continue
-      }
-
-      const priorMeta = job.meta && typeof job.meta === 'object' && !Array.isArray(job.meta)
-        ? job.meta as Record<string, unknown>
-        : {}
-      const changed = await jobs.updateOne(
-        recoveryCas(jobId, reason, staleBefore),
-        {
-          $set: {
-            processing: false,
-            hasError: false,
-            error: null,
-            completedAt: null,
-            taskStatus: null,
-            totalTried: 0,
-            waitUntil: now,
-            meta: {
-              ...priorMeta,
-              recoveryCount: priorRecoveries + 1,
-              recoveredAt: now.toISOString(),
-              recoveryReason: reason,
-              ...(succeeded ? { recoveredAfterDomainSuccess: true } : {}),
-            },
-            updatedAt: now,
-          },
-        },
-      )
-      if (changed.modifiedCount === 1) summary.recovered += 1
-      else summary.healthy += 1 // another runner/reconciler won the race
+      const outcome = await reopenJob(jobs, job, reason, staleBefore, now, maxRecoveries, false)
+      if (outcome === 'recovered') summary.recovered += 1
+      else if (outcome === 'exhausted') summary.exhausted += 1
+      else summary.healthy += 1
     }
+  }
+
+  const terminalJobs = await terminalJobCandidates(jobs, staleBefore)
+  for (const job of terminalJobs) {
+    const source = SOURCE_BY_TASK.get(String(job.taskSlug ?? ''))
+    const jobId = String(job.id ?? job._id ?? '')
+    if (!source || !jobId) continue
+    const domain = await successfulDomainForJob(payload, source, jobId)
+    if (!domain) continue // active-domain path or unrelated historical job
+    const reason = stuckReason(job, staleBefore)
+    if (!reason) continue
+
+    const outcome = await reopenJob(jobs, job, reason, staleBefore, now, maxRecoveries, true)
+    if (outcome === 'recovered') summary.recovered += 1
+    else if (outcome === 'exhausted') summary.exhausted += 1
+    else summary.healthy += 1
   }
 
   return summary
