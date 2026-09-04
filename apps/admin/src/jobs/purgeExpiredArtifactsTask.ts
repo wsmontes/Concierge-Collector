@@ -4,6 +4,7 @@ import type { Model } from 'mongoose'
 import type { Payload, TaskConfig } from 'payload'
 import type { ArtifactStore } from '../storage/artifact-store'
 import { createS3ArtifactStore } from '../storage/s3-artifact-store'
+import { readRetentionInt } from '../retention-policy'
 import { compactTerminalOperationItems } from './operation-item-retention'
 
 type DocumentModel = Model<Record<string, unknown>>
@@ -162,7 +163,7 @@ export async function purgeOrphanStaging(
   return {
     scanned: candidates.length,
     deleted,
-    preserved: candidates.length - deletableIds.length,
+    preserved: candidates.length - deleted,
   }
 }
 
@@ -202,11 +203,11 @@ export const purgeExpiredArtifactsTask: TaskConfig<{
       batchSize: positiveInt('CMS_EXPORT_PURGE_BATCH_SIZE', DEFAULT_EXPORT_PURGE_BATCH_SIZE),
     })
     const operationSummary = await compactTerminalOperationItems(req.payload, now, {
-      retentionDays: positiveInt('CMS_OPERATION_ITEM_RETENTION_DAYS', DEFAULT_OPERATION_ITEM_RETENTION_DAYS),
+      retentionDays: readRetentionInt('CMS_OPERATION_ITEM_RETENTION_DAYS', DEFAULT_OPERATION_ITEM_RETENTION_DAYS),
       batchSize: positiveInt('CMS_OPERATION_ITEM_BATCH_SIZE', DEFAULT_OPERATION_ITEM_BATCH_SIZE),
     })
     const stagingSummary = await purgeOrphanStaging(req.payload, now, {
-      retentionDays: positiveInt('CMS_ORPHAN_STAGING_RETENTION_DAYS', DEFAULT_RETENTION_DAYS),
+      retentionDays: readRetentionInt('CMS_ORPHAN_STAGING_RETENTION_DAYS', DEFAULT_RETENTION_DAYS),
       batchSize: positiveInt('CMS_ORPHAN_STAGING_BATCH_SIZE', DEFAULT_BATCH_SIZE),
     })
     return {
