@@ -4,13 +4,14 @@ import { createReleasePlan, withAdminTestEnv, withApiMongoTestEnv } from '../scr
 import { findPython, resolvePythonCandidates } from '../scripts/release/run-python.mjs'
 
 describe('Local release gate', () => {
-  test('standard gate covers collector, admin, api and generated contracts', () => {
+  test('standard gate covers collector, admin generated types, api and generated contracts', () => {
     const names = createReleasePlan('standard').map((step) => step.name)
     expect(names).toEqual([
       'Collector build freshness',
       'Collector lint',
       'Collector unit tests',
       'Admin unit tests',
+      'Admin generated Payload types',
       'Admin typecheck',
       'Admin build',
       'API unit tests',
@@ -18,6 +19,12 @@ describe('Local release gate', () => {
       'API lint',
       'Generated contracts',
     ])
+  })
+
+  test('generated Payload types are checked before typecheck and build', () => {
+    const names = createReleasePlan('standard').map((step) => step.name)
+    expect(names.indexOf('Admin generated Payload types')).toBeLessThan(names.indexOf('Admin typecheck'))
+    expect(names.indexOf('Admin generated Payload types')).toBeLessThan(names.indexOf('Admin build'))
   })
 
   test('full gate extends standard with integration, real Mongo, seed and browser coverage', () => {
