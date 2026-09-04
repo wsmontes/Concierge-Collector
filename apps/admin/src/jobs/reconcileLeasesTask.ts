@@ -140,7 +140,7 @@ async function missingDomainCandidates(
   now: Date,
   jobsCollectionName: string,
 ): Promise<Record<string, unknown>[]> {
-  return modelFor(payload, source.slug).aggregate([
+  const rows = await modelFor(payload, source.slug).aggregate([
     {
       $match: {
         status: { $in: source.activeStatuses },
@@ -163,7 +163,8 @@ async function missingDomainCandidates(
     { $sort: { updatedAt: 1, _id: 1 } },
     { $limit: SCAN_LIMIT },
     { $project: { _id: 1 } },
-  ]) as Promise<Record<string, unknown>[]>
+  ])
+  return rows as Record<string, unknown>[]
 }
 
 async function classifyIgnoredJob(
@@ -217,10 +218,7 @@ async function reopenJob(
         processing: false,
         hasError: false,
         error: null,
-        completedAt: null,
-        taskStatus: null,
         totalTried: 0,
-        waitUntil: now,
         meta: {
           ...priorMeta,
           recoveryCount: priorRecoveries + 1,
@@ -230,6 +228,11 @@ async function reopenJob(
         },
         updatedAt: now,
       },
+      // Payload 3.86 selects runnable jobs with `completedAt exists:false` and
+      // `waitUntil exists:false OR < now`. Setting either field to null leaves
+      // it physically present in Mongo and does not satisfy the first predicate.
+      // Unset both so the recovered SAME job is immediately eligible.
+      $unset: { completedAt: 1, waitUntil: 1 },
     },
   )
   return changed.modifiedCount === 1 ? 'recovered' : 'raced'
