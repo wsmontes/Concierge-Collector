@@ -1,25 +1,30 @@
-# Collections convergence — Codex integration gate
+# Collections production closeout — Codex integration and deployment gate
 
 ## Objective
 
-This branch intentionally accumulates implementation before the runtime gate. Codex should treat the branch as a nearly complete integration candidate, not as a design task. Preserve the architecture and fix concrete compile/test/integration defects discovered by the commands below.
+This branch intentionally accumulates implementation, regression tests, specs and runbooks without spending local/runtime cycles in ChatGPT. Codex should treat it as an integration candidate, **not** as a new design exercise. Preserve the architecture and fix concrete compile/test/integration defects discovered by the gates below.
 
-Branch: `feat/collections-admin-convergence-20260902`
-Baseline: `main` at `4d1d661c68ed815384744ad609ea2923aac7fd1a`
+Branch: `feat/collections-production-closeout-20260904`
+Baseline: `main` at `b545626a9829e8f449eab783df541a7ca61e4bce`
+
+Do not merge to `main` until every required local/full-stack/staging gate below is freshly green for the exact candidate SHA.
 
 ## Architecture invariants to preserve while fixing
 
-- `Collection` remains a separate aggregate. Never add Collection/rank/order fields to Curation.
-- Payload custom command endpoints remain the only lifecycle/membership/publish writers; do not re-enable generic Payload CRUD for Collections.
-- FastAPI remains Curation/Entity/auth authority; Payload revalidates admin authorization.
-- Collector Collections remain online-only: no Dexie schema and no existing sync queue fallback.
-- Membership is interval-based; published versions are immutable history.
+- `Collection` remains a separate N:N aggregate. Never add Collection/rank/order ownership fields to Curation.
+- Payload custom command endpoints remain the lifecycle/membership/publish writers; do not re-enable generic Payload CRUD for Collections.
+- FastAPI remains Entity/Curation/auth authority; Payload revalidates live admin authorization.
+- Collector Collections remain online-only: no Dexie schema and no existing offline sync queue fallback.
+- Published membership is interval/version based and historical versions remain immutable.
 - Historical restore creates a draft; it does not rewrite the current published pointer.
-- Publish remains asynchronous/fenced/atomic.
+- Publish remains asynchronous, leased, fenced, idempotent and atomic at promotion.
 - Bulk selections remain server-side manifests; the browser never expands all-matching into every Curation ID.
 - Consumer secrets remain hash-only/show-once.
-- Recovery must never manufacture a duplicate domain job or purge resumable staging.
-- No GitHub Actions are required: the project intentionally uses the local release gate because hosted Actions would exceed the desired free-tier usage.
+- Recovery must never manufacture a duplicate domain intent or replacement Payload job.
+- Retention must never delete resumable staging or product-domain records.
+- Export cleanup is object-first; Admin audit archival is artifact+manifest-first; operation-item purge is summary-first.
+- No GitHub Actions are required. The project intentionally uses local/Codex gates.
+- Do not introduce Render Blueprint adoption during this release.
 
 ## 1. Toolchain and clean install
 
@@ -31,41 +36,81 @@ npm ci
 
 Expected Node: `>=22.12 <23`; npm major 10.
 
-## 2. Fast feedback — new convergence tests
+Also create/activate the existing Python venv and install the pinned API requirements before Python gates.
 
-Run the root acceptance gate test first:
+## 2. Generated artifacts first
+
+The closeout adds a Payload collection, fields and scheduled tasks. Generated output may therefore be stale by design in the ChatGPT branch.
+
+Run only the official generators:
 
 ```bash
-npx vitest run tests/test_collections_acceptance_gate.test.js
+npm run generate:types --workspace=@concierge/admin
+npm run generate:importmap --workspace=@concierge/admin
+npm run generate:contracts
+npm run check:contracts
 ```
 
-Run the Admin unit suite. The following new areas are especially relevant if triaging a failure:
+Commit deterministic generated changes. Do **not** hand-edit Payload generated type unions or import maps as the permanent fix.
+
+## 3. Targeted closeout regression tests
+
+Run these before broad suites so failures are easy to triage.
+
+### FastAPI authorization audit
+
+```bash
+cd concierge-api-v3
+venv/bin/pytest tests/test_cms_authz_audit.py -v
+cd ..
+```
+
+Verify manual grant/revoke, OAuth allowlist promotion, first-login admin bootstrap, idempotency, no read-only introspection audit and versioned indexes.
+
+### Admin readiness/retention/archive/chaos contracts
 
 ```bash
 npm run test --workspace=@concierge/admin -- \
-  tests/unit/collections/admin-client.test.ts \
-  tests/unit/components/collections-workspace.test.tsx \
-  tests/unit/components/collection-detail-workspace.test.tsx \
-  tests/unit/components/collection-commands.test.tsx \
-  tests/unit/components/collection-publish.test.tsx \
-  tests/unit/components/explorer-target-collection.test.tsx \
-  tests/unit/components/operations-workspace.test.tsx \
-  tests/unit/components/application-collection-picker.test.tsx \
-  tests/unit/payload/operations-admin-endpoints.test.ts \
-  tests/unit/payload/publishing-preview-endpoint.test.ts \
-  tests/unit/publishing/publish-preview.test.ts \
+  tests/unit/operations/schema-readiness.test.ts \
+  tests/unit/jobs/purge-expired-exports.test.ts \
+  tests/unit/jobs/compact-operation-items.test.ts \
+  tests/unit/jobs/archive-audit-events.test.ts \
+  tests/unit/chaos/worker-checkpoints.test.js \
   tests/unit/jobs/reconcile-recovery.test.ts \
-  tests/unit/jobs/purge-orphan-staging.test.ts \
-  tests/unit/migrations/operational-retention.test.ts
+  tests/unit/jobs/purge-orphan-staging.test.ts
 ```
 
-Then run the complete Admin unit suite:
+Important closeout expectations:
+
+- `/ready` requires migration `20260904_013_audit_archival` plus critical indexes and performs no DDL.
+- `export_artifact_ttl` is removed; expired exports delete private storage first.
+- operation-item deletion can retry after summary persistence and can recover the purge marker after a post-delete crash.
+- audit archival writes deterministic private gzip + manifest before source deletion.
+- chaos target guard refuses non-`*-test` databases and remote Mongo without explicit opt-in.
+
+### Migration/index integration
+
+Run the Admin Mongo integration suite against a disposable CMS DB ending in `-test`, including:
+
+```bash
+npm run test:integration --workspace=@concierge/admin -- \
+  tests/integration/payload/collection-indexes.int.test.ts \
+  tests/integration/payload/ready-route.int.test.ts
+```
+
+Verify migrations 011–013 and index names from the production plan.
+
+## 4. Existing convergence/unit suites
+
+Run the complete Admin unit suite:
 
 ```bash
 npm run test:admin
 ```
 
-## 3. Static checks
+Then the root/Collector and API unit suites through the normal release gate rather than cherry-picking only Collections tests.
+
+## 5. Static checks
 
 ```bash
 npm run lint:admin
@@ -76,93 +121,87 @@ npm run build:collector:check
 npm run check:contracts
 ```
 
-When generated Payload types/import maps are stale because of the two new maintenance tasks, regenerate them explicitly and commit only deterministic generated output:
+If the closeout reveals a type error in new maintenance JSON fields, fix the source schema/types and regenerate; do not weaken TypeScript or cast away the domain contract globally.
 
-```bash
-npm run generate:types --workspace=@concierge/admin
-npm run generate:importmap --workspace=@concierge/admin
-npm run check:contracts
-```
-
-Do not hand-edit generated Payload type unions as the permanent fix.
-
-## 4. Local unit release gate
+## 6. Local release gates
 
 ```bash
 npm run verify
-```
-
-This must cover Collector build/lint/tests, Admin unit/typecheck/build, API unit/format/lint and generated contracts.
-
-## 5. Full stack
-
-Use disposable databases only:
-
-- CMS database name must end in `-test`.
-- operational FastAPI Mongo database name must end in `-test`.
-- E2E base URLs should remain loopback unless `CONCIERGE_ALLOW_REMOTE_E2E=1` is deliberately set for a disposable remote stack.
-
-Start FastAPI, Admin web and Admin worker using the existing Architecture Baseline 1 qualification runbook. Then run:
-
-```bash
 npm run verify:full
 ```
 
-This is the primary integration gate. Do not weaken its test-database safety guards to make the run pass.
+Use disposable databases only:
 
-## 6. Specific manual/E2E flows to inspect
+- CMS DB name ends in `-test`.
+- operational FastAPI Mongo DB name ends in `-test`.
+- E2E URLs remain loopback unless `CONCIERGE_ALLOW_REMOTE_E2E=1` is deliberately set for a disposable remote stack.
+
+Do not weaken test-database safety guards to make the gate pass.
+
+## 7. Full-stack manual/E2E flows
 
 ### Collections Admin
 
 1. `/admin/collections` loads active + archived Collections.
-2. Create a Collection through the UI.
-3. Open `/admin/collections/<id>`.
-4. Edit metadata with CAS.
-5. Paginate Members, Draft Changes, Versions and Activity independently.
-6. `Add Curations` navigates to Explorer with the target Collection as a hint.
-7. Publish preview shows selected/add/remove/available/unavailable counts.
-8. If availability changes, the prior unavailable confirmation is invalidated.
-9. Publish only reports success after the Collection reread confirms the promoted version and clean draft.
-10. Restore a historical version as draft; current published version must remain unchanged until a later publish.
-11. Archive/restore is reversible and never hard-deletes published history.
+2. Create through UI, edit metadata with CAS and verify stale-revision reload.
+3. Independently paginate Members, Draft Changes, Versions and Activity.
+4. Target Explorer from Collection detail; archived/publishing collections remain context but not mutation targets.
+5. Publish preview shows selected/add/remove/available/unavailable and invalidates stale confirmation.
+6. Publish reports success only after reread confirms promoted version + clean draft.
+7. Restore historical version as draft; published pointer stays unchanged until new publish.
+8. Archive/restore remains reversible; published history is never hard-deleted.
 
-### Explorer / bulk
+### Explorer / bulk / Operations
 
-1. Target Collection from the query string is revalidated against the server list before preselection.
-2. Archived/publishing Collections are visible as context but cannot be selected as bulk targets.
-3. All-matching selections remain server-side manifests.
-4. Multi-target operation appears in `/admin/operations`.
-5. Cancel on a parent operation cancels only children still before the commit barrier.
+1. All-matching stays server-side.
+2. Multi-target parent/children retain actor scoping and sequence semantics.
+3. Parent cancellation only cancels children before commit barrier.
+4. Raw request hashes/idempotency internals never appear in Admin DTO/UI.
+5. Recovery never creates a duplicate operation or Payload job.
 
-### Operations
+### Distribution / Collector
 
-1. `/admin/operations` shows recent bulk operations and publication jobs for the current admin only.
-2. Collection names link to their detail pages.
-3. Raw request hashes/idempotency internals are not exposed.
-4. History paging works newest-first.
-5. JobDrawer parent cancellation uses the parent cancellation endpoint, not child `cancelDraftOperation(parentId)` semantics.
+1. Applications select publishable Collections by human title/slug; legacy archived allowlist entries remain removable but cannot be newly granted.
+2. Credential issue/rotate/revoke remains show-once/hash-only.
+3. Collector published association reads are visible to authorized reader roles but draft mutation remains admin-only and online-only.
+4. Single-Curation mutation uses the same queued/CAS path as Admin bulk operations.
+5. Distribution verifies allowlist plus `401/404/410/429`, live hydration and bounded dump streaming.
 
-### Distribution Admin
+## 8. Closeout migration and maintenance gate
 
-1. New applications select Collections by title/slug, not Mongo IDs.
-2. Only publishable Collections can be newly granted.
-3. A legacy/archived Collection already present in an allowlist remains visible/removable but cannot be newly added accidentally.
-4. Editing allowlist/rate limit uses `If-Match` and reloads on revision conflict.
-5. Issue/rotate/revoke retains show-once/hash-only semantics.
+Against a disposable CMS database:
 
-### Maintenance/recovery
+```bash
+npm run migrate:cms:locked
+```
 
-1. A healthy queued Payload job is untouched.
-2. A stale/exhausted Payload job is reopened only when its domain record is resumable and its lease is reclaimable.
-3. `meta.recoveryCount` stops automatic recovery after the configured bound.
-4. Missing Payload job is reported, not silently recreated.
-5. Orphan staged rows are purged only when the operation is terminal/missing and older than retention.
-6. Staging for a resumable operation is preserved.
-7. Worker heartbeat TTL migration is the only new automatic TTL; product records remain TTL-free.
+Verify migration records include:
 
-## 7. Backup/restore smoke
+```text
+20260902_009_operational_retention
+20260902_010_selection_retention
+20260904_011_export_cleanup_retention
+20260904_012_operation_item_retention
+20260904_013_audit_archival
+```
 
-With MongoDB Database Tools installed and an isolated destination:
+Then verify:
+
+- `export_artifact_ttl` absent;
+- `export_expiry_status`, `operation_retention_scan`, `audit_archive_scan`, `audit_archive_batch_unique` present;
+- `/ready` returns 200 only after these are installed;
+- no product Collection/version/membership/application/credential TTL exists.
+
+Exercise maintenance with controlled old data and failure injection:
+
+- S3 delete failure preserves export reference;
+- operation detail delete failure preserves retryability;
+- crash after item delete/before marker can finish on next run;
+- archive upload/manifest failure preserves audit source events.
+
+## 9. Backup/restore smoke
+
+With MongoDB Database Tools installed:
 
 ```bash
 CMS_BACKUP_SOURCE_URL="$CMS_TEST_URL" \
@@ -172,15 +211,36 @@ CMS_RESTORE_TEST_DB=concierge-cms-restore-test \
 bash scripts/operations/cms-backup-restore-smoke.sh
 ```
 
-The script must refuse source=destination DB, any destination not ending in `-restore-test`, and destination names containing `prod`/`production`.
+The script must refuse source=destination, destination not ending in `-restore-test`, and prod/production-like targets. Inspect restored CollectionVersion hashes plus `audit_archive_manifests`/operation itemArchive evidence.
 
-## 8. Staging acceptance (not a local self-attestation)
+## 10. Real staging worker crash/recovery evidence
 
-After real concurrency/crash/load/security/contract/backup evidence exists for the exact candidate commit, create:
+The repository now contains `apps/admin/tests/chaos/worker-checkpoints.mjs`, exposed as:
+
+```bash
+npm run chaos:worker-checkpoints -- --help
+```
+
+For each real staging scenario (`draft`, `publish`, `selection`, `export`):
+
+1. create a real in-flight domain intent on a staging CMS DB ending in `-test`;
+2. capture `--phase snapshot`;
+3. stop the staging Worker;
+4. with `CONCIERGE_ALLOW_REMOTE_CHAOS=1` and `CONCIERGE_CHAOS_WORKER_STOPPED=1`, `--phase arm` the **same** domain/Payload job at the observed checkpoint;
+5. restart Worker;
+6. run `--phase verify` and retain its JSON evidence.
+
+The verify result must prove exactly one original domain intent, a non-stuck original Payload job and the scenario-specific success invariant. Never create a new job to make a recovery test pass.
+
+## 11. Staging acceptance
+
+Follow `docs/superpowers/plans/2026-09-03-collections-gate-and-staging.md` and collect real load/concurrency/security/UI/chaos/backup/storage evidence for the exact SHA.
+
+Create:
 
 `docs/evidence/collections-staging.json`
 
-Then run:
+Then:
 
 ```bash
 npm run verify:collections:acceptance -- \
@@ -188,32 +248,40 @@ npm run verify:collections:acceptance -- \
   --expected-commit "$(git rev-parse HEAD)"
 ```
 
-The test fixture at `tests/fixtures/complete-collections-acceptance.json` is only a validator fixture and is never valid release evidence.
+The fixture under `tests/fixtures` is validator-only and is never release evidence.
 
-## 9. Review focus after green tests
+## 12. Static review focus after green runtime gates
 
-Review the branch specifically for:
+Review specifically for:
 
-- accidental generic Payload mutation paths;
-- stale admin error-shape assumptions (`{error:{code}}` is the administrative shape);
-- browser materialization of large selections;
-- missing actor scoping on new Operations reads/cancel;
+- generic Payload mutation accidentally opened;
+- Curation accidentally owning Collection membership/rank/order;
+- browser expansion of large selections;
+- missing actor scoping on operations/exports;
 - unsafe recovery CAS or unbounded maintenance scans;
-- any TTL accidentally added to Collections, versions, membership, application or credential product records;
-- secrets/request hashes leaked to Admin read DTOs;
-- UI confirmations implemented with `window.prompt/window.confirm` in newly touched Collections/Operations flows;
-- generated Payload type/import-map drift;
-- feature flags bypassed by newly added endpoints.
+- product TTLs;
+- export record deletion before confirmed private-object deletion;
+- audit deletion before archive manifest persistence;
+- operation detail deletion before summary persistence;
+- a maintenance retry starvation path;
+- secrets/request hashes/signed URLs leaking into logs/UI/evidence;
+- stale generated Payload output;
+- new endpoint bypassing feature flags;
+- OAuth/admin authorization mutation not writing its append-only audit event.
 
-## 10. Definition of done for the Codex pass
+## 13. Definition of done before merge/deployment
 
-Do not merge merely because TypeScript compiles. The Codex pass is complete when:
+The Codex pass is complete only when:
 
-1. targeted new tests pass;
-2. `npm run verify` passes;
-3. `npm run verify:full` passes against the disposable full stack;
-4. new UI lifecycle E2E passes;
-5. backup/restore smoke passes;
-6. review findings are fixed without breaking the invariants above;
-7. the branch diff contains no unrelated cleanup;
-8. staging-only acceptance work remains clearly marked pending until real staging evidence exists.
+1. targeted closeout tests pass;
+2. generated artifacts/contracts are current;
+3. `npm run verify` passes;
+4. `npm run verify:full` passes against disposable full stack;
+5. migrations/readiness/maintenance failure cases pass;
+6. UI lifecycle E2E passes;
+7. backup/restore smoke passes;
+8. four worker chaos scenarios pass on real staging;
+9. staging acceptance is 20/20 for the exact candidate SHA;
+10. review findings are fixed without breaking frozen invariants;
+11. branch diff contains no unrelated cleanup;
+12. only then is the candidate eligible for the production procedure in `docs/superpowers/plans/2026-09-03-render-collections-production.md` and eventual merge to `main`.
