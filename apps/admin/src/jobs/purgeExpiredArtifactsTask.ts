@@ -116,9 +116,10 @@ export async function purgeExpiredExports(
 
 /**
  * Removes only staging rows old enough to be operational garbage and whose
- * owning operation is either terminal or no longer exists. Any nonterminal
- * operation — including an exhausted/missing Payload job that still requires
- * operator recovery — protects all of its staging rows from deletion.
+ * owning operation is terminal or no longer exists. Eligibility is resolved by
+ * MongoDB before the batch limit is applied, so a large protected nonterminal
+ * operation cannot permanently occupy every maintenance slot and starve rows
+ * that are actually safe to purge.
  */
 export async function purgeOrphanStaging(
   payload: Payload,
@@ -129,36 +130,44 @@ export async function purgeOrphanStaging(
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE
   const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000)
   const changes = modelFor(payload, 'collection-draft-changes')
-  const operations = modelFor(payload, 'collection-operations')
 
-  const candidates = await changes.find({
-    stageState: 'staged',
-    updatedAt: { $lt: cutoff },
-  }).select({ _id: 1, operationId: 1 }).limit(batchSize).lean() as Record<string, unknown>[]
+  const candidates = await changes.aggregate([
+    { $match: { stageState: 'staged', updatedAt: { $lt: cutoff } } },
+    { $sort: { updatedAt: 1, _id: 1 } },
+    {
+      $lookup: {
+        from: 'collection_operations',
+        localField: 'operationId',
+        foreignField: '_id',
+        as: '_retentionOperation',
+      },
+    },
+    {
+      $match: {
+        $or: [
+          { '_retentionOperation.0': { $exists: false } },
+          { '_retentionOperation.0.status': { $in: TERMINAL_OPERATIONS } },
+        ],
+      },
+    },
+    { $limit: batchSize },
+    { $project: { _id: 1 } },
+  ]) as Record<string, unknown>[]
 
   if (candidates.length === 0) return { scanned: 0, deleted: 0, preserved: 0 }
 
-  const operationIds = [...new Set(candidates.map((row) => String(row.operationId ?? '')).filter(Boolean))]
-  const resumable = operationIds.length === 0
-    ? []
-    : await operations.find({
-      _id: { $in: operationIds },
-      status: { $nin: TERMINAL_OPERATIONS },
-    }).select({ _id: 1, status: 1 }).lean() as Record<string, unknown>[]
-  const protectedIds = new Set(resumable.map((operation) => String(operation.id ?? operation._id)))
   const deletableIds = candidates
-    .filter((row) => !protectedIds.has(String(row.operationId ?? '')))
     .map((row) => row.id ?? row._id)
     .filter((id): id is NonNullable<unknown> => id !== null && id !== undefined)
-
-  let deleted = 0
-  if (deletableIds.length > 0) {
-    const result = await changes.deleteMany({
-      _id: { $in: deletableIds },
-      stageState: 'staged',
-    })
-    deleted = Number(result.deletedCount ?? 0)
+  if (deletableIds.length === 0) {
+    return { scanned: candidates.length, deleted: 0, preserved: candidates.length }
   }
+
+  const result = await changes.deleteMany({
+    _id: { $in: deletableIds },
+    stageState: 'staged',
+  })
+  const deleted = Number(result.deletedCount ?? 0)
 
   return {
     scanned: candidates.length,
