@@ -191,6 +191,7 @@ def _audit_oauth_allowlist_change(
     before: dict,
     after: dict,
     request_id: str | None = None,
+    compensate_on_failure: bool = True,
 ) -> None:
     append_authz_change(
         db,
@@ -201,6 +202,7 @@ def _audit_oauth_allowlist_change(
         after=after,
         source="oauth_allowlist",
         request_id=request_id,
+        compensate_on_failure=compensate_on_failure,
     )
 
 
@@ -278,6 +280,9 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
             raise
         if is_admin:
             if winner.authorized and getattr(winner, "role", "curator") == "admin":
+                # This request lost the insert race. It may ensure the winner's
+                # deterministic bootstrap event, but it must never compensate
+                # or delete a user/privilege mutation owned by another request.
                 _audit_oauth_allowlist_change(
                     db,
                     user_id=winner.id,
@@ -285,6 +290,7 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
                     before={"authorized": None, "role": None},
                     after={"authorized": True, "role": "admin"},
                     request_id=f"oauth-bootstrap:{winner.id}",
+                    compensate_on_failure=False,
                 )
             else:
                 _promote_allowlisted_user(db, winner)
@@ -293,6 +299,8 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
 
     user_dict["_id"] = str(user_dict["_id"])
     if is_admin:
+        # This request owns the insert. If audit persistence fails, the shared
+        # boundary compensates by removing exactly this bootstrap user.
         _audit_oauth_allowlist_change(
             db,
             user_id=user_dict["_id"],
