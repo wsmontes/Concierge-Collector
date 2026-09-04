@@ -130,8 +130,9 @@ async function markItemsPurged(
  *
  * Purge completion is tracked separately from summary persistence. If deletion
  * fails after the summary CAS, later maintenance runs verify the remaining rows
- * against that immutable summary and retry deletion. This prevents a storage
- * leak while refusing to delete detail that no longer matches its evidence.
+ * against that immutable summary and retry deletion. If deletion succeeded but
+ * the completion-marker CAS crashed, an empty detail table is sufficient to
+ * finish that marker from the already durable pre-delete summary.
  */
 export async function compactTerminalOperationItems(
   payload: Payload,
@@ -187,7 +188,7 @@ export async function compactTerminalOperationItems(
         continue
       }
       archive = itemArchive
-    } else if (!archiveMatches(archive, evidence)) {
+    } else if (rows.length > 0 && !archiveMatches(archive, evidence)) {
       // Existing summary and remaining detail disagree. Retention must fail
       // closed rather than destroy evidence that may indicate corruption or a
       // partial/manual write outside the supported operation path.
@@ -206,7 +207,11 @@ export async function compactTerminalOperationItems(
         deletedItems += removed
       }
 
-      const marked = await markItemsPurged(operations, operation, String(archive.sha256), now, rows.length)
+      const archivedItemCount = Number(archive.itemCount)
+      const purgedItemCount = Number.isInteger(archivedItemCount) && archivedItemCount >= 0
+        ? archivedItemCount
+        : rows.length
+      const marked = await markItemsPurged(operations, operation, String(archive.sha256), now, purgedItemCount)
       if (!marked) {
         // Rows may already be gone, but leaving the completion marker absent is
         // safe: the next run sees an empty detail set and can finish the CAS.
