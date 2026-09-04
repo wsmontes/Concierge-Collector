@@ -23,29 +23,34 @@ export interface RecoverySummary {
 type DomainSource = {
   slug: string
   jobField: 'jobId' | 'payloadJobId'
-  statuses: string[]
+  activeStatuses: string[]
+  successStatuses: string[]
 }
 
 const DOMAIN_SOURCES: readonly DomainSource[] = [
   {
     slug: 'collection-operations',
     jobField: 'jobId',
-    statuses: ['queued', 'materializing', 'staging', 'validating', 'committing'],
+    activeStatuses: ['queued', 'materializing', 'staging', 'validating', 'committing'],
+    successStatuses: ['committed', 'completed', 'completed_with_skips'],
   },
   {
     slug: 'collection-publish-jobs',
     jobField: 'payloadJobId',
-    statuses: ['queued', 'running', 'committing'],
+    activeStatuses: ['queued', 'running', 'committing'],
+    successStatuses: ['completed'],
   },
   {
     slug: 'selection-manifests',
     jobField: 'payloadJobId',
-    statuses: ['queued', 'materializing'],
+    activeStatuses: ['queued', 'materializing'],
+    successStatuses: ['ready'],
   },
   {
     slug: 'collection-exports',
     jobField: 'payloadJobId',
-    statuses: ['queued', 'running'],
+    activeStatuses: ['queued', 'running'],
+    successStatuses: ['complete'],
   },
 ]
 
@@ -84,10 +89,14 @@ function recoveryCas(jobId: string, reason: 'failed' | 'completed' | 'processing
   return { _id: jobId, processing: true, updatedAt: { $lte: staleBefore } }
 }
 
+function domainSucceeded(source: DomainSource, domain: Record<string, unknown>): boolean {
+  return source.successStatuses.includes(String(domain.status ?? ''))
+}
+
 async function domainCandidates(payload: Payload, source: DomainSource, now: Date): Promise<Record<string, unknown>[]> {
   return modelFor(payload, source.slug)
     .find({
-      status: { $in: source.statuses },
+      status: { $in: [...source.activeStatuses, ...source.successStatuses] },
       $or: [
         { leaseExpiresAt: null },
         { leaseExpiresAt: { $lt: now } },
@@ -101,9 +110,18 @@ async function domainCandidates(payload: Payload, source: DomainSource, now: Dat
 
 /**
  * Re-opens only Payload jobs that are provably stuck while their domain lease
- * is already reclaimable. Healthy queued/backoff jobs are untouched. The same
- * Payload job ID and domain checkpoint are preserved, and a bounded recovery
- * counter prevents an unavailable dependency from creating an infinite loop.
+ * is already reclaimable. The same Payload job ID and domain checkpoint are
+ * preserved, and a bounded recovery counter prevents an unavailable dependency
+ * from creating an infinite loop.
+ *
+ * Successful domain states are also scanned because Payload 3.86 uses a
+ * permanent `processing` boolean. A crash after the domain commit but before
+ * the job runner finalizes/deletes its job can otherwise strand that internal
+ * record forever. Reopening the same job is safe: the domain handler sees its
+ * success terminal idempotently, returns without manufacturing new intent, and
+ * Payload's configured `deleteJobOnComplete` removes the internal row. A
+ * missing job for an already-successful domain is therefore normal cleanup;
+ * only a missing job for an active domain is reported as corruption.
  */
 export async function reconcileRecoverableJobs(
   payload: Payload,
@@ -121,12 +139,11 @@ export async function reconcileRecoverableJobs(
     for (const domain of candidates) {
       const jobId = String(domain[source.jobField] ?? '')
       if (!jobId) continue
+      const succeeded = domainSucceeded(source, domain)
       const job = await jobs.findById(jobId).lean() as Record<string, unknown> | null
       if (!job) {
-        // Missing job records are evidence of corruption/manual deletion. Do
-        // not reconstruct them automatically: the domain intent is preserved
-        // for operator investigation and no data is discarded.
-        summary.missing += 1
+        if (succeeded) summary.healthy += 1
+        else summary.missing += 1
         continue
       }
 
@@ -161,6 +178,7 @@ export async function reconcileRecoverableJobs(
               recoveryCount: priorRecoveries + 1,
               recoveredAt: now.toISOString(),
               recoveryReason: reason,
+              ...(succeeded ? { recoveredAfterDomainSuccess: true } : {}),
             },
             updatedAt: now,
           },
