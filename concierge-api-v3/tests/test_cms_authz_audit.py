@@ -302,7 +302,9 @@ def test_read_only_cms_introspection_does_not_create_authz_mutation_event(client
         json={"subject": email},
     )
 
-    assert response.status_code in {200, 403}
+    assert response.status_code == 200
+    assert response.json()["authorized"] is True
+    assert response.json()["role"] == "admin"
     assert in_memory_db.user_authz_audit_events.count_documents({}) == 0
 
 
