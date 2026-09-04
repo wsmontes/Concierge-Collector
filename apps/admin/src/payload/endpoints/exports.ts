@@ -102,17 +102,24 @@ export function exportEndpoints(): Endpoint[] {
           if (!document) throw new AdminHttpError(404, 'not_found')
           const record = asRecord(document)
           if (record.status !== 'complete') return Response.json(publicExport(record))
-          // A fresh short-lived URL per read; never a permanent public URL.
+
+          const now = Date.now()
+          const remainingSeconds = Math.floor((record.expiresAt.getTime() - now) / 1000)
+          if (remainingSeconds < 1) throw new AdminHttpError(410, 'export_expired')
+
+          // A fresh short-lived URL per read, never beyond the artifact's own
+          // absolute expiry even if maintenance cleanup is delayed.
           const env = readArtifactStorageEnv()
           const store = createS3ArtifactStore(env)
           const artifact: StoredArtifact = {
             key: record.key ?? '', contentType: record.contentType ?? '', sha256: record.sha256 ?? '', expiresAt: record.expiresAt,
           }
           if (!artifact.key) throw new AdminHttpError(503, 'service_unavailable')
-          const downloadUrl = await store.readUrl(artifact)
+          const effectiveTtlSeconds = Math.min(env.signedUrlTtlSeconds, remainingSeconds)
+          const downloadUrl = await store.readUrl(artifact, effectiveTtlSeconds)
           return Response.json(publicExport(record, {
             downloadUrl,
-            downloadExpiresAt: new Date(Date.now() + env.signedUrlTtlSeconds * 1000),
+            downloadExpiresAt: new Date(now + effectiveTtlSeconds * 1000),
           }))
         } catch (error) { return adminErrorResponse(error) }
       })(request as unknown as Request),
