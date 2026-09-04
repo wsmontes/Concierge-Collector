@@ -142,6 +142,24 @@ test('rerun reuses the persisted archive and retries deletion without changing i
   )
 })
 
+test('recovers the purge marker after rows were deleted but marker CAS crashed', async () => {
+  const originalItems = [{ curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 }]
+  const itemArchive = archiveFor(originalItems)
+  const { payload, updateOne, deleteMany } = harness({
+    operations: [{ _id: 'op-after-delete', status: 'completed', updatedAt: old, itemArchive }],
+    items: [],
+  })
+
+  const result = await compactTerminalOperationItems(payload as never, now)
+
+  expect(result).toEqual({ scannedOperations: 1, compactedOperations: 1, deletedItems: 0, preservedOperations: 0 })
+  expect(deleteMany).not.toHaveBeenCalled()
+  expect(updateOne).toHaveBeenCalledWith(
+    expect.objectContaining({ _id: 'op-after-delete', 'itemArchive.sha256': itemArchive.sha256 }),
+    { $set: { 'itemArchive.itemsPurgedAt': now.toISOString(), 'itemArchive.purgedItemCount': 1 } },
+  )
+})
+
 test('never deletes rows when persisted archive digest does not match remaining detail', async () => {
   const items = [{ curationId: 'cur-1', desiredState: 'remove', status: 'applied', targetDraftRevision: 9 }]
   const itemArchive = { ...archiveFor(items), sha256: '0'.repeat(64) }
@@ -156,7 +174,7 @@ test('never deletes rows when persisted archive digest does not match remaining 
   expect(deleteMany).not.toHaveBeenCalled()
 })
 
-test('marks an already-empty archived operation purged so it cannot starve later scan candidates', async () => {
+test('marks an originally empty archived operation purged so it cannot starve later scan candidates', async () => {
   const itemArchive = archiveFor([])
   const { payload, updateOne, deleteMany } = harness({
     operations: [{ _id: 'op-empty', status: 'completed', updatedAt: old, itemArchive }],
