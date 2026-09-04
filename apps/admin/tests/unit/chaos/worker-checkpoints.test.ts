@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import {
+  PAYLOAD_JOB_COLLECTION,
   assertDisposableChaosTarget,
   evaluateRecoveredScenario,
   scenarioDefinition,
@@ -32,6 +33,10 @@ describe('worker checkpoint chaos harness', () => {
       databaseName: 'concierge-cms-test',
       allowRemote: true,
     })).not.toThrow()
+  })
+
+  test('uses Payload v3 raw Mongo collection name for queued jobs', () => {
+    expect(PAYLOAD_JOB_COLLECTION).toBe('payload-jobs')
   })
 
   test('defines all four worker recovery scenarios without secrets or raw URLs', () => {
