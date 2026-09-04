@@ -4,6 +4,10 @@ import { compactTerminalOperationItems } from '../../../src/jobs/operation-item-
 const now = new Date('2026-09-04T12:00:00.000Z')
 const old = new Date('2026-05-01T12:00:00.000Z')
 
+async function* cursorFor(items: Record<string, unknown>[]) {
+  for (const item of items) yield item
+}
+
 function harness(operation: Record<string, unknown> | null, items: Record<string, unknown>[]) {
   const operationFind = vi.fn().mockReturnValue({
     sort: vi.fn().mockReturnValue({
@@ -13,16 +17,26 @@ function harness(operation: Record<string, unknown> | null, items: Record<string
     }),
   })
   const updateOne = vi.fn().mockResolvedValue({ modifiedCount: 1 })
-  const deleteMany = vi.fn().mockResolvedValue({ deletedCount: items.length })
+  let remaining = items.length
+  const deleteMany = vi.fn().mockImplementation(async () => {
+    const removed = remaining
+    remaining = 0
+    return { deletedCount: removed }
+  })
+  const countDocuments = vi.fn().mockImplementation(async () => remaining)
+  const cursor = vi.fn(() => cursorFor(items))
+  const batchSize = vi.fn().mockReturnValue({ cursor })
   const itemFind = vi.fn().mockReturnValue({
-    sort: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(items) }),
+    sort: vi.fn().mockReturnValue({ batchSize }),
   })
   return {
     payload: { db: { collections: {
       'collection-operations': { find: operationFind, updateOne },
-      'collection-operation-items': { find: itemFind, deleteMany },
+      'collection-operation-items': { find: itemFind, deleteMany, countDocuments },
     } } },
     operationFind,
+    itemFind,
+    cursor,
     updateOne,
     deleteMany,
   }
