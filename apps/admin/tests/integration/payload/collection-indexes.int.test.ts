@@ -22,7 +22,11 @@ integrationSuite('Collections CMS indexes', () => {
     expect(await names('collection_draft_changes')).toEqual(expect.arrayContaining([
       'draft_change_item_unique',
       'draft_changes_by_stage',
+      'staging_retention_scan',
     ]))
+    expect(await byName('collection_draft_changes', 'staging_retention_scan')).toMatchObject({
+      key: { stageState: 1, updatedAt: 1, _id: 1 },
+    })
     expect(await names('collection_operations')).toEqual(
       expect.arrayContaining([
         'operation_idempotency_unique',
