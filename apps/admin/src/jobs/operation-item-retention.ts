@@ -59,11 +59,79 @@ function increment(target: Record<string, number>, key: string | null) {
   target[key] = (target[key] ?? 0) + 1
 }
 
+function evidenceFor(rows: Record<string, unknown>[]) {
+  const digest = createHash('sha256')
+  const statusCounts: Record<string, number> = {}
+  const reasonCounts: Record<string, number> = {}
+  for (const row of rows) {
+    digest.update(`${canonicalLine(row)}\n`)
+    increment(statusCounts, typeof row.status === 'string' ? row.status : null)
+    increment(reasonCounts, typeof row.reasonCode === 'string' ? row.reasonCode : null)
+  }
+  return {
+    itemCount: rows.length,
+    statusCounts,
+    reasonCounts,
+    sha256: digest.digest('hex'),
+  }
+}
+
+function existingArchive(operation: Record<string, unknown>): Record<string, unknown> | null {
+  const value = operation.itemArchive
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function sameCounts(left: unknown, right: Record<string, number>): boolean {
+  if (!left || typeof left !== 'object' || Array.isArray(left)) return false
+  const normalized = Object.fromEntries(
+    Object.entries(left as Record<string, unknown>)
+      .filter(([, value]) => typeof value === 'number')
+      .map(([key, value]) => [key, Number(value)]),
+  )
+  return JSON.stringify(Object.entries(normalized).sort()) === JSON.stringify(Object.entries(right).sort())
+}
+
+function archiveMatches(archive: Record<string, unknown>, evidence: ReturnType<typeof evidenceFor>): boolean {
+  return Number(archive.itemCount) === evidence.itemCount
+    && archive.sha256 === evidence.sha256
+    && sameCounts(archive.statusCounts, evidence.statusCounts)
+    && sameCounts(archive.reasonCounts, evidence.reasonCounts)
+}
+
+async function markItemsPurged(
+  operations: DocumentModel,
+  operation: Record<string, unknown>,
+  sha256: string,
+  now: Date,
+  purgedItemCount: number,
+): Promise<boolean> {
+  const marked = await operations.updateOne(
+    {
+      _id: operation.id ?? operation._id,
+      status: operation.status,
+      'itemArchive.sha256': sha256,
+      'itemArchive.itemsPurgedAt': { $exists: false },
+    },
+    {
+      $set: {
+        'itemArchive.itemsPurgedAt': now.toISOString(),
+        'itemArchive.purgedItemCount': purgedItemCount,
+      },
+    },
+  )
+  return Number(marked.modifiedCount ?? 0) === 1
+}
+
 /**
  * Bounds the high-cardinality per-item operation table without losing the
  * evidence needed to verify an old operation. Only terminal parents older than
  * the retention window are eligible. A deterministic digest/count summary is
  * persisted on the parent under CAS before any item row is deleted.
+ *
+ * Purge completion is tracked separately from summary persistence. If deletion
+ * fails after the summary CAS, later maintenance runs verify the remaining rows
+ * against that immutable summary and retry deletion. This prevents a storage
+ * leak while refusing to delete detail that no longer matches its evidence.
  */
 export async function compactTerminalOperationItems(
   payload: Payload,
@@ -79,7 +147,7 @@ export async function compactTerminalOperationItems(
   const candidates = await operations.find({
     status: { $in: [...TERMINAL_OPERATION_STATUSES] },
     updatedAt: { $lt: cutoff },
-    itemArchive: { $exists: false },
+    'itemArchive.itemsPurgedAt': { $exists: false },
   }).sort({ updatedAt: 1, _id: 1 }).limit(batchSize).lean() as Record<string, unknown>[]
 
   let compactedOperations = 0
@@ -96,41 +164,61 @@ export async function compactTerminalOperationItems(
     }
 
     const rows = await itemsModel.find({ operationId }).sort({ curationId: 1, _id: 1 }).lean() as Record<string, unknown>[]
-    const digest = createHash('sha256')
-    const statusCounts: Record<string, number> = {}
-    const reasonCounts: Record<string, number> = {}
-    for (const row of rows) {
-      digest.update(`${canonicalLine(row)}\n`)
-      increment(statusCounts, typeof row.status === 'string' ? row.status : null)
-      increment(reasonCounts, typeof row.reasonCode === 'string' ? row.reasonCode : null)
-    }
+    const evidence = evidenceFor(rows)
+    let archive = existingArchive(operation)
 
-    const itemArchive = {
-      itemCount: rows.length,
-      statusCounts,
-      reasonCounts,
-      sha256: digest.digest('hex'),
-      compactedAt: now.toISOString(),
-      sourceUpdatedAt: updatedAt.toISOString(),
-    }
-
-    const persisted = await operations.updateOne(
-      {
-        _id: operation.id ?? operation._id,
-        status,
-        updatedAt,
-        itemArchive: { $exists: false },
-      },
-      { $set: { itemArchive } },
-    )
-    if (Number(persisted.modifiedCount ?? 0) !== 1) {
+    if (!archive) {
+      const itemArchive = {
+        ...evidence,
+        compactedAt: now.toISOString(),
+        sourceUpdatedAt: updatedAt.toISOString(),
+      }
+      const persisted = await operations.updateOne(
+        {
+          _id: operation.id ?? operation._id,
+          status,
+          updatedAt,
+          itemArchive: { $exists: false },
+        },
+        { $set: { itemArchive } },
+      )
+      if (Number(persisted.modifiedCount ?? 0) !== 1) {
+        preservedOperations += 1
+        continue
+      }
+      archive = itemArchive
+    } else if (!archiveMatches(archive, evidence)) {
+      // Existing summary and remaining detail disagree. Retention must fail
+      // closed rather than destroy evidence that may indicate corruption or a
+      // partial/manual write outside the supported operation path.
       preservedOperations += 1
       continue
     }
 
-    const deletion = await itemsModel.deleteMany({ operationId })
-    compactedOperations += 1
-    deletedItems += Number(deletion.deletedCount ?? 0)
+    try {
+      if (rows.length > 0) {
+        const deletion = await itemsModel.deleteMany({ operationId })
+        const removed = Number(deletion.deletedCount ?? 0)
+        if (removed !== rows.length) {
+          preservedOperations += 1
+          continue
+        }
+        deletedItems += removed
+      }
+
+      const marked = await markItemsPurged(operations, operation, String(archive.sha256), now, rows.length)
+      if (!marked) {
+        // Rows may already be gone, but leaving the completion marker absent is
+        // safe: the next run sees an empty detail set and can finish the CAS.
+        preservedOperations += 1
+        continue
+      }
+      compactedOperations += 1
+    } catch {
+      // Summary stays durable and the missing completion marker keeps this
+      // operation eligible for a later verified retry.
+      preservedOperations += 1
+    }
   }
 
   return {
