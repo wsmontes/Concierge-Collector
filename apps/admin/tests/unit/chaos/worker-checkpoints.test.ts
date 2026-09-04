@@ -153,6 +153,40 @@ describe('worker checkpoint chaos harness', () => {
     expect(result.expectedInvariant).toContain('version 3')
   })
 
+  test('successful recovery accepts Payload deleting its completed job record', () => {
+    const result = evaluateRecoveredScenario('publish', {
+      domain: {
+        _id: 'job-deleted-after-success', collectionId: 'collection-1', idempotencyKey: 'idem-delete-1',
+        status: 'completed', targetVersion: 4, payloadJobId: 'payload-deleted', fencingToken: 3,
+      },
+      payloadJob: null,
+      duplicateCount: 1,
+      related: { collection: { currentPublishedVersion: 4 }, version: { status: 'published' } },
+    })
+
+    expect(result.pass).toBe(true)
+    expect(result.failures).not.toContain('payload_job_still_stuck_or_failed')
+    expect(result.observedState).toMatchObject({ payloadJobRetained: false, payloadJobId: 'payload-deleted' })
+  })
+
+  test('missing Payload job never hides a domain intent that has not reached success terminal', () => {
+    const result = evaluateRecoveredScenario('export', {
+      domain: {
+        _id: 'export-stuck', actorId: 'admin-1', idempotencyKey: 'idem-stuck',
+        status: 'running', payloadJobId: 'payload-missing', key: null, sha256: null,
+      },
+      payloadJob: null,
+      duplicateCount: 1,
+      related: {},
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.failures).toEqual(expect.arrayContaining([
+      'domain_not_success_terminal',
+      'payload_job_still_stuck_or_failed',
+    ]))
+  })
+
   test('export recovery fails if terminal record lost object evidence', () => {
     const result = evaluateRecoveredScenario('export', {
       domain: {
