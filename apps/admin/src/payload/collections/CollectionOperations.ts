@@ -47,5 +47,9 @@ export const CollectionOperations: CollectionConfig = {
     { name: 'requestId', type: 'text', required: true },
     { name: 'jobId', type: 'text', required: true, index: true },
     { name: 'errorCode', type: 'text' },
+    // High-cardinality per-item detail is compacted only after a terminal
+    // operation ages beyond retention. This summary preserves deterministic
+    // counts/digest after the raw item rows are removed.
+    { name: 'itemArchive', type: 'json' },
   ],
 }
