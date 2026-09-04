@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 
 def _seed(db, *, email="audit-admin@example.test", authorized=False, role="curator"):
     db.users.delete_many({"email": email})
@@ -75,6 +77,34 @@ def test_manual_revoke_is_persistently_audited(in_memory_db):
     assert event["requestId"] == "req-cli-revoke"
 
 
+def test_manual_authz_change_rolls_back_if_audit_write_fails(in_memory_db, monkeypatch):
+    from app.core.authz_audit import apply_user_authz_change
+
+    in_memory_db._collections.clear()
+    email = _seed(in_memory_db)
+
+    def fail_audit(*_args, **_kwargs):
+        raise RuntimeError("audit storage unavailable")
+
+    monkeypatch.setattr(in_memory_db.user_authz_audit_events, "update_one", fail_audit)
+
+    with pytest.raises(RuntimeError, match="audit storage unavailable"):
+        apply_user_authz_change(
+            in_memory_db,
+            email=email,
+            authorized=True,
+            role="admin",
+            actor_id="cli:wagner",
+            source="authorize_user",
+            request_id="req-audit-fail",
+        )
+
+    user = in_memory_db.users.find_one({"email": email})
+    assert user is not None
+    assert user["authorized"] is False
+    assert user["role"] == "curator"
+
+
 def test_repeating_same_request_is_idempotent_and_noop_change_adds_no_event(in_memory_db):
     from app.core.authz_audit import append_authz_change, apply_user_authz_change
 
@@ -143,6 +173,36 @@ def test_oauth_allowlist_promotion_writes_same_audit_stream(in_memory_db, monkey
     assert event["after"] == {"authorized": True, "role": "admin"}
 
 
+def test_oauth_allowlist_promotion_rolls_back_if_audit_write_fails(in_memory_db, monkeypatch):
+    from app.api.auth import create_or_update_user
+    from app.core.config import settings
+
+    in_memory_db._collections.clear()
+    email = _seed(in_memory_db, email="configured-admin-fail@example.test")
+    monkeypatch.setattr(settings, "admin_emails", email)
+
+    def fail_audit(*_args, **_kwargs):
+        raise RuntimeError("audit storage unavailable")
+
+    monkeypatch.setattr(in_memory_db.user_authz_audit_events, "update_one", fail_audit)
+
+    with pytest.raises(RuntimeError, match="audit storage unavailable"):
+        create_or_update_user(
+            in_memory_db,
+            {
+                "email": email,
+                "google_id": f"google-{email}",
+                "name": "Configured Admin",
+                "picture": None,
+            },
+        )
+
+    user = in_memory_db.users.find_one({"email": email})
+    assert user is not None
+    assert user["authorized"] is False
+    assert user["role"] == "curator"
+
+
 def test_first_login_allowlisted_admin_grant_is_audited(in_memory_db, monkeypatch):
     from app.api.auth import create_or_update_user
     from app.core.config import settings
@@ -168,6 +228,33 @@ def test_first_login_allowlisted_admin_grant_is_audited(in_memory_db, monkeypatc
     assert event["source"] == "oauth_allowlist"
     assert event["before"] == {"authorized": None, "role": None}
     assert event["after"] == {"authorized": True, "role": "admin"}
+
+
+def test_first_login_allowlisted_admin_is_removed_if_bootstrap_audit_fails(in_memory_db, monkeypatch):
+    from app.api.auth import create_or_update_user
+    from app.core.config import settings
+
+    in_memory_db._collections.clear()
+    email = "first-login-audit-fail@example.test"
+    monkeypatch.setattr(settings, "admin_emails", email)
+
+    def fail_audit(*_args, **_kwargs):
+        raise RuntimeError("audit storage unavailable")
+
+    monkeypatch.setattr(in_memory_db.user_authz_audit_events, "update_one", fail_audit)
+
+    with pytest.raises(RuntimeError, match="audit storage unavailable"):
+        create_or_update_user(
+            in_memory_db,
+            {
+                "email": email,
+                "google_id": f"google-{email}",
+                "name": "First Login Admin",
+                "picture": None,
+            },
+        )
+
+    assert in_memory_db.users.find_one({"email": email}) is None
 
 
 def test_read_only_cms_introspection_does_not_create_authz_mutation_event(client, in_memory_db, monkeypatch):
