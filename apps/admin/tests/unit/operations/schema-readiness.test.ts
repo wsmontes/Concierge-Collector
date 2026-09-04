@@ -30,8 +30,8 @@ function payloadWith(input: { migration?: boolean; missingIndex?: string } = {})
   return { db: { collections } }
 }
 
-test('latest migration marker includes heartbeat-retention migration', () => {
-  expect(LATEST_CMS_MIGRATION).toBe('20260904_014_worker_heartbeat_retention')
+test('latest migration marker remains audit archival while readiness also checks older critical TTLs', () => {
+  expect(LATEST_CMS_MIGRATION).toBe('20260904_013_audit_archival')
 })
 
 test('reports ready only when latest migration and critical indexes are present', async () => {
