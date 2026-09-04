@@ -16,6 +16,7 @@ const TERMINAL_OPERATION_STATUSES = [
   'conflicted',
   'authorization_revoked',
 ] as const
+const SUCCESS_TERMINAL_STATUSES = ['committed', 'completed', 'completed_with_skips'] as const
 
 const DEFAULT_RETENTION_DAYS = 90
 const DEFAULT_BATCH_SIZE = 100
@@ -144,9 +145,15 @@ async function markItemsPurged(
 
 /**
  * Bounds the high-cardinality per-item operation table without losing the
- * evidence needed to verify an old operation. Only terminal parents older than
- * the retention window are eligible. A deterministic digest/count summary is
- * persisted on the parent under CAS before any item row is deleted.
+ * evidence needed to verify an old operation. Only terminal child/single
+ * operations older than the retention window are eligible; aggregate parent
+ * operations never own item rows and are excluded at the scan boundary.
+ *
+ * A deterministic digest/count summary is persisted on the parent operation
+ * under CAS before any item row is deleted. Successful operations additionally
+ * require intact detail count (`selectedCount`) before the destructive phase
+ * starts; failed/cancelled selection materialization may legitimately stop with
+ * partial item detail.
  *
  * `purgeStartedAt` is persisted before the first destructive write. Before that
  * marker, raw detail must still match the immutable summary exactly. After the
@@ -166,6 +173,8 @@ export async function compactTerminalOperationItems(
   const itemsModel = modelFor(payload, 'collection-operation-items')
 
   const candidates = await operations.find({
+    collectionId: { $exists: true, $ne: null },
+    jobId: { $exists: true, $ne: null },
     status: { $in: [...TERMINAL_OPERATION_STATUSES] },
     updatedAt: { $lt: cutoff },
     'itemArchive.itemsPurgedAt': { $exists: false },
@@ -188,6 +197,21 @@ export async function compactTerminalOperationItems(
     const evidence = evidenceFor(rows)
     let archive = existingArchive(operation)
     let purgeStarted = Boolean(archive && dateValue(archive.purgeStartedAt))
+
+    const selectedCount = Number(operation.selectedCount)
+    const successful = SUCCESS_TERMINAL_STATUSES.includes(status as never)
+    if (
+      !purgeStarted &&
+      successful &&
+      Number.isInteger(selectedCount) &&
+      selectedCount >= 0
+    ) {
+      const intactCount = archive ? Number(archive.itemCount) : rows.length
+      if (!Number.isInteger(intactCount) || intactCount !== selectedCount) {
+        preservedOperations += 1
+        continue
+      }
+    }
 
     if (!archive) {
       const itemArchive = {
