@@ -88,6 +88,20 @@ INDEX_SPECS = [
     # Handoff codes are stored hash-only and may be consumed exactly once.
     ("cms_auth_codes", [("code_hash", 1)], {"unique": True, "name": "cms_code_hash_unique"}),
     ("cms_auth_codes", [("expires_at", 1)], {"expireAfterSeconds": 0, "name": "cms_code_expiry_ttl"}),
+    # ── user_authz_audit_events ────────────────────────────────────────────
+    # Authorization/role changes are append-only and idempotent by eventKey.
+    # No TTL: archival/purge, if enabled, must prove private artifact + digest
+    # before deleting any hot audit row.
+    (
+        "user_authz_audit_events",
+        [("eventKey", 1)],
+        {"unique": True, "name": "user_authz_event_key_unique"},
+    ),
+    (
+        "user_authz_audit_events",
+        [("createdAt", 1), ("_id", 1)],
+        {"name": "user_authz_archive_scan"},
+    ),
     # Consumer quota windows are operational, not CMS state. A short TTL
     # bounds storage while the fixed minute key guarantees atomic increments.
     (
