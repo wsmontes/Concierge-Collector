@@ -8,6 +8,7 @@ import { MongoClient, ObjectId } from 'mongodb'
 const DEFAULT_TIMEOUT_MS = 120_000
 const DEFAULT_POLL_MS = 1_000
 const DEFAULT_STALE_SECONDS = 300
+const DEFAULT_RECOVERY_STALE_SECONDS = 180
 export const PAYLOAD_JOB_COLLECTION = 'payload-jobs'
 
 const SCENARIOS = Object.freeze({
@@ -70,6 +71,39 @@ export function assertDisposableChaosTarget({ mongoUrl, databaseName, allowRemot
   if (remote && !allowRemote) {
     throw new Error('Remote chaos requires CONCIERGE_ALLOW_REMOTE_CHAOS=1')
   }
+}
+
+function positiveInteger(value, label) {
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`${label} must be a positive integer`)
+  }
+  return value
+}
+
+export function assertChaosTimings({ phase, timeoutMs, pollMs, staleSeconds, recoveryStaleSeconds }) {
+  positiveInteger(timeoutMs, 'timeout-ms')
+  positiveInteger(pollMs, 'poll-ms')
+  positiveInteger(staleSeconds, 'stale-seconds')
+  positiveInteger(recoveryStaleSeconds, 'CMS_JOB_RECOVERY_STALE_SECONDS')
+  if (pollMs > timeoutMs) throw new Error('poll-ms cannot exceed timeout-ms')
+  if (phase === 'arm' && staleSeconds < recoveryStaleSeconds) {
+    throw new Error(`stale-seconds must be at least ${recoveryStaleSeconds} to satisfy the worker recovery threshold`)
+  }
+}
+
+export function resolveChaosEnvironment(raw) {
+  const value = typeof raw === 'string' ? raw.trim() : ''
+  if (!value) return 'local'
+  if (value !== 'local' && value !== 'staging') {
+    throw new Error('CONCIERGE_CHAOS_ENVIRONMENT must be local or staging')
+  }
+  return value
+}
+
+function recoveryStaleSecondsFromEnv() {
+  const raw = process.env.CMS_JOB_RECOVERY_STALE_SECONDS?.trim()
+  if (!raw) return DEFAULT_RECOVERY_STALE_SECONDS
+  return positiveInteger(Number(raw), 'CMS_JOB_RECOVERY_STALE_SECONDS')
 }
 
 export function scenarioDefinition(name) {
@@ -223,17 +257,19 @@ Phases:
   --phase verify     Poll after worker restart until the original intent reaches its success invariant or timeout.
 
 Safety environment:
-  CMS_MONGODB_URL                  required
-  CMS_MONGODB_DB_NAME              required and must end in -test
-  CONCIERGE_ALLOW_REMOTE_CHAOS=1   required for Atlas/other remote Mongo
-  CONCIERGE_CHAOS_WORKER_STOPPED=1 required for --phase arm
+  CMS_MONGODB_URL                    required
+  CMS_MONGODB_DB_NAME                required and must end in -test
+  CMS_JOB_RECOVERY_STALE_SECONDS     optional; defaults to ${DEFAULT_RECOVERY_STALE_SECONDS}
+  CONCIERGE_ALLOW_REMOTE_CHAOS=1     required for Atlas/other remote Mongo
+  CONCIERGE_CHAOS_WORKER_STOPPED=1   required for --phase arm
+  CONCIERGE_CHAOS_ENVIRONMENT=staging required to label output as staging evidence; otherwise output is local
 
 Options:
   --checkpoint <name>  Require the current domain checkpoint/status before arming.
   --output <path>      Write the same machine-readable JSON evidence printed to stdout.
   --timeout-ms <n>     Verify timeout (default ${DEFAULT_TIMEOUT_MS}).
   --poll-ms <n>        Verify poll interval (default ${DEFAULT_POLL_MS}).
-  --stale-seconds <n>  Age injected into Payload job (default ${DEFAULT_STALE_SECONDS}).
+  --stale-seconds <n>  Age injected into Payload job (default ${DEFAULT_STALE_SECONDS}); must meet the reconciler threshold.
 `
 }
 
@@ -387,6 +423,16 @@ async function main() {
   if (!['snapshot', 'arm', 'verify'].includes(args.phase)) throw new Error(`Unsupported phase: ${args.phase}`)
   scenarioDefinition(args.scenario)
 
+  const recoveryStaleSeconds = recoveryStaleSecondsFromEnv()
+  assertChaosTimings({
+    phase: args.phase,
+    timeoutMs: args.timeoutMs,
+    pollMs: args.pollMs,
+    staleSeconds: args.staleSeconds,
+    recoveryStaleSeconds,
+  })
+  const environment = resolveChaosEnvironment(process.env.CONCIERGE_CHAOS_ENVIRONMENT)
+
   const mongoUrl = process.env.CMS_MONGODB_URL?.trim() ?? ''
   const databaseName = process.env.CMS_MONGODB_DB_NAME?.trim() ?? ''
   assertDisposableChaosTarget({
@@ -429,12 +475,18 @@ async function main() {
     const evidence = {
       evidenceType: 'collections.worker.checkpoint',
       generatedAt: new Date().toISOString(),
-      environment: process.env.CONCIERGE_CHAOS_ENVIRONMENT?.trim() || 'staging',
+      environment,
       databaseName,
       scenario: args.scenario,
       phase: args.phase,
       requestedCheckpoint: args.checkpoint,
       domainId: args.id,
+      timing: {
+        timeoutMs: args.timeoutMs,
+        pollMs: args.pollMs,
+        staleSeconds: args.staleSeconds,
+        recoveryStaleSeconds,
+      },
       pass: result.pass,
       expectedInvariant: result.expectedInvariant,
       failures: result.failures,
