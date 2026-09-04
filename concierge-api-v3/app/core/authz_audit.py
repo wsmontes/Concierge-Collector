@@ -91,6 +91,21 @@ def _compensate_failed_audit(
         raise RuntimeError("Authorization audit failed and privilege rollback conflicted")
 
 
+def _audit_commit_confirmed(db: Database, event_key: str) -> bool:
+    """Resolve an ambiguous write acknowledgement without creating new state.
+
+    A network error may occur after Mongo committed the idempotent upsert but
+    before the client received the reply. Re-reading by the unique event key
+    distinguishes that case from a genuine failed append. If the verification
+    read itself fails, the caller must continue down the fail-closed path.
+    """
+
+    try:
+        return db.user_authz_audit_events.find_one({"eventKey": event_key}) is not None
+    except Exception:
+        return False
+
+
 def append_authz_change(
     db: Database,
     *,
@@ -107,14 +122,15 @@ def append_authz_change(
     """Append one idempotent mutation event; reads/no-op decisions write nothing.
 
     Normal authz writers mutate the user first and leave
-    ``compensate_on_failure`` enabled. If the append fails, the mutation is
-    restored from the supplied snapshots before the original exception is
-    propagated.
+    ``compensate_on_failure`` enabled. If the append fails, the writer first
+    re-reads the deterministic event key because a lost Mongo acknowledgement
+    can make a committed upsert look like a failure. Only a genuinely absent
+    event triggers compensation from the supplied snapshots.
 
     ``compensate_on_failure=False`` is reserved for a caller that is only
     ensuring an idempotent event for a mutation performed by another concurrent
-    writer. That caller must fail its own request when the append fails, but it
-    must never compensate/delete state it did not mutate itself.
+    writer. That caller must fail its own request when an append is genuinely
+    absent, but it must never compensate/delete state it did not mutate itself.
     """
 
     normalized_before = _snapshot(
@@ -159,6 +175,8 @@ def append_authz_change(
             upsert=True,
         )
     except Exception as audit_error:
+        if _audit_commit_confirmed(db, event_key):
+            return event_key
         if not compensate_on_failure:
             raise audit_error
         try:
