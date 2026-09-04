@@ -1,6 +1,7 @@
 import type { Model } from 'mongoose'
 import type { Payload } from 'payload'
 import { AdminHttpError } from '../http/errors'
+import { readRetentionInt } from '../retention-policy'
 
 type DocumentModel = Model<Record<string, unknown>>
 const DEFAULT_USED_SELECTION_RETENTION_DAYS = 90
@@ -12,10 +13,7 @@ function modelFor(payload: Payload, slug: string): DocumentModel {
 }
 
 function retentionDays(): number {
-  const raw = process.env.CMS_USED_SELECTION_RETENTION_DAYS?.trim()
-  if (!raw) return DEFAULT_USED_SELECTION_RETENTION_DAYS
-  const value = Number(raw)
-  return Number.isInteger(value) && value > 0 ? value : DEFAULT_USED_SELECTION_RETENTION_DAYS
+  return readRetentionInt('CMS_USED_SELECTION_RETENTION_DAYS', DEFAULT_USED_SELECTION_RETENTION_DAYS)
 }
 
 /**
