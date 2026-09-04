@@ -42,7 +42,7 @@ function harness(operation: Record<string, unknown> | null, items: Record<string
   }
 }
 
-test('retention scan excludes aggregate parent operations that never own item rows', async () => {
+test('retention scan excludes aggregate parents and previously quarantined operations', async () => {
   const { payload, operationFind } = harness(null, [])
 
   await compactTerminalOperationItems(payload as never, now, { retentionDays: 90, batchSize: 10 })
@@ -51,10 +51,11 @@ test('retention scan excludes aggregate parent operations that never own item ro
     collectionId: { $exists: true, $ne: null },
     jobId: { $exists: true, $ne: null },
     'itemArchive.itemsPurgedAt': { $exists: false },
+    'itemArchive.retentionBlockedAt': { $exists: false },
   }))
 })
 
-test('successful operation with missing item detail is preserved before destructive retention starts', async () => {
+test('successful operation with missing item detail is quarantined before destructive retention starts', async () => {
   const { payload, updateOne, deleteMany } = harness({
     _id: 'op-success-corrupt',
     collectionId: 'collection-1',
@@ -70,7 +71,18 @@ test('successful operation with missing item detail is preserved before destruct
   const result = await compactTerminalOperationItems(payload as never, now, { retentionDays: 90, batchSize: 10 })
 
   expect(result).toEqual({ scannedOperations: 1, compactedOperations: 0, deletedItems: 0, preservedOperations: 1 })
-  expect(updateOne).not.toHaveBeenCalled()
+  expect(updateOne).toHaveBeenCalledWith(
+    expect.objectContaining({
+      _id: 'op-success-corrupt',
+      'itemArchive.retentionBlockedAt': { $exists: false },
+    }),
+    { $set: expect.objectContaining({
+      'itemArchive.retentionBlockedReason': 'detail_count_mismatch',
+      'itemArchive.retentionExpectedItemCount': 3,
+      'itemArchive.retentionObservedItemCount': 2,
+    }) },
+    { timestamps: false },
+  )
   expect(deleteMany).not.toHaveBeenCalled()
 })
 
