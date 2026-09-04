@@ -1,5 +1,6 @@
 import type { Model } from 'mongoose'
 import type { Payload, TaskConfig } from 'payload'
+import { readPositiveInt } from '../retention-policy'
 
 type DocumentModel = Model<Record<string, unknown>>
 
@@ -173,13 +174,6 @@ export async function reconcileRecoverableJobs(
   return summary
 }
 
-function positiveInt(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim()
-  if (!raw) return fallback
-  const value = Number(raw)
-  return Number.isInteger(value) && value > 0 ? value : fallback
-}
-
 export const reconcileLeasesTask: TaskConfig<{
   input: Record<string, never>
   output: RecoverySummary
@@ -195,8 +189,8 @@ export const reconcileLeasesTask: TaskConfig<{
   schedule: [{ cron: '*/5 * * * *', queue: 'maintenance' }],
   handler: async ({ req }) => ({
     output: await reconcileRecoverableJobs(req.payload, new Date(), {
-      staleProcessingMs: positiveInt('CMS_JOB_RECOVERY_STALE_SECONDS', DEFAULT_STALE_PROCESSING_MS / 1000) * 1000,
-      maxRecoveries: positiveInt('CMS_JOB_MAX_RECOVERIES', DEFAULT_MAX_RECOVERIES),
+      staleProcessingMs: readPositiveInt('CMS_JOB_RECOVERY_STALE_SECONDS', DEFAULT_STALE_PROCESSING_MS / 1000) * 1000,
+      maxRecoveries: readPositiveInt('CMS_JOB_MAX_RECOVERIES', DEFAULT_MAX_RECOVERIES),
     }),
   }),
 }
