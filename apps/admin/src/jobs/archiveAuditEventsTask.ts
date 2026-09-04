@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 import type { ClientSession, Model } from 'mongoose'
 import type { Payload, TaskConfig } from 'payload'
-import { readRetentionInt } from '../retention-policy'
+import { readPositiveInt, readRetentionInt } from '../retention-policy'
 import type { ArtifactStore, StoredArtifact } from '../storage/artifact-store'
 import { createS3ArtifactStore } from '../storage/s3-artifact-store'
 
@@ -29,13 +29,6 @@ function modelFor(payload: Payload, slug: string): DocumentModel {
   const model = payload.db.collections[slug]
   if (!model) throw new Error(`Missing CMS collection model: ${slug}`)
   return model as unknown as DocumentModel
-}
-
-function positiveInt(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim()
-  if (!raw) return fallback
-  const value = Number(raw)
-  return Number.isInteger(value) && value > 0 ? value : fallback
 }
 
 function iso(value: unknown): string | null {
@@ -264,7 +257,7 @@ export const archiveAuditEventsTask: TaskConfig<{
   handler: async ({ req }) => ({
     output: await archiveAuditEvents(req.payload, null, new Date(), {
       retentionDays: readRetentionInt('CMS_AUDIT_RETENTION_DAYS', DEFAULT_AUDIT_RETENTION_DAYS),
-      batchSize: positiveInt('CMS_AUDIT_ARCHIVE_BATCH_SIZE', DEFAULT_AUDIT_ARCHIVE_BATCH_SIZE),
+      batchSize: readPositiveInt('CMS_AUDIT_ARCHIVE_BATCH_SIZE', DEFAULT_AUDIT_ARCHIVE_BATCH_SIZE),
     }),
   }),
 }
