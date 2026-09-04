@@ -113,6 +113,25 @@ def append_authz_change(
     return event_key
 
 
+def _rollback_user_authz(db: Database, *, user_id, before: dict, after: dict) -> bool:
+    """Best-effort CAS compensation used only when the audit write failed."""
+
+    rollback = db.users.update_one(
+        {
+            "_id": user_id,
+            "authorized": after["authorized"],
+            "role": after["role"],
+        },
+        {
+            "$set": {
+                "authorized": before["authorized"],
+                "role": before["role"],
+            }
+        },
+    )
+    return getattr(rollback, "matched_count", 0) == 1
+
+
 def apply_user_authz_change(
     db: Database,
     *,
@@ -123,7 +142,13 @@ def apply_user_authz_change(
     source: AuthzSource,
     request_id: str | None = None,
 ) -> dict:
-    """Apply a manual/admin authorization change and append its audit event."""
+    """Apply a manual/admin authorization change and append its audit event.
+
+    The mutation fails closed. If the append-only audit write fails after the
+    user CAS, the prior authorization/role is restored before the exception is
+    propagated. A compensation conflict is surfaced as an explicit runtime
+    error because silently keeping an unaudited privilege change is forbidden.
+    """
 
     normalized_email = email.strip().lower()
     user = db.users.find_one({"email": normalized_email})
@@ -143,18 +168,44 @@ def apply_user_authz_change(
     if before == after:
         return {**user, **after}
 
-    update_fields = {"authorized": after["authorized"]}
-    if role is not None:
-        update_fields["role"] = after["role"]
-    db.users.update_one({"_id": user["_id"]}, {"$set": update_fields})
-    append_authz_change(
-        db,
-        actor_id=actor_id,
-        target_user_id=str(user["_id"]),
-        target_email=normalized_email,
-        before=before,
-        after=after,
-        source=source,
-        request_id=request_id,
+    changed = db.users.update_one(
+        {
+            "_id": user["_id"],
+            "authorized": before["authorized"],
+            "role": before["role"],
+        },
+        {"$set": {"authorized": after["authorized"], "role": after["role"]}},
     )
+    if getattr(changed, "matched_count", 0) != 1:
+        raise RuntimeError("Authorization changed concurrently; retry from fresh state")
+
+    try:
+        append_authz_change(
+            db,
+            actor_id=actor_id,
+            target_user_id=str(user["_id"]),
+            target_email=normalized_email,
+            before=before,
+            after=after,
+            source=source,
+            request_id=request_id,
+        )
+    except Exception:
+        try:
+            rolled_back = _rollback_user_authz(
+                db,
+                user_id=user["_id"],
+                before=before,
+                after=after,
+            )
+        except Exception as rollback_error:
+            raise RuntimeError(
+                "Authorization audit failed and privilege rollback could not be verified"
+            ) from rollback_error
+        if not rolled_back:
+            raise RuntimeError(
+                "Authorization audit failed and privilege rollback conflicted"
+            )
+        raise
+
     return {**user, **after}
