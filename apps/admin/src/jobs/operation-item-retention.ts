@@ -17,6 +17,8 @@ const TERMINAL_OPERATION_STATUSES = [
   'authorization_revoked',
 ] as const
 const SUCCESS_TERMINAL_STATUSES = ['committed', 'completed', 'completed_with_skips'] as const
+const TERMINAL_OPERATION_STATUS_SET = new Set<string>(TERMINAL_OPERATION_STATUSES)
+const SUCCESS_TERMINAL_STATUS_SET = new Set<string>(SUCCESS_TERMINAL_STATUSES)
 
 const DEFAULT_RETENTION_DAYS = 90
 const DEFAULT_BATCH_SIZE = 100
@@ -175,7 +177,8 @@ async function markItemsPurged(
  * SHA/count summary. Successful operations must have `selectedCount` equal to
  * that intact item count; otherwise retention preserves the rows for operator
  * review. Failed/cancelled materialization may legitimately stop with partial
- * item detail.
+ * item detail. A cursor/read failure preserves only that operation and does not
+ * prevent later candidates in the same bounded batch from being maintained.
  *
  * `purgeStartedAt` is durable before deletion. Once present, retries never
  * rehash a partial subset: they delete whatever remains for the same
@@ -209,7 +212,7 @@ export async function compactTerminalOperationItems(
     const operationId = String(operation.id ?? operation._id ?? '')
     const updatedAt = dateValue(operation.updatedAt)
     const status = typeof operation.status === 'string' ? operation.status : ''
-    if (!operationId || !updatedAt || !TERMINAL_OPERATION_STATUSES.includes(status as never)) {
+    if (!operationId || !updatedAt || !TERMINAL_OPERATION_STATUS_SET.has(status)) {
       preservedOperations += 1
       continue
     }
@@ -218,8 +221,15 @@ export async function compactTerminalOperationItems(
     let purgeStarted = Boolean(archive && dateValue(archive.purgeStartedAt))
 
     if (!purgeStarted) {
-      const evidence = await evidenceForOperation(itemsModel, operationId)
-      const successful = SUCCESS_TERMINAL_STATUSES.includes(status as never)
+      let evidence: Awaited<ReturnType<typeof evidenceForOperation>>
+      try {
+        evidence = await evidenceForOperation(itemsModel, operationId)
+      } catch {
+        preservedOperations += 1
+        continue
+      }
+
+      const successful = SUCCESS_TERMINAL_STATUS_SET.has(status)
       const selectedCount = Number(operation.selectedCount)
       if (
         successful &&
