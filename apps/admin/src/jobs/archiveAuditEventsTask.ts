@@ -258,7 +258,9 @@ export const archiveAuditEventsTask: TaskConfig<{
     { name: 'archived', type: 'number', required: true },
     { name: 'preserved', type: 'number', required: true },
   ],
-  schedule: [{ cron: '43 3 * * *', queue: 'maintenance' }],
+  // One bounded batch per hour gives predictable worker cost while allowing
+  // retention to drain bursts instead of being capped at one batch per day.
+  schedule: [{ cron: '43 * * * *', queue: 'maintenance' }],
   handler: async ({ req }) => ({
     output: await archiveAuditEvents(req.payload, null, new Date(), {
       retentionDays: readRetentionInt('CMS_AUDIT_RETENTION_DAYS', DEFAULT_AUDIT_RETENTION_DAYS),
