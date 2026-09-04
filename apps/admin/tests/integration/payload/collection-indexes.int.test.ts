@@ -48,5 +48,13 @@ integrationSuite('Collections CMS indexes', () => {
     expect(await byName('collection_exports', 'export_expiry_status')).toMatchObject({
       key: { expiresAt: 1, status: 1 },
     })
+
+    expect(await byName('audit_events', 'audit_archive_scan')).toMatchObject({
+      key: { createdAt: 1, _id: 1 },
+    })
+    expect(await byName('audit_archive_manifests', 'audit_archive_batch_unique')).toMatchObject({
+      key: { batchKey: 1 },
+      unique: true,
+    })
   })
 })
