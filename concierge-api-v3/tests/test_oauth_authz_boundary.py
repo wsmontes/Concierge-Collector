@@ -1,5 +1,8 @@
 from datetime import datetime, timezone
 
+import pytest
+from pymongo.errors import DuplicateKeyError
+
 
 def test_existing_allowlisted_user_uses_shared_cas_audit_writer(in_memory_db, monkeypatch):
     import app.api.auth as auth_module
@@ -99,3 +102,48 @@ def test_non_allowlisted_login_does_not_invoke_authz_mutation_writer(in_memory_d
     assert called is False
     assert user.authorized is True
     assert user.role == "curator"
+
+
+def test_concurrent_bootstrap_loser_never_deletes_the_winner_when_audit_retry_fails(in_memory_db, monkeypatch):
+    import app.api.auth as auth_module
+    from app.core.config import settings
+
+    in_memory_db._collections.clear()
+    email = "oauth-concurrent-bootstrap@example.test"
+    google_id = "google-oauth-concurrent-bootstrap"
+    monkeypatch.setattr(settings, "admin_emails", email)
+
+    original_insert = in_memory_db.users.insert_one
+
+    def concurrent_winner_then_duplicate(document):
+        # Simulate another request winning the deterministic first-login insert
+        # after this request's initial read but before its insert reaches Mongo.
+        original_insert(dict(document))
+        raise DuplicateKeyError("simulated concurrent first-login winner")
+
+    monkeypatch.setattr(in_memory_db.users, "insert_one", concurrent_winner_then_duplicate)
+
+    def fail_audit(*_args, **_kwargs):
+        raise RuntimeError("audit storage unavailable")
+
+    monkeypatch.setattr(in_memory_db.user_authz_audit_events, "update_one", fail_audit)
+
+    with pytest.raises(RuntimeError, match="audit storage unavailable"):
+        auth_module.create_or_update_user(
+            in_memory_db,
+            {
+                "email": email,
+                "google_id": google_id,
+                "name": "Concurrent Admin",
+                "picture": None,
+            },
+        )
+
+    # This request did not perform the winning privilege mutation and therefore
+    # must not compensate by deleting another request's user. The winner request
+    # remains responsible for either persisting its bootstrap audit or rolling
+    # its own insert back.
+    winner = in_memory_db.users.find_one({"google_id": google_id})
+    assert winner is not None
+    assert winner["authorized"] is True
+    assert winner["role"] == "admin"
