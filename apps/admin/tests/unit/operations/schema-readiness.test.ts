@@ -24,6 +24,7 @@ const required: Record<string, IndexDoc[]> = {
   ],
   'collection-exports': [
     { name: 'export_expiry_status', key: { expiresAt: 1, status: 1 } },
+    { name: 'export_cleanup_due', key: { status: 1, cleanupNextAttemptAt: 1, expiresAt: 1, _id: 1 } },
   ],
   'audit-events': [
     { name: 'audit_archive_scan', key: { createdAt: 1, _id: 1 } },
@@ -62,8 +63,8 @@ function payloadWith(input: {
   return { db: { collections } }
 }
 
-test('latest migration marker is the staging retention scan migration', () => {
-  expect(LATEST_CMS_MIGRATION).toBe('20260904_014_staging_retention_scan')
+test('latest migration marker is the export cleanup backoff migration', () => {
+  expect(LATEST_CMS_MIGRATION).toBe('20260904_015_export_cleanup_backoff')
 })
 
 test('reports ready only when latest migration and critical index signatures are present', async () => {
@@ -80,12 +81,12 @@ test('fails closed when latest expected migration marker is missing', async () =
 })
 
 test('fails closed when any critical deployed index is missing', async () => {
-  const result = await checkCmsSchemaReadiness(payloadWith({ missingIndex: 'staging_retention_scan' }) as never)
+  const result = await checkCmsSchemaReadiness(payloadWith({ missingIndex: 'export_cleanup_due' }) as never)
 
   expect(result).toEqual(expect.objectContaining({
     ready: false,
     indexes: 'missing',
-    missingIndexes: ['collection-draft-changes:staging_retention_scan'],
+    missingIndexes: ['collection-exports:export_cleanup_due'],
   }))
 })
 
@@ -100,6 +101,20 @@ test('fails closed when a critical index exists under the right name with the wr
     ready: false,
     indexes: 'missing',
     missingIndexes: ['collection-operations:operation_queue_order'],
+  }))
+})
+
+test('fails closed when export cleanup due index has wrong sort order', async () => {
+  const result = await checkCmsSchemaReadiness(payloadWith({
+    mutateIndex: (index) => index.name === 'export_cleanup_due'
+      ? { ...index, key: { status: 1, expiresAt: 1, cleanupNextAttemptAt: 1, _id: 1 } }
+      : index,
+  }) as never)
+
+  expect(result).toEqual(expect.objectContaining({
+    ready: false,
+    indexes: 'missing',
+    missingIndexes: ['collection-exports:export_cleanup_due'],
   }))
 })
 
