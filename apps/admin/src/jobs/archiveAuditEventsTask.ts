@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 import type { ClientSession, Model } from 'mongoose'
 import type { Payload, TaskConfig } from 'payload'
+import { readRetentionInt } from '../retention-policy'
 import type { ArtifactStore, StoredArtifact } from '../storage/artifact-store'
 import { createS3ArtifactStore } from '../storage/s3-artifact-store'
 
@@ -231,7 +232,7 @@ export const archiveAuditEventsTask: TaskConfig<{
   schedule: [{ cron: '43 3 * * *', queue: 'maintenance' }],
   handler: async ({ req }) => ({
     output: await archiveAuditEvents(req.payload, null, new Date(), {
-      retentionDays: positiveInt('CMS_AUDIT_RETENTION_DAYS', DEFAULT_AUDIT_RETENTION_DAYS),
+      retentionDays: readRetentionInt('CMS_AUDIT_RETENTION_DAYS', DEFAULT_AUDIT_RETENTION_DAYS),
       batchSize: positiveInt('CMS_AUDIT_ARCHIVE_BATCH_SIZE', DEFAULT_AUDIT_ARCHIVE_BATCH_SIZE),
     }),
   }),
