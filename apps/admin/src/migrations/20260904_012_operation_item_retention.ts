@@ -6,7 +6,10 @@ export async function up({ payload }: MigrateUpArgs): Promise<void> {
   if (payload.db.name !== 'mongoose') throw new Error('Operation item retention requires the MongoDB adapter')
   const model = payload.db.collections['collection-operations']
   if (!model) throw new Error('Missing CMS collection model: collection-operations')
-  await model.collection.createIndex({ status: 1, updatedAt: 1 }, { name: INDEX })
+  await model.collection.createIndex(
+    { status: 1, 'itemArchive.itemsPurgedAt': 1, updatedAt: 1 },
+    { name: INDEX },
+  )
 }
 
 export async function down({ payload }: MigrateDownArgs): Promise<void> {
