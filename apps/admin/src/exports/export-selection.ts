@@ -19,7 +19,7 @@ type DocumentModel = Model<Record<string, unknown>>
 
 const LEASE_MS = 60_000
 const PAGE_LIMIT = 500
-/** Staging/default artifact retention; production overrides via EXPORT_ARTIFACT_TTL_SECONDS. */
+/** Default artifact retention; production configuration may only lengthen it. */
 const DEFAULT_ARTIFACT_TTL_SECONDS = 604800
 
 function modelFor(payload: Payload, slug: string): DocumentModel {
@@ -299,11 +299,10 @@ export interface ExportRunDependencies {
 
 /**
  * Worker core: claims the export record (CAS/fencing), streams allowlisted
- * records to private object storage, persists `StoredArtifact` fields only
- * after the upload completed and returns a short-lived private download URL in
- * the terminal `complete` state. Retries re-claim the same record and never
- * duplicate rows because the manifest items are deduplicated by their unique
- * index.
+ * records to private object storage, persists the stored-object evidence while
+ * still under the same lease, then exposes a short-lived URL only if it cannot
+ * outlive the export's absolute expiry. Retries re-claim the same record and
+ * deterministic object key.
  */
 export async function runExportSelection(
   payload: Payload,
@@ -316,7 +315,22 @@ export async function runExportSelection(
   if (!claimed) return null
   const { record } = claimed
   const lease = claimed.lease
+  const leaseFilter = {
+    _id: record.id,
+    status: 'running',
+    leaseOwner: lease.owner,
+    fencingToken: lease.fencingToken,
+  }
   try {
+    if (record.expiresAt.getTime() <= Date.now()) {
+      const failed = await exportsModel.updateOne(
+        leaseFilter,
+        { $set: { status: 'failed', leaseExpiresAt: null, updatedAt: new Date() } },
+      )
+      if (Number(failed.modifiedCount ?? 0) !== 1) throw new AdminHttpError(409, 'conflict')
+      throw new AdminHttpError(410, 'export_expired')
+    }
+
     const client = dependencies.client ?? new FastApiExportHydrationClient()
     await client.introspectAdmin(record.actorId)
     const manifest = await loadReadyManifest(payload, record.selectionId, record.actorId)
@@ -327,7 +341,7 @@ export async function runExportSelection(
     const onProgress = (partial: Record<string, number>): void => {
       Object.assign(progress, partial)
       exportsModel.updateOne(
-        { _id: record.id, status: 'running', leaseOwner: lease.owner, fencingToken: lease.fencingToken },
+        leaseFilter,
         { $set: { progress, updatedAt: new Date() } },
       ).catch(() => undefined)
     }
@@ -337,24 +351,54 @@ export async function runExportSelection(
     })
     const artifact = await dependencies.store.put({ key, contentType, expiresAt: record.expiresAt, body })
 
+    // Once bytes exist in object storage, persist their key/digest before any
+    // later operation that may fail. This keeps cleanup traceable and retryable.
+    const referenced = await exportsModel.updateOne(
+      leaseFilter,
+      {
+        $set: {
+          key: artifact.key,
+          contentType: artifact.contentType,
+          sha256: artifact.sha256,
+          progress,
+          updatedAt: new Date(),
+        },
+      },
+    )
+    if (Number(referenced.modifiedCount ?? 0) !== 1) throw new AdminHttpError(409, 'conflict')
+
+    const signedAt = Date.now()
+    const remainingSeconds = Math.floor((record.expiresAt.getTime() - signedAt) / 1000)
+    if (remainingSeconds < 1) {
+      const failed = await exportsModel.updateOne(
+        leaseFilter,
+        { $set: { status: 'failed', leaseExpiresAt: null, updatedAt: new Date() } },
+      )
+      if (Number(failed.modifiedCount ?? 0) !== 1) throw new AdminHttpError(409, 'conflict')
+      throw new AdminHttpError(410, 'export_expired')
+    }
+
+    const configuredTtl = dependencies.signedUrlTtlSeconds ?? readArtifactStorageEnv().signedUrlTtlSeconds
+    const effectiveTtl = Math.min(configuredTtl, remainingSeconds)
+    const downloadUrl = await dependencies.store.readUrl(artifact, effectiveTtl)
+    const downloadExpiresAt = new Date(signedAt + effectiveTtl * 1000)
+
     const done = await exportsModel.findOneAndUpdate(
-      { _id: record.id, status: 'running', leaseOwner: lease.owner, fencingToken: lease.fencingToken },
-      { $set: { status: 'complete', key: artifact.key, contentType: artifact.contentType, sha256: artifact.sha256, progress, leaseExpiresAt: null, updatedAt: new Date() } },
+      leaseFilter,
+      { $set: { status: 'complete', leaseExpiresAt: null, updatedAt: new Date() } },
       { new: true, lean: true },
     )
     if (!done) throw new AdminHttpError(409, 'conflict')
 
-    const downloadUrl = await dependencies.store.readUrl(artifact)
-    const ttlSeconds = dependencies.signedUrlTtlSeconds ?? readArtifactStorageEnv().signedUrlTtlSeconds
     return {
       exportId: record.id,
       status: 'complete',
       downloadUrl,
-      downloadExpiresAt: new Date(Date.now() + ttlSeconds * 1000),
+      downloadExpiresAt,
     }
   } catch (error) {
     await exportsModel.updateOne(
-      { _id: record.id, status: 'running', leaseOwner: lease.owner, fencingToken: lease.fencingToken },
+      leaseFilter,
       { $set: { leaseExpiresAt: new Date(), updatedAt: new Date() } },
     )
     throw error
