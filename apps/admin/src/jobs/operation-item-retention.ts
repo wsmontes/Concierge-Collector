@@ -54,6 +54,10 @@ function dateValue(value: unknown): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
+function strictNonNegativeInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
+}
+
 function canonicalLine(row: Record<string, unknown>): string {
   return JSON.stringify({
     curationId: row.curationId,
@@ -123,7 +127,7 @@ function sameCounts(left: unknown, right: Record<string, number>): boolean {
 }
 
 function archiveMatches(archive: Record<string, unknown>, evidence: Awaited<ReturnType<typeof evidenceForOperation>>): boolean {
-  return Number(archive.itemCount) === evidence.itemCount
+  return strictNonNegativeInteger(archive.itemCount) === evidence.itemCount
     && archive.sha256 === evidence.sha256
     && sameCounts(archive.statusCounts, evidence.statusCounts)
     && sameCounts(archive.reasonCounts, evidence.reasonCounts)
@@ -227,7 +231,8 @@ async function markItemsPurged(
  * operationId, verify the detail collection is empty, and finish
  * `itemsPurgedAt` from the immutable pre-delete summary. The immutable archive
  * itself is validated before every destructive retry; if its item count is no
- * longer valid, remaining detail is preserved and the operation is quarantined.
+ * longer a real non-negative integer, remaining detail is preserved and the
+ * operation is quarantined rather than accepting a coerced JSON value.
  */
 export async function compactTerminalOperationItems(
   payload: Payload,
@@ -275,11 +280,8 @@ export async function compactTerminalOperationItems(
       }
 
       const successful = SUCCESS_TERMINAL_STATUS_SET.has(status)
-      const selectedCount = Number(operation.selectedCount)
-      if (
-        successful &&
-        (!Number.isInteger(selectedCount) || selectedCount < 0 || evidence.itemCount !== selectedCount)
-      ) {
+      const selectedCount = strictNonNegativeInteger(operation.selectedCount)
+      if (successful && (selectedCount === null || evidence.itemCount !== selectedCount)) {
         try {
           await quarantineRetention(
             operations,
@@ -287,7 +289,7 @@ export async function compactTerminalOperationItems(
             'detail_count_mismatch',
             now,
             {
-              'itemArchive.retentionExpectedItemCount': Number.isInteger(selectedCount) ? selectedCount : null,
+              'itemArchive.retentionExpectedItemCount': selectedCount,
               'itemArchive.retentionObservedItemCount': evidence.itemCount,
               'itemArchive.retentionObservedSha256': evidence.sha256,
             },
@@ -360,8 +362,8 @@ export async function compactTerminalOperationItems(
       continue
     }
 
-    const archivedItemCount = Number(archive.itemCount)
-    if (!Number.isInteger(archivedItemCount) || archivedItemCount < 0) {
+    const archivedItemCount = strictNonNegativeInteger(archive.itemCount)
+    if (archivedItemCount === null) {
       try {
         await quarantineRetention(
           operations,
