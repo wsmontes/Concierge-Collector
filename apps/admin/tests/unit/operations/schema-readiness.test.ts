@@ -18,6 +18,16 @@ const required: Record<string, IndexDoc[]> = {
   'collection-operations': [
     { name: 'operation_queue_order', key: { collectionId: 1, operationSequence: 1, status: 1 } },
     { name: 'operation_retention_scan', key: { status: 1, 'itemArchive.itemsPurgedAt': 1, updatedAt: 1 } },
+    {
+      name: 'operation_retention_due',
+      key: {
+        status: 1,
+        'itemArchive.itemsPurgedAt': 1,
+        'itemArchive.retentionBlockedAt': 1,
+        updatedAt: 1,
+        _id: 1,
+      },
+    },
   ],
   'collection-publish-jobs': [
     { name: 'publish_lease_expiry', key: { status: 1, leaseExpiresAt: 1 } },
@@ -63,8 +73,8 @@ function payloadWith(input: {
   return { db: { collections } }
 }
 
-test('latest migration marker is the export cleanup backoff migration', () => {
-  expect(LATEST_CMS_MIGRATION).toBe('20260904_015_export_cleanup_backoff')
+test('latest migration marker is the operation retention quarantine migration', () => {
+  expect(LATEST_CMS_MIGRATION).toBe('20260904_016_operation_retention_quarantine')
 })
 
 test('reports ready only when latest migration and critical index signatures are present', async () => {
@@ -81,12 +91,12 @@ test('fails closed when latest expected migration marker is missing', async () =
 })
 
 test('fails closed when any critical deployed index is missing', async () => {
-  const result = await checkCmsSchemaReadiness(payloadWith({ missingIndex: 'export_cleanup_due' }) as never)
+  const result = await checkCmsSchemaReadiness(payloadWith({ missingIndex: 'operation_retention_due' }) as never)
 
   expect(result).toEqual(expect.objectContaining({
     ready: false,
     indexes: 'missing',
-    missingIndexes: ['collection-exports:export_cleanup_due'],
+    missingIndexes: ['collection-operations:operation_retention_due'],
   }))
 })
 
@@ -101,6 +111,20 @@ test('fails closed when a critical index exists under the right name with the wr
     ready: false,
     indexes: 'missing',
     missingIndexes: ['collection-operations:operation_queue_order'],
+  }))
+})
+
+test('fails closed when operation retention due index omits quarantine key', async () => {
+  const result = await checkCmsSchemaReadiness(payloadWith({
+    mutateIndex: (index) => index.name === 'operation_retention_due'
+      ? { ...index, key: { status: 1, 'itemArchive.itemsPurgedAt': 1, updatedAt: 1, _id: 1 } }
+      : index,
+  }) as never)
+
+  expect(result).toEqual(expect.objectContaining({
+    ready: false,
+    indexes: 'missing',
+    missingIndexes: ['collection-operations:operation_retention_due'],
   }))
 })
 
