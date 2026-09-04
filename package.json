@@ -33,6 +33,7 @@
     "chaos:worker-checkpoints": "npm run chaos:worker-checkpoints --workspace=@concierge/admin --",
     "lint:admin": "npm run lint --workspace=@concierge/admin",
     "typecheck:admin": "npm run typecheck --workspace=@concierge/admin",
+    "check:admin-generated": "node scripts/release/check-admin-generated.mjs",
     "generate:contracts": "node scripts/release/run-python.mjs scripts/export_admin_openapi.py && npm run generate --workspace=@concierge/fastapi-client",
     "check:contracts": "node scripts/release/run-python.mjs scripts/export_admin_openapi.py --check && npm run check --workspace=@concierge/fastapi-client",
     "verify": "node scripts/release/release-gate.mjs",
