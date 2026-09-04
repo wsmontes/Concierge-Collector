@@ -253,7 +253,7 @@ function usage() {
 
 Phases:
   --phase snapshot   Read current domain/job state only (default).
-  --phase arm        With the staging worker stopped, expire the domain lease and mark the SAME Payload job as stale-processing.
+  --phase arm        With the staging worker stopped, atomically expire the domain lease and mark the SAME Payload job as stale-processing.
   --phase verify     Poll after worker restart until the original intent reaches its success invariant or timeout.
 
 Safety environment:
@@ -263,6 +263,11 @@ Safety environment:
   CONCIERGE_ALLOW_REMOTE_CHAOS=1     required for Atlas/other remote Mongo
   CONCIERGE_CHAOS_WORKER_STOPPED=1   required for --phase arm
   CONCIERGE_CHAOS_ENVIRONMENT=staging required to label output as staging evidence; otherwise output is local
+
+Arm requirements:
+  MongoDB must support multi-document transactions. If the transaction cannot
+  be started or committed, the harness fails instead of leaving a half-armed
+  domain/job pair.
 
 Options:
   --checkpoint <name>  Require the current domain checkpoint/status before arming.
@@ -335,7 +340,7 @@ function safeSnapshot(scenario, snapshot) {
   }
 }
 
-async function armStalePayloadJob(db, scenario, id, checkpoint, staleSeconds) {
+export async function armStalePayloadJob(client, db, scenario, id, checkpoint, staleSeconds) {
   if (process.env.CONCIERGE_CHAOS_WORKER_STOPPED !== '1') {
     throw new Error('--phase arm requires CONCIERGE_CHAOS_WORKER_STOPPED=1 after the staging worker is stopped')
   }
@@ -354,36 +359,51 @@ async function armStalePayloadJob(db, scenario, id, checkpoint, staleSeconds) {
   const now = new Date()
   const staleAt = new Date(now.getTime() - staleSeconds * 1_000)
   const leaseExpiredAt = new Date(now.getTime() - 1_000)
-  const domainResult = await db.collection(definition.domainCollection).updateOne(
-    { _id: domain._id, status: domain.status },
-    { $set: { leaseExpiresAt: leaseExpiredAt, updatedAt: staleAt } },
-  )
-  if (domainResult.matchedCount !== 1) throw new Error('Domain record changed while arming chaos checkpoint')
-
   const meta = payloadJob.meta && typeof payloadJob.meta === 'object' && !Array.isArray(payloadJob.meta)
     ? payloadJob.meta
     : {}
-  const jobResult = await db.collection(PAYLOAD_JOB_COLLECTION).updateOne(
-    { _id: payloadJob._id, completedAt: payloadJob.completedAt ?? null },
-    {
-      $set: {
-        processing: true,
-        hasError: false,
-        error: null,
-        completedAt: null,
-        waitUntil: staleAt,
-        updatedAt: staleAt,
-        meta: {
-          ...meta,
-          chaosScenario: scenario,
-          chaosDomainId: safeId(domain._id),
-          chaosCheckpoint: currentCheckpoint,
-          chaosArmedAt: now.toISOString(),
+
+  const session = client.startSession()
+  try {
+    await session.withTransaction(async () => {
+      const domainResult = await db.collection(definition.domainCollection).updateOne(
+        { _id: domain._id, status: domain.status },
+        { $set: { leaseExpiresAt: leaseExpiredAt, updatedAt: staleAt } },
+        { session },
+      )
+      if (domainResult.matchedCount !== 1) throw new Error('Domain record changed while arming chaos checkpoint')
+
+      const jobResult = await db.collection(PAYLOAD_JOB_COLLECTION).updateOne(
+        {
+          _id: payloadJob._id,
+          completedAt: payloadJob.completedAt ?? null,
+          processing: payloadJob.processing === true,
+          hasError: payloadJob.hasError === true,
         },
-      },
-    },
-  )
-  if (jobResult.matchedCount !== 1) throw new Error('Payload job changed while arming chaos checkpoint')
+        {
+          $set: {
+            processing: true,
+            hasError: false,
+            error: null,
+            completedAt: null,
+            waitUntil: staleAt,
+            updatedAt: staleAt,
+            meta: {
+              ...meta,
+              chaosScenario: scenario,
+              chaosDomainId: safeId(domain._id),
+              chaosCheckpoint: currentCheckpoint,
+              chaosArmedAt: now.toISOString(),
+            },
+          },
+        },
+        { session },
+      )
+      if (jobResult.matchedCount !== 1) throw new Error('Payload job changed while arming chaos checkpoint')
+    })
+  } finally {
+    await session.endSession()
+  }
 
   return readSnapshot(db, scenario, id)
 }
@@ -448,7 +468,7 @@ async function main() {
     let snapshot
     let result
     if (args.phase === 'arm') {
-      snapshot = await armStalePayloadJob(db, args.scenario, args.id, args.checkpoint, args.staleSeconds)
+      snapshot = await armStalePayloadJob(client, db, args.scenario, args.id, args.checkpoint, args.staleSeconds)
       result = {
         pass: true,
         expectedInvariant: 'the same Payload job is reclaimable after worker restart; no new domain intent is manufactured',
