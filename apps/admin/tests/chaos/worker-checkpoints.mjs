@@ -128,10 +128,16 @@ function observedCheckpoint(domain) {
   return typeof domain?.status === 'string' ? domain.status : null
 }
 
-function payloadJobHealthy(job) {
-  if (!job) return false
-  if (job.processing === true && !job.completedAt) return false
-  return job.hasError !== true
+/**
+ * Payload 3.86 deletes successfully completed job documents by default. A
+ * missing job is therefore healthy only after the durable domain record has
+ * reached its own success terminal. If the job is still retained, it must be
+ * explicitly complete and non-error; transitional/stuck records are not proof
+ * of recovery.
+ */
+function payloadJobConsistent(job, successTerminal) {
+  if (!job) return successTerminal
+  return job.processing !== true && job.hasError !== true && Boolean(job.completedAt)
 }
 
 function expectedInvariantFor(scenario, domain) {
@@ -151,16 +157,17 @@ export function evaluateRecoveredScenario(scenario, snapshot) {
   const definition = scenarioDefinition(scenario)
   const { domain, payloadJob, duplicateCount, related = {} } = snapshot
   const failures = []
+  const successTerminal = Boolean(domain && definition.successStatuses.includes(String(domain.status)))
 
   if (!domain) failures.push('domain_record_missing')
-  if (domain && !definition.successStatuses.includes(String(domain.status))) failures.push('domain_not_success_terminal')
+  if (domain && !successTerminal) failures.push('domain_not_success_terminal')
   if (duplicateCount !== 1) failures.push('duplicate_domain_intent')
-  if (!payloadJobHealthy(payloadJob)) failures.push('payload_job_still_stuck_or_failed')
+  if (!payloadJobConsistent(payloadJob, successTerminal)) failures.push('payload_job_still_stuck_or_failed')
 
   if (
     scenario === 'draft' &&
     domain &&
-    definition.successStatuses.includes(String(domain.status)) &&
+    successTerminal &&
     Number.isFinite(Number(domain.targetDraftRevision))
   ) {
     if (!related.collection || Number(related.collection.draftRevision) < Number(domain.targetDraftRevision)) {
@@ -195,9 +202,11 @@ export function evaluateRecoveredScenario(scenario, snapshot) {
       status: domain?.status ?? null,
       checkpoint: observedCheckpoint(domain),
       fencingToken: Number(domain?.fencingToken ?? 0),
-      payloadJobId: safeId(payloadJob?._id),
+      payloadJobId: safeId(payloadJob?._id ?? domain?.[definition.jobField]),
+      payloadJobRetained: Boolean(payloadJob),
       payloadProcessing: payloadJob?.processing === true,
       payloadHasError: payloadJob?.hasError === true,
+      payloadCompleted: Boolean(payloadJob?.completedAt),
       duplicateCount,
       ...(scenario === 'publish' ? {
         targetVersion: Number(domain?.targetVersion ?? 0),
@@ -269,6 +278,12 @@ Arm requirements:
   be started or committed, the harness fails instead of leaving a half-armed
   domain/job pair.
 
+Verify note:
+  Payload 3.86 is configured to delete successfully completed job documents.
+  Verification therefore accepts a missing payload-jobs row only after the
+  durable domain record itself reached its success terminal and all scenario
+  invariants pass.
+
 Options:
   --checkpoint <name>  Require the current domain checkpoint/status before arming.
   --output <path>      Write the same machine-readable JSON evidence printed to stdout.
@@ -331,7 +346,8 @@ function safeSnapshot(scenario, snapshot) {
     status: domain?.status ?? null,
     checkpoint: observedCheckpoint(domain),
     fencingToken: Number(domain?.fencingToken ?? 0),
-    payloadJobId: safeId(payloadJob?._id),
+    payloadJobId: safeId(payloadJob?._id ?? domain?.[definition.jobField]),
+    payloadJobRetained: Boolean(payloadJob),
     payloadProcessing: payloadJob?.processing === true,
     payloadHasError: payloadJob?.hasError === true,
     payloadCompleted: Boolean(payloadJob?.completedAt),
