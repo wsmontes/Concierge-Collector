@@ -74,6 +74,7 @@ export function createReleasePlan(mode = 'standard', { env = process.env } = {})
     // -test — precisam da mesma chave com que o runbook sobe a API (§2).
     npmStep('Collector unit tests', 'test:collector', { env: adminEnv }),
     npmStep('Admin unit tests', 'test:admin', { env: adminEnv }),
+    npmStep('Admin generated Payload types', 'check:admin-generated', { env: adminEnv }),
     npmStep('Admin typecheck', 'typecheck:admin', { env: adminEnv }),
     npmStep('Admin build', 'build:admin', { env: adminEnv }),
     pythonStep('API unit tests', ['-m', 'pytest', '-m', 'not integration and not external_api and not mongo and not openai', '-q']),
