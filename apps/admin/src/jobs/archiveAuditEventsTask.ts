@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
-import type { Model } from 'mongoose'
+import type { ClientSession, Model } from 'mongoose'
 import type { Payload, TaskConfig } from 'payload'
 import type { ArtifactStore, StoredArtifact } from '../storage/artifact-store'
 import { createS3ArtifactStore } from '../storage/s3-artifact-store'
@@ -89,10 +89,26 @@ async function* oneBuffer(value: Buffer): AsyncIterable<Uint8Array> {
   yield value
 }
 
+async function inTransaction<T>(payload: Payload, work: (session: ClientSession) => Promise<T>): Promise<T> {
+  const session = await payload.db.connection.startSession()
+  try {
+    let result: T | undefined
+    await session.withTransaction(async () => { result = await work(session) })
+    return result as T
+  } finally {
+    await session.endSession()
+  }
+}
+
 /**
  * Archives immutable Admin audit rows to private object storage before removing
- * them from the hot CMS database. The object key and manifest are deterministic
- * so retries after a crash cannot create ambiguous evidence.
+ * them from the hot CMS database. The object key and bytes are deterministic,
+ * so a failed Mongo transaction can safely retry the same upload.
+ *
+ * After upload, manifest persistence, source purge and the completion event are
+ * one Mongo transaction. A committed transaction therefore proves both that
+ * the private artifact is durably referenced and that every selected hot row
+ * is gone before `audit.archive.completed` becomes visible.
  */
 export async function archiveAuditEvents(
   payload: Payload,
@@ -140,7 +156,14 @@ export async function archiveAuditEvents(
       if (stored.sha256 !== encoded.sha256) {
         return { scanned: events.length, archived: 0, preserved: events.length }
       }
+    }
+  } catch {
+    return { scanned: events.length, archived: 0, preserved: events.length }
+  }
 
+  const completionKey = `audit-archive:${encoded.batchKey}:completed`
+  try {
+    await inTransaction(payload, async (session) => {
       await manifests.updateOne(
         { batchKey: encoded.batchKey },
         {
@@ -157,38 +180,41 @@ export async function archiveAuditEvents(
             archivedAt: now,
           },
         },
-        { upsert: true },
+        { upsert: true, session },
       )
-    }
+
+      await eventsModel.deleteMany({ _id: { $in: ids } }, { session })
+      const remaining = await eventsModel.countDocuments({ _id: { $in: ids } }).session(session)
+      if (remaining !== 0) throw new Error('audit source purge incomplete')
+
+      await eventsModel.updateOne(
+        { eventKey: completionKey },
+        {
+          $setOnInsert: {
+            eventKey: completionKey,
+            eventType: 'audit.archive.completed',
+            actorId: 'system:audit-archive',
+            requestId: `maintenance:${encoded.batchKey}`,
+            metadata: {
+              batchKey: encoded.batchKey,
+              artifactKey: stored.key,
+              eventCount: events.length,
+              sha256: stored.sha256,
+            },
+            createdAt: now,
+            updatedAt: now,
+          },
+        },
+        { upsert: true, session },
+      )
+    })
   } catch {
+    // The artifact may already exist, but the deterministic key/content make it
+    // safe to retry. Mongo transaction rollback preserves every hot source row.
     return { scanned: events.length, archived: 0, preserved: events.length }
   }
 
-  const deletion = await eventsModel.deleteMany({ _id: { $in: ids } })
-  const archived = Number(deletion.deletedCount ?? 0)
-  const completionKey = `audit-archive:${encoded.batchKey}:completed`
-  await eventsModel.updateOne(
-    { eventKey: completionKey },
-    {
-      $setOnInsert: {
-        eventKey: completionKey,
-        eventType: 'audit.archive.completed',
-        actorId: 'system:audit-archive',
-        requestId: `maintenance:${encoded.batchKey}`,
-        metadata: {
-          batchKey: encoded.batchKey,
-          artifactKey: stored.key,
-          eventCount: events.length,
-          sha256: stored.sha256,
-        },
-        createdAt: now,
-        updatedAt: now,
-      },
-    },
-    { upsert: true },
-  )
-
-  return { scanned: events.length, archived, preserved: events.length - archived }
+  return { scanned: events.length, archived: events.length, preserved: 0 }
 }
 
 export const archiveAuditEventsTask: TaskConfig<{
