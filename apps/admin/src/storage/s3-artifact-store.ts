@@ -55,9 +55,13 @@ export function createS3ArtifactStore(env: ArtifactStorageEnv = readArtifactStor
       }
     },
 
-    async readUrl(artifact: StoredArtifact): Promise<string> {
+    async readUrl(artifact: StoredArtifact, ttlSeconds = env.signedUrlTtlSeconds): Promise<string> {
+      if (!Number.isInteger(ttlSeconds) || ttlSeconds <= 0) {
+        throw new AdminHttpError(503, 'service_unavailable')
+      }
+      const effectiveTtl = Math.min(ttlSeconds, env.signedUrlTtlSeconds)
       return getSignedUrl(client, new GetObjectCommand({ Bucket: env.bucket, Key: artifact.key }), {
-        expiresIn: env.signedUrlTtlSeconds,
+        expiresIn: effectiveTtl,
       })
     },
 
