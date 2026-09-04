@@ -7,6 +7,9 @@ type DocumentModel = Model<Record<string, unknown>>
 const DEFAULT_STALE_PROCESSING_MS = 3 * 60 * 1000
 const DEFAULT_MAX_RECOVERIES = 3
 const SCAN_LIMIT = 200
+const PAYLOAD_JOB_COLLECTION = 'payload-jobs'
+
+type StuckReason = 'failed' | 'completed' | 'processing'
 
 interface RecoveryOptions {
   staleProcessingMs?: number
@@ -79,7 +82,7 @@ function dateValue(value: unknown): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
-function stuckReason(job: Record<string, unknown>, staleBefore: Date): 'failed' | 'completed' | 'processing' | null {
+function stuckReason(job: Record<string, unknown>, staleBefore: Date): StuckReason | null {
   if (job.hasError === true) return 'failed'
   if (dateValue(job.completedAt)) return 'completed'
   if (job.processing === true) {
@@ -89,31 +92,22 @@ function stuckReason(job: Record<string, unknown>, staleBefore: Date): 'failed' 
   return null
 }
 
-function recoveryCas(jobId: string, reason: 'failed' | 'completed' | 'processing', staleBefore: Date) {
+function recoveryCas(jobId: string, reason: StuckReason, staleBefore: Date) {
   if (reason === 'failed') return { _id: jobId, hasError: true }
   if (reason === 'completed') return { _id: jobId, completedAt: { $ne: null } }
   return { _id: jobId, processing: true, updatedAt: { $lte: staleBefore } }
 }
 
-async function domainCandidates(payload: Payload, source: DomainSource, now: Date): Promise<Record<string, unknown>[]> {
-  return modelFor(payload, source.slug)
-    .find({
-      status: { $in: source.activeStatuses },
-      $or: [
-        { leaseExpiresAt: null },
-        { leaseExpiresAt: { $lt: now } },
-      ],
-      [source.jobField]: { $exists: true, $ne: null },
-    })
-    .sort({ updatedAt: 1, _id: 1 })
-    .select({ _id: 1, [source.jobField]: 1, status: 1, leaseExpiresAt: 1, updatedAt: 1 })
-    .limit(SCAN_LIMIT)
-    .lean() as Promise<Record<string, unknown>[]>
+function leaseReclaimable(domain: Record<string, unknown>, now: Date): boolean {
+  if (domain.leaseExpiresAt === null || domain.leaseExpiresAt === undefined) return true
+  const lease = dateValue(domain.leaseExpiresAt)
+  return Boolean(lease && lease.getTime() < now.getTime())
 }
 
-async function terminalJobCandidates(jobs: DocumentModel, staleBefore: Date): Promise<Record<string, unknown>[]> {
+async function stuckJobCandidates(jobs: DocumentModel, staleBefore: Date): Promise<Record<string, unknown>[]> {
   return jobs.find({
     taskSlug: { $in: DOMAIN_SOURCES.map((source) => source.taskSlug) },
+    'meta.recoveryIgnoredAt': { $exists: false },
     $or: [
       { hasError: true },
       { completedAt: { $exists: true, $ne: null } },
@@ -122,21 +116,84 @@ async function terminalJobCandidates(jobs: DocumentModel, staleBefore: Date): Pr
   }).sort({ updatedAt: 1, _id: 1 }).limit(SCAN_LIMIT).lean() as Promise<Record<string, unknown>[]>
 }
 
-async function successfulDomainForJob(
+async function domainForJob(
   payload: Payload,
   source: DomainSource,
   jobId: string,
 ): Promise<Record<string, unknown> | null> {
-  return modelFor(payload, source.slug).findOne({
-    [source.jobField]: jobId,
-    status: { $in: source.successStatuses },
-  }).lean() as Promise<Record<string, unknown> | null>
+  return modelFor(payload, source.slug)
+    .findOne({ [source.jobField]: jobId })
+    .select({ _id: 1, [source.jobField]: 1, status: 1, leaseExpiresAt: 1 })
+    .lean() as Promise<Record<string, unknown> | null>
+}
+
+/**
+ * Detects active/reclaimable domain intents whose Payload job reference is
+ * missing. The lookup/missing predicate runs before the limit, so thousands of
+ * healthy old intents cannot hide a corrupt newer row from this diagnostic.
+ */
+async function missingDomainCandidates(
+  payload: Payload,
+  source: DomainSource,
+  now: Date,
+): Promise<Record<string, unknown>[]> {
+  return modelFor(payload, source.slug).aggregate([
+    {
+      $match: {
+        status: { $in: source.activeStatuses },
+        $or: [
+          { leaseExpiresAt: null },
+          { leaseExpiresAt: { $lt: now } },
+        ],
+        [source.jobField]: { $exists: true, $ne: null },
+      },
+    },
+    {
+      $lookup: {
+        from: PAYLOAD_JOB_COLLECTION,
+        localField: source.jobField,
+        foreignField: '_id',
+        as: '_recoveryJob',
+      },
+    },
+    { $match: { '_recoveryJob.0': { $exists: false } } },
+    { $sort: { updatedAt: 1, _id: 1 } },
+    { $limit: SCAN_LIMIT },
+    { $project: { _id: 1 } },
+  ]) as Promise<Record<string, unknown>[]>
+}
+
+async function classifyIgnoredJob(
+  jobs: DocumentModel,
+  job: Record<string, unknown>,
+  reason: StuckReason,
+  staleBefore: Date,
+  now: Date,
+  ignoredReason: 'domain_missing' | 'domain_terminal_failure',
+  domainStatus: string | null,
+): Promise<void> {
+  const jobId = String(job.id ?? job._id ?? '')
+  if (!jobId) return
+  await jobs.updateOne(
+    {
+      ...recoveryCas(jobId, reason, staleBefore),
+      'meta.recoveryIgnoredAt': { $exists: false },
+    },
+    {
+      $set: {
+        'meta.recoveryIgnoredAt': now.toISOString(),
+        'meta.recoveryIgnoredReason': ignoredReason,
+        'meta.recoveryIgnoredDomainStatus': domainStatus,
+        updatedAt: now,
+      },
+    },
+  )
 }
 
 async function reopenJob(
   jobs: DocumentModel,
   job: Record<string, unknown>,
-  reason: 'failed' | 'completed' | 'processing',
+  reason: StuckReason,
   staleBefore: Date,
   now: Date,
   maxRecoveries: number,
@@ -176,17 +233,21 @@ async function reopenJob(
 }
 
 /**
- * Re-opens only the SAME Payload job when it is provably stuck. Active domain
- * intents are age-ordered and require a reclaimable domain lease; missing jobs
- * remain operator-visible corruption and are never reconstructed.
+ * Re-opens only the SAME Payload job when it is provably stuck. Recovery starts
+ * from stuck `payload-jobs`, not from an arbitrary slice of domain history, so
+ * healthy queued/backoff intents cannot consume the bounded scan and starve a
+ * newer crashed job.
  *
- * Payload 3.86 uses a permanent `processing` boolean. A worker can therefore
- * crash after committing the durable domain success but before Payload marks
- * or deletes its internal job. Scanning every historical successful domain
- * would starve forever, so this second path starts from the small set of stuck
- * `payload-jobs`, maps only the four domain task slugs, and reopens a job only
- * after its linked domain record proves a success terminal. The rerun is
- * idempotent and lets configured `deleteJobOnComplete` finish internal cleanup.
+ * For an active domain intent, the domain lease must already be reclaimable.
+ * For a durable success terminal, rerunning the same task is safe/idempotent and
+ * allows Payload 3.86 to finish its own completion/delete lifecycle after a
+ * crash between domain commit and internal job cleanup.
+ *
+ * Historical failed/missing domain jobs are classified once in job metadata and
+ * excluded from later scans; they remain stored for investigation but cannot
+ * permanently occupy the first 200 recovery slots. Separately, a lookup-based
+ * diagnostic counts active reclaimable domains whose job document is missing;
+ * it never reconstructs a missing job automatically.
  */
 export async function reconcileRecoverableJobs(
   payload: Payload,
@@ -196,47 +257,54 @@ export async function reconcileRecoverableJobs(
   const staleProcessingMs = options.staleProcessingMs ?? DEFAULT_STALE_PROCESSING_MS
   const maxRecoveries = options.maxRecoveries ?? DEFAULT_MAX_RECOVERIES
   const staleBefore = new Date(now.getTime() - staleProcessingMs)
-  const jobs = modelFor(payload, 'payload-jobs')
+  const jobs = modelFor(payload, PAYLOAD_JOB_COLLECTION)
   const summary: RecoverySummary = { recovered: 0, healthy: 0, exhausted: 0, missing: 0 }
 
-  for (const source of DOMAIN_SOURCES) {
-    const candidates = await domainCandidates(payload, source, now)
-    for (const domain of candidates) {
-      const jobId = String(domain[source.jobField] ?? '')
-      if (!jobId) continue
-      const job = await jobs.findById(jobId).lean() as Record<string, unknown> | null
-      if (!job) {
-        summary.missing += 1
-        continue
-      }
-
-      const reason = stuckReason(job, staleBefore)
-      if (!reason) {
-        summary.healthy += 1
-        continue
-      }
-
-      const outcome = await reopenJob(jobs, job, reason, staleBefore, now, maxRecoveries, false)
-      if (outcome === 'recovered') summary.recovered += 1
-      else if (outcome === 'exhausted') summary.exhausted += 1
-      else summary.healthy += 1
-    }
-  }
-
-  const terminalJobs = await terminalJobCandidates(jobs, staleBefore)
-  for (const job of terminalJobs) {
+  const stuckJobs = await stuckJobCandidates(jobs, staleBefore)
+  for (const job of stuckJobs) {
     const source = SOURCE_BY_TASK.get(String(job.taskSlug ?? ''))
     const jobId = String(job.id ?? job._id ?? '')
     if (!source || !jobId) continue
-    const domain = await successfulDomainForJob(payload, source, jobId)
-    if (!domain) continue // active-domain path or unrelated historical job
     const reason = stuckReason(job, staleBefore)
     if (!reason) continue
 
-    const outcome = await reopenJob(jobs, job, reason, staleBefore, now, maxRecoveries, true)
+    const domain = await domainForJob(payload, source, jobId)
+    if (!domain) {
+      await classifyIgnoredJob(jobs, job, reason, staleBefore, now, 'domain_missing', null)
+      continue
+    }
+
+    const domainStatus = String(domain.status ?? '')
+    const success = source.successStatuses.includes(domainStatus)
+    const active = source.activeStatuses.includes(domainStatus)
+
+    if (!success && !active) {
+      await classifyIgnoredJob(
+        jobs,
+        job,
+        reason,
+        staleBefore,
+        now,
+        'domain_terminal_failure',
+        domainStatus || null,
+      )
+      continue
+    }
+
+    if (active && !leaseReclaimable(domain, now)) {
+      summary.healthy += 1
+      continue
+    }
+
+    const outcome = await reopenJob(jobs, job, reason, staleBefore, now, maxRecoveries, success)
     if (outcome === 'recovered') summary.recovered += 1
     else if (outcome === 'exhausted') summary.exhausted += 1
     else summary.healthy += 1
+  }
+
+  for (const source of DOMAIN_SOURCES) {
+    const missing = await missingDomainCandidates(payload, source, now)
+    summary.missing += missing.length
   }
 
   return summary
