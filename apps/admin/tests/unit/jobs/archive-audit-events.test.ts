@@ -13,27 +13,52 @@ function chain<T>(value: T) {
   }
 }
 
-function harness(events: Record<string, unknown>[], options: { manifestFails?: boolean; uploadFails?: boolean } = {}) {
+function harness(
+  events: Record<string, unknown>[],
+  options: { manifestFails?: boolean; uploadFails?: boolean; remainingAfterDelete?: number } = {},
+) {
   const order: string[] = []
-  const auditUpdateOne = vi.fn().mockImplementation(async () => { order.push('completion-event'); return { upsertedCount: 1 } })
+  const session = {
+    withTransaction: vi.fn().mockImplementation(async (callback: () => Promise<unknown>) => {
+      order.push('transaction')
+      return callback()
+    }),
+    endSession: vi.fn().mockImplementation(async () => { order.push('end-session') }),
+  }
+  const auditUpdateOne = vi.fn().mockImplementation(async () => {
+    order.push('completion-event')
+    return { upsertedCount: 1 }
+  })
   const manifestUpdateOne = vi.fn().mockImplementation(async () => {
     order.push('manifest')
     if (options.manifestFails) throw new Error('manifest failed')
     return { upsertedCount: 1 }
   })
-  const deleteMany = vi.fn().mockImplementation(async () => { order.push('delete-source'); return { deletedCount: events.length } })
+  const deleteMany = vi.fn().mockImplementation(async () => {
+    order.push('delete-source')
+    return { deletedCount: events.length }
+  })
+  const countSession = vi.fn().mockImplementation(async () => {
+    order.push('verify-source-purge')
+    return options.remainingAfterDelete ?? 0
+  })
+  const countDocuments = vi.fn().mockReturnValue({ session: countSession })
   const payload = {
-    db: { collections: {
-      'audit-events': {
-        find: vi.fn().mockReturnValue(chain(events)),
-        updateOne: auditUpdateOne,
-        deleteMany,
+    db: {
+      connection: { startSession: vi.fn().mockResolvedValue(session) },
+      collections: {
+        'audit-events': {
+          find: vi.fn().mockReturnValue(chain(events)),
+          updateOne: auditUpdateOne,
+          deleteMany,
+          countDocuments,
+        },
+        'audit-archive-manifests': {
+          findOne: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }),
+          updateOne: manifestUpdateOne,
+        },
       },
-      'audit-archive-manifests': {
-        findOne: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }),
-        updateOne: manifestUpdateOne,
-      },
-    } },
+    },
   }
   const uploaded: Uint8Array[] = []
   const store = {
@@ -54,7 +79,10 @@ function harness(events: Record<string, unknown>[], options: { manifestFails?: b
       }
     }),
   }
-  return { payload, store, order, uploaded, manifestUpdateOne, deleteMany, auditUpdateOne }
+  return {
+    payload, store, order, uploaded, manifestUpdateOne, deleteMany,
+    auditUpdateOne, countDocuments, session,
+  }
 }
 
 const oldEvents = [
@@ -68,18 +96,25 @@ const oldEvents = [
   },
 ]
 
-test('uploads deterministic gzip, persists manifest, then deletes source and emits completion audit', async () => {
-  const { payload, store, order, uploaded, manifestUpdateOne, deleteMany } = harness(oldEvents)
+test('uploads deterministic gzip then atomically manifests, purges source and emits completion audit', async () => {
+  const { payload, store, order, uploaded, manifestUpdateOne, deleteMany, session } = harness(oldEvents)
 
   const result = await archiveAuditEvents(payload as never, store as never, now, { retentionDays: 365, batchSize: 100 })
 
   expect(result).toMatchObject({ scanned: 2, archived: 2, preserved: 0 })
-  expect(order).toEqual(['upload', 'manifest', 'delete-source', 'completion-event'])
-  expect(deleteMany).toHaveBeenCalledWith({ _id: { $in: ['audit-1', 'audit-2'] } })
+  expect(order).toEqual([
+    'upload', 'transaction', 'manifest', 'delete-source',
+    'verify-source-purge', 'completion-event', 'end-session',
+  ])
+  expect(session.withTransaction).toHaveBeenCalledTimes(1)
+  expect(deleteMany).toHaveBeenCalledWith(
+    { _id: { $in: ['audit-1', 'audit-2'] } },
+    { session },
+  )
   expect(manifestUpdateOne).toHaveBeenCalledWith(
     expect.objectContaining({ batchKey: expect.any(String) }),
     { $setOnInsert: expect.objectContaining({ eventCount: 2, sha256: expect.stringMatching(/^[a-f0-9]{64}$/) }) },
-    { upsert: true },
+    { upsert: true, session },
   )
 
   const ndjson = gunzipSync(Buffer.concat(uploaded.map((chunk) => Buffer.from(chunk)))).toString('utf8')
@@ -90,8 +125,8 @@ test('uploads deterministic gzip, persists manifest, then deletes source and emi
   ])
 })
 
-test('preserves all source events if private upload fails', async () => {
-  const { payload, store, manifestUpdateOne, deleteMany, auditUpdateOne } = harness(oldEvents, { uploadFails: true })
+test('preserves all source events if private upload fails before opening a transaction', async () => {
+  const { payload, store, manifestUpdateOne, deleteMany, auditUpdateOne, session } = harness(oldEvents, { uploadFails: true })
 
   const result = await archiveAuditEvents(payload as never, store as never, now)
 
@@ -99,16 +134,30 @@ test('preserves all source events if private upload fails', async () => {
   expect(manifestUpdateOne).not.toHaveBeenCalled()
   expect(deleteMany).not.toHaveBeenCalled()
   expect(auditUpdateOne).not.toHaveBeenCalled()
+  expect(session.withTransaction).not.toHaveBeenCalled()
 })
 
-test('preserves source events if archive manifest cannot be persisted', async () => {
-  const { payload, store, deleteMany, auditUpdateOne } = harness(oldEvents, { manifestFails: true })
+test('preserves source events if archive manifest transaction cannot be persisted', async () => {
+  const { payload, store, deleteMany, auditUpdateOne, session } = harness(oldEvents, { manifestFails: true })
 
   const result = await archiveAuditEvents(payload as never, store as never, now)
 
   expect(result).toEqual({ scanned: 2, archived: 0, preserved: 2 })
+  expect(session.withTransaction).toHaveBeenCalledTimes(1)
   expect(deleteMany).not.toHaveBeenCalled()
   expect(auditUpdateOne).not.toHaveBeenCalled()
+  expect(session.endSession).toHaveBeenCalledTimes(1)
+})
+
+test('does not emit completion when any selected source row remains after purge', async () => {
+  const { payload, store, auditUpdateOne, session } = harness(oldEvents, { remainingAfterDelete: 1 })
+
+  const result = await archiveAuditEvents(payload as never, store as never, now)
+
+  expect(result).toEqual({ scanned: 2, archived: 0, preserved: 2 })
+  expect(session.withTransaction).toHaveBeenCalledTimes(1)
+  expect(auditUpdateOne).not.toHaveBeenCalled()
+  expect(session.endSession).toHaveBeenCalledTimes(1)
 })
 
 test('selects only events older than the hot-retention cutoff in bounded order', async () => {
