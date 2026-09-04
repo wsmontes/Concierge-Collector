@@ -65,3 +65,18 @@ test('returns 503 with safe status when database ping fails', async () => {
   })
   expect(mocks.checkSchema).not.toHaveBeenCalled()
 })
+
+test('fails closed when Payload has no Mongo database handle', async () => {
+  mocks.getPayload.mockResolvedValue({ db: { connection: { db: undefined } } })
+
+  const response = await GET()
+
+  expect(response.status).toBe(503)
+  expect(await response.json()).toEqual({
+    status: 'not_ready',
+    service: 'concierge-admin',
+    checks: { database: 'not_ready', schema: 'unknown' },
+  })
+  expect(mocks.ping).not.toHaveBeenCalled()
+  expect(mocks.checkSchema).not.toHaveBeenCalled()
+})
