@@ -123,7 +123,12 @@ export function evaluateRecoveredScenario(scenario, snapshot) {
   if (duplicateCount !== 1) failures.push('duplicate_domain_intent')
   if (!payloadJobHealthy(payloadJob)) failures.push('payload_job_still_stuck_or_failed')
 
-  if (scenario === 'draft' && domain?.status === 'committed' && Number.isFinite(Number(domain.targetDraftRevision))) {
+  if (
+    scenario === 'draft' &&
+    domain &&
+    definition.successStatuses.includes(String(domain.status)) &&
+    Number.isFinite(Number(domain.targetDraftRevision))
+  ) {
     if (!related.collection || Number(related.collection.draftRevision) < Number(domain.targetDraftRevision)) {
       failures.push('draft_revision_not_advanced')
     }
