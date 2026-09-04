@@ -1,6 +1,6 @@
 import type { Payload } from 'payload'
 
-export const LATEST_CMS_MIGRATION = '20260904_015_export_cleanup_backoff'
+export const LATEST_CMS_MIGRATION = '20260904_016_operation_retention_quarantine'
 
 type IndexSignature = {
   name: string
@@ -19,6 +19,16 @@ const REQUIRED_INDEXES: Readonly<Record<string, readonly IndexSignature[]>> = {
   'collection-operations': [
     { name: 'operation_queue_order', key: { collectionId: 1, operationSequence: 1, status: 1 } },
     { name: 'operation_retention_scan', key: { status: 1, 'itemArchive.itemsPurgedAt': 1, updatedAt: 1 } },
+    {
+      name: 'operation_retention_due',
+      key: {
+        status: 1,
+        'itemArchive.itemsPurgedAt': 1,
+        'itemArchive.retentionBlockedAt': 1,
+        updatedAt: 1,
+        _id: 1,
+      },
+    },
   ],
   'collection-publish-jobs': [
     { name: 'publish_lease_expiry', key: { status: 1, leaseExpiresAt: 1 } },
