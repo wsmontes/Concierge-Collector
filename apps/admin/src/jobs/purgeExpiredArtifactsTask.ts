@@ -24,6 +24,9 @@ const DEFAULT_BATCH_SIZE = 500
 const DEFAULT_EXPORT_PURGE_BATCH_SIZE = 100
 const DEFAULT_OPERATION_ITEM_RETENTION_DAYS = 90
 const DEFAULT_OPERATION_ITEM_BATCH_SIZE = 100
+const EXPORT_CLEANUP_BASE_BACKOFF_MS = 60 * 60 * 1000
+const EXPORT_CLEANUP_MAX_BACKOFF_MS = 24 * 60 * 60 * 1000
+const MAINTENANCE_WRITE_OPTIONS = { timestamps: false } as const
 
 export interface OrphanStagingPurgeSummary {
   scanned: number
@@ -52,11 +55,48 @@ function modelFor(payload: Payload, slug: string): DocumentModel {
   return model as unknown as DocumentModel
 }
 
+function priorCleanupAttempts(value: unknown): number {
+  const parsed = Number(value ?? 0)
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0
+}
+
+function exportCleanupRetryAt(now: Date, priorAttempts: number): Date {
+  const multiplier = 2 ** Math.min(priorAttempts, 10)
+  const delay = Math.min(EXPORT_CLEANUP_MAX_BACKOFF_MS, EXPORT_CLEANUP_BASE_BACKOFF_MS * multiplier)
+  return new Date(now.getTime() + delay)
+}
+
+async function backoffExportCleanup(
+  exportsModel: DocumentModel,
+  row: Record<string, unknown>,
+  now: Date,
+): Promise<void> {
+  const id = row.id ?? row._id
+  if (id === null || id === undefined) return
+  const prior = priorCleanupAttempts(row.cleanupAttempts)
+  await exportsModel.updateOne(
+    {
+      _id: id,
+      expiresAt: { $lte: now },
+      status: row.status,
+    },
+    {
+      $set: {
+        cleanupAttempts: prior + 1,
+        cleanupLastAttemptAt: now,
+        cleanupNextAttemptAt: exportCleanupRetryAt(now, prior),
+      },
+    },
+    MAINTENANCE_WRITE_OPTIONS,
+  )
+}
+
 /**
  * Purges expired export references conservatively. When an artifact key exists,
  * object storage is deleted first; the CMS reference is removed only after the
- * DeleteObject call succeeds. A failed storage cleanup therefore remains
- * visible/retryable instead of becoming an untraceable orphan object.
+ * DeleteObject call succeeds. A failed storage/database cleanup retains the
+ * reference and receives exponential backoff (1h, 2h, 4h, ... max 24h), so a
+ * permanently poisoned object cannot occupy every bounded batch forever.
  *
  * Queued/running exports are never selected even if their expiry timestamp has
  * passed: recovery/reconciliation owns those nonterminal records.
@@ -72,7 +112,12 @@ export async function purgeExpiredExports(
   const candidates = await exportsModel.find({
     expiresAt: { $lte: now },
     status: { $in: ['complete', 'failed'] },
-  }).sort({ expiresAt: 1, _id: 1 }).limit(batchSize).lean() as Record<string, unknown>[]
+    $or: [
+      { cleanupNextAttemptAt: { $exists: false } },
+      { cleanupNextAttemptAt: null },
+      { cleanupNextAttemptAt: { $lte: now } },
+    ],
+  }).sort({ cleanupNextAttemptAt: 1, expiresAt: 1, _id: 1 }).limit(batchSize).lean() as Record<string, unknown>[]
 
   let deleted = 0
   let preserved = 0
@@ -98,8 +143,15 @@ export async function purgeExpiredExports(
       if (Number(result.deletedCount ?? 0) === 1) deleted += 1
       else preserved += 1
     } catch {
-      // Fail safe: retain the CMS record so maintenance can retry and operators
-      // still have the object key/evidence needed to investigate storage.
+      // Fail safe: retain the CMS reference and rotate it out of the immediate
+      // due batch. Error text is deliberately not persisted (it may contain
+      // provider internals); attempts/timestamps are sufficient for operations.
+      try {
+        await backoffExportCleanup(exportsModel, row, now)
+      } catch {
+        // If Mongo is unavailable too, the untouched record remains visible and
+        // will be retried on a later maintenance run.
+      }
       preserved += 1
     }
   }
