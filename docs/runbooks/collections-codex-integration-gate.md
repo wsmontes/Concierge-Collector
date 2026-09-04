@@ -85,6 +85,7 @@ npm run test --workspace=@concierge/admin -- \
   tests/unit/operations/schema-readiness.test.ts \
   tests/unit/observability/ready-route.test.ts \
   tests/unit/jobs/purge-expired-exports.test.ts \
+  tests/unit/jobs/purge-expired-exports-backoff.test.ts \
   tests/unit/jobs/compact-operation-items.test.ts \
   tests/unit/jobs/operation-item-retention-age.test.ts \
   tests/unit/jobs/operation-item-retention-bounded.test.ts \
@@ -128,9 +129,10 @@ Run against disposable CMS Mongo ending in `-test`:
 ```bash
 npm run test:integration --workspace=@concierge/admin -- \
   tests/integration/payload/collection-indexes.int.test.ts \
-  tests/integration/payload/ready-route.int.test.ts \
   tests/integration/worker/export-expiry.int.test.ts
 ```
+
+Readiness itself is covered by the unit route/schema contracts above and by the real pre/post-migration transition below; there is no separate `ready-route.int.test.ts` file.
 
 Then apply under the existing migration lock:
 
