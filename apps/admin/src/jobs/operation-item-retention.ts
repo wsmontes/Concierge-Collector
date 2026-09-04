@@ -23,6 +23,7 @@ const SUCCESS_TERMINAL_STATUS_SET = new Set<string>(SUCCESS_TERMINAL_STATUSES)
 const DEFAULT_RETENTION_DAYS = 90
 const DEFAULT_BATCH_SIZE = 100
 const DETAIL_CURSOR_BATCH_SIZE = 1_000
+const RETENTION_WRITE_OPTIONS = { timestamps: false } as const
 
 export interface OperationItemRetentionOptions {
   retentionDays?: number
@@ -138,6 +139,7 @@ async function markPurgeStarted(
       'itemArchive.itemsPurgedAt': { $exists: false },
     },
     { $set: { 'itemArchive.purgeStartedAt': now.toISOString() } },
+    RETENTION_WRITE_OPTIONS,
   )
   return Number(marked.modifiedCount ?? 0) === 1
 }
@@ -163,6 +165,7 @@ async function markItemsPurged(
         'itemArchive.purgedItemCount': purgedItemCount,
       },
     },
+    RETENTION_WRITE_OPTIONS,
   )
   return Number(marked.modifiedCount ?? 0) === 1
 }
@@ -179,6 +182,11 @@ async function markItemsPurged(
  * review. Failed/cancelled materialization may legitimately stop with partial
  * item detail. A cursor/read failure preserves only that operation and does not
  * prevent later candidates in the same bounded batch from being maintained.
+ *
+ * Retention metadata writes disable Mongoose timestamps. These writes are not
+ * semantic operation edits and must not renew `updatedAt`; otherwise a failed
+ * purge could disappear from the 90-day scan until another full retention
+ * window elapsed.
  *
  * `purgeStartedAt` is durable before deletion. Once present, retries never
  * rehash a partial subset: they delete whatever remains for the same
@@ -254,6 +262,7 @@ export async function compactTerminalOperationItems(
             itemArchive: { $exists: false },
           },
           { $set: { itemArchive } },
+          RETENTION_WRITE_OPTIONS,
         )
         if (Number(persisted.modifiedCount ?? 0) !== 1) {
           preservedOperations += 1
