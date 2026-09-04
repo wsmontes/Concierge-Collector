@@ -9,7 +9,9 @@ export async function GET() {
   try {
     const payload = await getPayload({ config })
     try {
-      await payload.db.connection.db?.admin().ping()
+      const database = payload.db.connection.db
+      if (!database) throw new Error('Mongo database handle unavailable')
+      await database.admin().ping()
     } catch {
       return NextResponse.json({
         status: 'not_ready',
