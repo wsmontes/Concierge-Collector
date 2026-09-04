@@ -40,7 +40,7 @@ integrationSuite('Collections CMS indexes', () => {
       unique: true,
     })
     expect(await byName('collection_operations', 'operation_retention_scan')).toMatchObject({
-      key: { status: 1, updatedAt: 1 },
+      key: { status: 1, 'itemArchive.itemsPurgedAt': 1, updatedAt: 1 },
     })
     expect(await names('collection_publish_jobs')).toContain('publish_lease_expiry')
 
