@@ -4,7 +4,7 @@ import type { Model } from 'mongoose'
 import type { Payload, TaskConfig } from 'payload'
 import type { ArtifactStore } from '../storage/artifact-store'
 import { createS3ArtifactStore } from '../storage/s3-artifact-store'
-import { readRetentionInt } from '../retention-policy'
+import { readPositiveInt, readRetentionInt } from '../retention-policy'
 import { compactTerminalOperationItems } from './operation-item-retention'
 
 type DocumentModel = Model<Record<string, unknown>>
@@ -50,13 +50,6 @@ function modelFor(payload: Payload, slug: string): DocumentModel {
   const model = payload.db.collections[slug]
   if (!model) throw new Error(`Missing CMS collection model: ${slug}`)
   return model as unknown as DocumentModel
-}
-
-function positiveInt(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim()
-  if (!raw) return fallback
-  const value = Number(raw)
-  return Number.isInteger(value) && value > 0 ? value : fallback
 }
 
 /**
@@ -212,15 +205,15 @@ export const purgeExpiredArtifactsTask: TaskConfig<{
   handler: async ({ req }) => {
     const now = new Date()
     const exportsSummary = await purgeExpiredExports(req.payload, null, now, {
-      batchSize: positiveInt('CMS_EXPORT_PURGE_BATCH_SIZE', DEFAULT_EXPORT_PURGE_BATCH_SIZE),
+      batchSize: readPositiveInt('CMS_EXPORT_PURGE_BATCH_SIZE', DEFAULT_EXPORT_PURGE_BATCH_SIZE),
     })
     const operationSummary = await compactTerminalOperationItems(req.payload, now, {
       retentionDays: readRetentionInt('CMS_OPERATION_ITEM_RETENTION_DAYS', DEFAULT_OPERATION_ITEM_RETENTION_DAYS),
-      batchSize: positiveInt('CMS_OPERATION_ITEM_BATCH_SIZE', DEFAULT_OPERATION_ITEM_BATCH_SIZE),
+      batchSize: readPositiveInt('CMS_OPERATION_ITEM_BATCH_SIZE', DEFAULT_OPERATION_ITEM_BATCH_SIZE),
     })
     const stagingSummary = await purgeOrphanStaging(req.payload, now, {
       retentionDays: readRetentionInt('CMS_ORPHAN_STAGING_RETENTION_DAYS', DEFAULT_RETENTION_DAYS),
-      batchSize: positiveInt('CMS_ORPHAN_STAGING_BATCH_SIZE', DEFAULT_BATCH_SIZE),
+      batchSize: readPositiveInt('CMS_ORPHAN_STAGING_BATCH_SIZE', DEFAULT_BATCH_SIZE),
     })
     return {
       output: {
