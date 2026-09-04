@@ -225,7 +225,9 @@ async function markItemsPurged(
  * `purgeStartedAt` is durable before deletion. Once present, retries never
  * rehash a partial subset: they delete whatever remains for the same
  * operationId, verify the detail collection is empty, and finish
- * `itemsPurgedAt` from the immutable pre-delete summary.
+ * `itemsPurgedAt` from the immutable pre-delete summary. The immutable archive
+ * itself is validated before every destructive retry; if its item count is no
+ * longer valid, remaining detail is preserved and the operation is quarantined.
  */
 export async function compactTerminalOperationItems(
   payload: Payload,
@@ -358,6 +360,28 @@ export async function compactTerminalOperationItems(
       continue
     }
 
+    const archivedItemCount = Number(archive.itemCount)
+    if (!Number.isInteger(archivedItemCount) || archivedItemCount < 0) {
+      try {
+        await quarantineRetention(
+          operations,
+          operation,
+          'invalid_archive_item_count',
+          now,
+          {},
+          {
+            'itemArchive.sha256': archive.sha256,
+            'itemArchive.purgeStartedAt': { $exists: true },
+          },
+        )
+      } catch {
+        // No destructive retry has occurred in this invocation. Any detail that
+        // still exists remains intact and the archive stays visible for review.
+      }
+      preservedOperations += 1
+      continue
+    }
+
     try {
       const deletion = await itemsModel.deleteMany({ operationId })
       const removed = Number(deletion.deletedCount ?? 0)
@@ -370,27 +394,6 @@ export async function compactTerminalOperationItems(
         continue
       }
 
-      const archivedItemCount = Number(archive.itemCount)
-      if (!Number.isInteger(archivedItemCount) || archivedItemCount < 0) {
-        try {
-          await quarantineRetention(
-            operations,
-            operation,
-            'invalid_archive_item_count',
-            now,
-            {},
-            {
-              'itemArchive.sha256': archive.sha256,
-              'itemArchive.purgeStartedAt': { $exists: true },
-            },
-          )
-        } catch {
-          // The source rows may already be gone, but the invalid immutable
-          // archive remains visible and retryable for quarantine classification.
-        }
-        preservedOperations += 1
-        continue
-      }
       const marked = await markItemsPurged(operations, operation, String(archive.sha256), now, archivedItemCount)
       if (!marked) {
         // Detail may already be gone; absence of the completion marker keeps
