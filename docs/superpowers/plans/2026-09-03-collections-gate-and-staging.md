@@ -1,44 +1,50 @@
 # Collections Gate and Staging Implementation Plan
 
-> **Execution rule:** this plan is intentionally deferred to the final Codex/runtime pass. ChatGPT prepares all software, tests and procedures but does not self-attest staging evidence.
+> **Execution rule:** this plan belongs to the final Codex/runtime pass. ChatGPT prepares software, tests and procedures but does not self-attest runtime or staging evidence.
 
 **Goal:** Qualify the complete Collections closeout on disposable staging and produce real, commit-bound evidence for all 20 normative acceptance criteria.
 
-**Architecture:** Admin Web and background Worker run against a disposable CMS database in Render; FastAPI remains the operational authority. All production Collections flags stay off. Staging exercises the same migration stream, private storage, recovery and retention behavior that production will use.
+**Architecture:** Admin Web and background Worker run against a disposable CMS database; FastAPI remains the operational Entity/Curation/auth authority. Production Collections flags stay off while staging exercises the same migration stream, private storage, recovery and retention behavior intended for production.
 
-**Tech Stack:** Node 22, Vitest, Payload CMS, MongoDB Atlas, private S3-compatible storage, Render Docker services, Render REST API.
+**Tech Stack:** Node 22, npm 10, Vitest, Payload CMS 3.86, MongoDB, private S3-compatible storage, FastAPI, Playwright and Render staging services.
 
-**Specs:**
-- `docs/superpowers/specs/2026-09-03-render-collections-rollout-design.md`
-- `docs/superpowers/specs/2026-09-04-collections-production-closeout-design.md`
+## Global constraints
 
-## Global Constraints
-
-- Never print, commit or copy a secret value into command output or evidence.
+- Never print, commit or copy secret values into evidence.
 - Staging CMS databases must end in `-test`; production databases are never used by test/chaos commands.
-- Remote chaos requires `CONCIERGE_ALLOW_REMOTE_CHAOS=1`; its destructive arm phase also requires the worker to be stopped and `CONCIERGE_CHAOS_WORKER_STOPPED=1`.
-- Render staging uses Admin Web + private Worker from `Dockerfile.admin`; no Blueprint adoption.
-- Keep every Collections feature flag `false` in production throughout staging qualification.
-- Evidence refers to the exact 40-character commit SHA that staging deploys.
-- `GET /ready` is a read-only gate. Never weaken it or make it migrate schema.
+- Remote chaos requires `CONCIERGE_ALLOW_REMOTE_CHAOS=1`; destructive arm additionally requires worker stopped + `CONCIERGE_CHAOS_WORKER_STOPPED=1`.
+- Render staging uses Git-backed Admin Web + private Worker; no Blueprint adoption.
+- Keep every production Collections feature flag `false` during staging qualification.
+- Evidence must identify the exact 40-character candidate SHA.
+- `GET /ready` is read-only and may never be weakened to run migrations/DDL.
+- Recovery must operate on the same original domain/Payload job; no replacement intent/job is allowed.
 
----
+## Task 1 — Local closeout gate before staging
 
-### Task 1: Local closeout gate before staging
+Run from a clean checkout of the candidate branch:
 
-- [ ] Install the pinned toolchain with `npm ci` under Node `>=22.12 <23` / npm 10.
-- [ ] Regenerate Payload types/import map only through official generators; do not hand-edit generated unions.
-- [ ] Run the targeted closeout tests listed in `docs/runbooks/collections-codex-integration-gate.md`.
-- [ ] Run `npm run verify` and then `npm run verify:full` against disposable local `*-test` databases.
-- [ ] Fix concrete compile/test/runtime defects without reopening the frozen architecture.
+```bash
+node --version
+npm --version
+npm ci
+npm run generate:types --workspace=@concierge/admin
+npm run generate:importmap --workspace=@concierge/admin
+npm run generate:contracts
+npm run check:admin-generated
+npm run check:contracts
+npm run verify
+npm run verify:full
+```
 
-The acceptance validator fixture at `tests/fixtures/complete-collections-acceptance.json` remains only a validator fixture and is never release evidence.
+Use only disposable local `*-test` databases for full integration/E2E. Fix concrete runtime defects without reopening the frozen architecture.
 
-### Task 2: Provision isolated Render staging services
+The acceptance validator fixture at `tests/fixtures/complete-collections-acceptance.json` remains validator-only and is never release evidence.
 
-Create Git-backed `Concierge-Collector-Admin-Staging` and `Concierge-Collector-Admin-Worker-Staging` from the exact candidate SHA. The Worker has no public domain.
+## Task 2 — Provision isolated staging services
 
-Admin/Worker protected environment names include:
+Deploy the exact candidate SHA to a Git-backed Admin Web and private Admin Worker. The Worker has no public domain.
+
+Required protected/environment names include:
 
 ```text
 CMS_MONGODB_URL
@@ -59,7 +65,7 @@ S3_EXPORT_PREFIX
 S3_SIGNED_URL_TTL_SECONDS
 ```
 
-Staging operational values begin from the production defaults unless a deliberately shorter retention window is needed to exercise maintenance:
+Versioned operational defaults:
 
 ```text
 CMS_JOB_RECOVERY_STALE_SECONDS=180
@@ -75,87 +81,123 @@ CMS_AUDIT_RETENTION_DAYS=365
 CMS_AUDIT_ARCHIVE_BATCH_SIZE=1000
 ```
 
-Every feature flag starts `false`: `CMS_AUTH_ENABLED`, `CATALOG_SCAN_ENABLED`, `COLLECTIONS_ADMIN_ENABLED`, `COLLECTOR_ASSOCIATION_READ_ENABLED`, `COLLECTOR_DRAFT_MUTATION_ENABLED`, `CONSUMER_CREDENTIALS_ENABLED`, `COLLECTIONS_DISTRIBUTION_ENABLED`.
+Every Collections feature flag begins `false`: `CMS_AUTH_ENABLED`, `CATALOG_SCAN_ENABLED`, `COLLECTIONS_ADMIN_ENABLED`, `COLLECTOR_ASSOCIATION_READ_ENABLED`, `COLLECTOR_DRAFT_MUTATION_ENABLED`, `CONSUMER_CREDENTIALS_ENABLED`, `COLLECTIONS_DISTRIBUTION_ENABLED`.
 
-Record only service IDs, hostnames, SHA, environment-variable names, non-secret numeric/boolean values and timestamps.
+Record only non-secret values, service/deploy IDs, hostnames, timestamps and SHA.
 
-### Task 3: Run closeout migrations and readiness
+## Task 3 — Apply closeout migrations and prove readiness transition
 
-- [ ] Stop write traffic/worker as required by the migration runbook and acquire the existing migration lock.
-- [ ] Run `npm run migrate:cms:locked` exactly once against staging.
-- [ ] Verify the migration stream includes:
+Under the existing migration lock:
+
+```bash
+npm run migrate:cms:locked
+```
+
+The staging database must record this complete closeout tail:
 
 ```text
-20260902_009_operational_retention
-20260902_010_selection_retention
 20260904_011_export_cleanup_retention
 20260904_012_operation_item_retention
 20260904_013_audit_archival
+20260904_014_staging_retention_scan
+20260904_015_export_cleanup_backoff
+20260904_016_operation_retention_quarantine
 ```
 
-- [ ] Verify `export_artifact_ttl` is absent and the closeout indexes exist: `export_expiry_status`, `operation_retention_scan`, `audit_archive_scan`, `audit_archive_batch_unique`.
-- [ ] Require Admin `/ready` to return 200 after migration. Before migration, a schema-related 503 is expected and must not be bypassed.
-- [ ] Run `scripts/operations/cms-backup-restore-smoke.sh` into a `*-restore-test` destination and verify counts/version hashes.
+Verify at minimum:
 
-### Task 4: Exercise retention and archival behavior
+- `export_artifact_ttl` absent;
+- `export_expiry_status` present;
+- `export_cleanup_due` present with exact key order;
+- `operation_retention_due` present with quarantine-aware key order;
+- `staging_retention_scan` present;
+- `audit_archive_scan` present;
+- `audit_archive_batch_unique` unique;
+- heartbeat TTL remains seven days;
+- no product-domain TTL is introduced.
 
-Using disposable data and, where useful, shortened **staging-only** windows:
+`GET /ready` must remain 503 while migration 016 or any required index signature is missing, and return 200 only after the deployed schema matches the source allowlist. Do not repair schema from the endpoint.
 
-- [ ] Expired completed export with an object: prove `DeleteObject` occurs before CMS record removal.
-- [ ] Storage deletion failure: prove the export reference survives and can retry.
-- [ ] Old terminal operation items: prove summary counts/SHA persist before detail deletion.
-- [ ] Simulate deletion failure after the operation summary: prove the parent stays eligible and later retry finishes without rewriting the original digest.
-- [ ] Simulate crash after operation detail deletion but before the purge marker: prove next run completes the marker rather than blocking the scan forever.
-- [ ] Old Admin audit batch: prove deterministic private NDJSON-gzip + manifest + SHA exist before source deletion.
-- [ ] Prove Collections, versions, membership intervals, applications and credentials have no TTL.
+## Task 4 — Exercise maintenance and archival behavior
 
-Capture worker task summaries and object/manifest identifiers only; never signed URLs, object-store credentials or Mongo URIs.
+Using controlled disposable data and, where useful, shorter **staging-only** windows:
 
-### Task 5: Produce real worker crash/recovery evidence
+### Exports
 
-Create one real draft operation, publish job, selection materialization and export on staging. For each scenario use `npm run chaos:worker-checkpoints` against the **same domain record and same Payload job**.
+- expired completed export with object → prove DeleteObject before CMS reference deletion;
+- object deletion failure → prove CMS reference survives, `cleanupAttempts` increments and `cleanupNextAttemptAt` advances;
+- prove a backed-off bad export does not starve other due exports;
+- after backoff expiry/storage recovery, prove cleanup converges;
+- expired failed export without object may be deleted without storage I/O.
 
-Flow for each scenario:
+### Operation items
+
+- old valid terminal detail → prove deterministic summary/SHA before delete;
+- partial delete/crash after `purgeStartedAt` → prove retry skips partial rehash and eventually finishes;
+- crash after rows disappear but before `itemsPurgedAt` → prove marker recovers from immutable summary;
+- successful intact detail with selected-count contradiction → prove no deletion and `retentionBlocked*` quarantine;
+- archive/detail contradiction before purge → prove no deletion and quarantine;
+- prove a quarantined oldest operation does not starve later safe candidates;
+- verify retention metadata writes do not renew semantic `updatedAt`.
+
+### Admin audit
+
+- upload failure → source remains;
+- manifest persistence failure → source remains;
+- matching pre-existing manifest → crash recovery can finish source deletion;
+- mismatching manifest/batch → source remains and forward archival deliberately stops for operator investigation;
+- `audit.archive.completed` is emitted only after source deletion and outside the archived batch.
+
+## Task 5 — Produce real worker crash/recovery evidence
+
+Create one real draft operation, publish job, selection materialization and export on staging. Use the same original domain record/Payload job for every scenario:
 
 ```bash
 npm run chaos:worker-checkpoints -- --scenario <scenario> --id "$DOMAIN_ID" --phase snapshot \
   --output "evidence/<scenario>-before.json"
 
-# Stop the staging Worker first.
+# Stop worker first.
 CONCIERGE_ALLOW_REMOTE_CHAOS=1 CONCIERGE_CHAOS_WORKER_STOPPED=1 \
   npm run chaos:worker-checkpoints -- --scenario <scenario> --id "$DOMAIN_ID" --phase arm \
   --checkpoint "$OBSERVED_CHECKPOINT" --output "evidence/<scenario>-armed.json"
 
-# Restart the Worker.
-CONCIERGE_ALLOW_REMOTE_CHAOS=1 npm run chaos:worker-checkpoints -- \
-  --scenario <scenario> --id "$DOMAIN_ID" --phase verify \
+# Restart worker.
+CONCIERGE_ALLOW_REMOTE_CHAOS=1 \
+  npm run chaos:worker-checkpoints -- --scenario <scenario> --id "$DOMAIN_ID" --phase verify \
   --output "evidence/<scenario>-recovered.json"
 ```
 
-The evidence must prove no duplicate domain intent, the original Payload job is no longer stuck, and scenario-specific invariants converge:
+Prove:
 
-- draft: operation succeeds and draft revision advances consistently;
-- publish: exactly the intended target version is published and pointer matches it;
-- selection: manifest becomes `ready`, scan completes and manifest hash exists;
-- export: one complete record retains private artifact key + SHA.
+- draft: one original operation reaches success and draft revision is at least the target revision;
+- publish: intended version is the current published pointer and immutable version exists;
+- selection: `ready`, scan complete and manifestHash present;
+- export: `complete` with private artifact key + SHA.
 
-Do not manufacture new jobs in the harness to make recovery pass.
+Because `deleteJobOnComplete=true`, a Payload job may be absent after successful convergence. That is acceptable only when the domain success invariant proves completion. A surviving job must not remain stuck/erroring.
 
-### Task 6: Execute full staging qualification
+Also exercise the post-domain-success crash window: terminal-success domain with a stuck `processing:true` Payload job must recover by reopening the same internal job, never by manufacturing a replacement.
 
-Run the load, concurrency, UI/E2E, security, contract, authorization downgrade, distribution and backup tests from `docs/runbooks/collections-codex-integration-gate.md`. Capture immutable log/artifact references for each acceptance criterion, plus:
+## Task 6 — Full staging qualification
 
-- Admin `/ready` result;
+Run the complete load, concurrency, UI/E2E, security, contract, authorization downgrade, distribution and backup tests from `docs/runbooks/collections-codex-integration-gate.md`.
+
+Capture immutable references for:
+
+- exact candidate SHA;
+- Admin readiness result;
 - worker heartbeat/oldest queue age;
-- maintenance-task results;
+- maintenance summaries;
 - FastAPI/Mongo/storage health;
-- chaos evidence for all four worker scenarios;
-- backup/restore evidence;
-- load/storage growth and quota evidence.
+- generated artifact freshness;
+- four worker chaos scenarios;
+- backup/restore;
+- load/concurrency/security/UI runs;
+- storage growth/quota observation.
 
-### Task 7: Write and validate acceptance evidence
+## Task 7 — Write and validate real acceptance evidence
 
-Create `docs/evidence/collections-staging.json` only from the executed staging run:
+Create `docs/evidence/collections-staging.json` only from executed staging results:
 
 ```bash
 CANDIDATE_SHA=$(git rev-parse HEAD)
@@ -164,10 +206,10 @@ npm run verify:collections:acceptance -- \
   --expected-commit "$CANDIDATE_SHA"
 ```
 
-Expected: `Collections acceptance verified` and `20/20 criteria`.
+Expected release evidence is 20/20 criteria for that exact SHA. A copied fixture, fabricated pass or evidence from another commit invalidates qualification.
 
-Commit only non-secret evidence and release records after confirming every reference is real staging output. A copied fixture, fabricated pass status or evidence from a different SHA invalidates the qualification.
+## Task 8 — Production handoff
 
-### Task 8: Production handoff
+Only after the exact staging SHA has fresh 20/20 evidence, follow `docs/superpowers/plans/2026-09-03-render-collections-production.md`.
 
-Only after the exact staging SHA passes 20/20, follow `docs/superpowers/plans/2026-09-03-render-collections-production.md`. Production merge/deployment belongs to the final Codex/operator pass; this staging plan never authorizes a direct merge from an unexecuted ChatGPT branch.
+This staging plan never authorizes production deployment or merge to `main` from an unexecuted ChatGPT branch.
