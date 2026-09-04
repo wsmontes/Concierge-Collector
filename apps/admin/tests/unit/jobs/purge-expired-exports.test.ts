@@ -5,14 +5,16 @@ const now = new Date('2026-09-04T12:00:00.000Z')
 
 function payloadWith(rows: Record<string, unknown>[]) {
   const deleteOne = vi.fn().mockResolvedValue({ deletedCount: 1 })
-  const find = vi.fn().mockReturnValue({
-    sort: vi.fn().mockReturnValue({
-      limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(rows) }),
-    }),
+  const updateOne = vi.fn().mockResolvedValue({ modifiedCount: 1 })
+  const sort = vi.fn().mockReturnValue({
+    limit: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(rows) }),
   })
+  const find = vi.fn().mockReturnValue({ sort })
   return {
-    payload: { db: { collections: { 'collection-exports': { find, deleteOne } } } },
+    payload: { db: { collections: { 'collection-exports': { find, updateOne, deleteOne } } } },
     find,
+    sort,
+    updateOne,
     deleteOne,
   }
 }
@@ -35,8 +37,8 @@ test('deletes object before deleting an expired export record', async () => {
   expect(order).toEqual(['object', 'record'])
 })
 
-test('preserves the CMS reference when object deletion fails', async () => {
-  const { payload, deleteOne } = payloadWith([{
+test('preserves the CMS reference and schedules retry when object deletion fails', async () => {
+  const { payload, deleteOne, updateOne } = payloadWith([{
     _id: 'export-2', status: 'complete', key: 'cms/exports/selection-2.ndjson', expiresAt: new Date('2026-09-03T12:00:00Z'),
   }])
   const store = { put: vi.fn(), readUrl: vi.fn(), delete: vi.fn().mockRejectedValue(new Error('storage unavailable')) }
@@ -45,6 +47,7 @@ test('preserves the CMS reference when object deletion fails', async () => {
 
   expect(result).toEqual({ scanned: 1, deleted: 0, preserved: 1 })
   expect(deleteOne).not.toHaveBeenCalled()
+  expect(updateOne).toHaveBeenCalledTimes(1)
 })
 
 test('purges an expired failed export that never materialized an object', async () => {
@@ -60,8 +63,8 @@ test('purges an expired failed export that never materialized an object', async 
   expect(deleteOne).toHaveBeenCalledTimes(1)
 })
 
-test('queries only expired terminal export records in bounded batches', async () => {
-  const { payload, find } = payloadWith([])
+test('queries only due expired terminal export records in bounded batches', async () => {
+  const { payload, find, sort } = payloadWith([])
   const store = { put: vi.fn(), readUrl: vi.fn(), delete: vi.fn() }
 
   await purgeExpiredExports(payload as never, store as never, now, { batchSize: 17 })
@@ -69,5 +72,11 @@ test('queries only expired terminal export records in bounded batches', async ()
   expect(find).toHaveBeenCalledWith({
     expiresAt: { $lte: now },
     status: { $in: ['complete', 'failed'] },
+    $or: [
+      { cleanupNextAttemptAt: { $exists: false } },
+      { cleanupNextAttemptAt: null },
+      { cleanupNextAttemptAt: { $lte: now } },
+    ],
   })
+  expect(sort).toHaveBeenCalledWith({ cleanupNextAttemptAt: 1, expiresAt: 1, _id: 1 })
 })
