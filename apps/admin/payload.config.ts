@@ -8,6 +8,7 @@ import { applyDraftOperationTask } from './src/jobs/applyDraftOperationTask'
 import { publishCollectionTask } from './src/jobs/publishCollectionTask'
 import { reconcileLeasesTask } from './src/jobs/reconcileLeasesTask'
 import { purgeExpiredArtifactsTask } from './src/jobs/purgeExpiredArtifactsTask'
+import { archiveAuditEventsTask } from './src/jobs/archiveAuditEventsTask'
 import { collectionEndpoints } from './src/payload/endpoints/collections'
 import { operationEndpoints } from './src/payload/endpoints/operations'
 import { operationsAdminEndpoints } from './src/payload/endpoints/operations-admin'
@@ -23,6 +24,7 @@ import { materializeSelectionTask } from './src/jobs/materializeSelectionTask'
 import { exportSelectionTask } from './src/jobs/exportSelectionTask'
 import { syncConsumerUsageTask } from './src/jobs/syncConsumerUsage'
 import {
+  AuditArchiveManifests,
   AuditEvents,
   CollectionDraftChanges,
   CollectionMemberships,
@@ -116,6 +118,7 @@ export default buildConfig({
     CollectionOperationItems,
     CollectionPublishJobs,
     AuditEvents,
+    AuditArchiveManifests,
     ConsumerApplications,
     ConsumerCredentials,
     SavedCurationViews,
@@ -132,6 +135,7 @@ export default buildConfig({
       recordWorkerHeartbeat,
       reconcileLeasesTask,
       purgeExpiredArtifactsTask,
+      archiveAuditEventsTask,
       applyDraftOperationTask,
       publishCollectionTask,
       materializeSelectionTask,
