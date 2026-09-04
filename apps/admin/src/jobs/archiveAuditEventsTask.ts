@@ -86,6 +86,27 @@ function encodedBatch(events: Record<string, unknown>[]): { ndjson: Buffer; gzip
   return { ndjson, gzip, sha256, batchKey }
 }
 
+function manifestMatches(
+  manifest: Record<string, unknown> | null,
+  stored: StoredArtifact,
+  encoded: { sha256: string; batchKey: string },
+  ids: unknown[],
+): boolean {
+  if (!manifest || ids.length === 0) return false
+  const artifactKey = typeof manifest.artifactKey === 'string' ? manifest.artifactKey : ''
+  const expectedSuffix = `audit/${encoded.batchKey}.ndjson.gz`
+  return manifest.batchKey === encoded.batchKey
+    && artifactKey === stored.key
+    && (artifactKey === expectedSuffix || artifactKey.endsWith(`/${expectedSuffix}`))
+    && manifest.contentType === CONTENT_TYPE
+    && manifest.sha256 === encoded.sha256
+    && stored.contentType === CONTENT_TYPE
+    && stored.sha256 === encoded.sha256
+    && Number(manifest.eventCount) === ids.length
+    && String(manifest.firstEventId) === String(ids[0])
+    && String(manifest.lastEventId) === String(ids.at(-1))
+}
+
 async function* oneBuffer(value: Buffer): AsyncIterable<Uint8Array> {
   yield value
 }
@@ -106,10 +127,11 @@ async function inTransaction<T>(payload: Payload, work: (session: ClientSession)
  * them from the hot CMS database. The object key and bytes are deterministic,
  * so a failed Mongo transaction can safely retry the same upload.
  *
- * After upload, manifest persistence, source purge and the completion event are
- * one Mongo transaction. A committed transaction therefore proves both that
- * the private artifact is durably referenced and that every selected hot row
- * is gone before `audit.archive.completed` becomes visible.
+ * After upload, manifest persistence, manifest verification, source purge and
+ * the completion event are one Mongo transaction. A committed transaction
+ * therefore proves both that the private artifact is durably and correctly
+ * referenced and that every selected hot row is gone before
+ * `audit.archive.completed` becomes visible.
  */
 export async function archiveAuditEvents(
   payload: Payload,
@@ -144,7 +166,7 @@ export async function archiveAuditEvents(
         contentType: String(existing.contentType),
         sha256: String(existing.sha256),
       }
-      if (stored.sha256 !== encoded.sha256) {
+      if (!manifestMatches(existing, stored, encoded, ids)) {
         return { scanned: events.length, archived: 0, preserved: events.length }
       }
     } else {
@@ -154,7 +176,7 @@ export async function archiveAuditEvents(
         contentType: CONTENT_TYPE,
         body: oneBuffer(encoded.gzip),
       })
-      if (stored.sha256 !== encoded.sha256) {
+      if (stored.sha256 !== encoded.sha256 || stored.contentType !== CONTENT_TYPE) {
         return { scanned: events.length, archived: 0, preserved: events.length }
       }
     }
@@ -183,6 +205,13 @@ export async function archiveAuditEvents(
         },
         { upsert: true, session },
       )
+
+      const persistedManifest = await manifests.findOne({ batchKey: encoded.batchKey })
+        .session(session)
+        .lean() as Record<string, unknown> | null
+      if (!manifestMatches(persistedManifest, stored, encoded, ids)) {
+        throw new Error('audit archive manifest mismatch')
+      }
 
       await eventsModel.deleteMany({ _id: { $in: ids } }, { session })
       const remaining = await eventsModel.countDocuments({ _id: { $in: ids } }).session(session)
