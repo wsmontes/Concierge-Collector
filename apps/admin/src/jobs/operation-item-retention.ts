@@ -20,6 +20,7 @@ const SUCCESS_TERMINAL_STATUSES = ['committed', 'completed', 'completed_with_ski
 
 const DEFAULT_RETENTION_DAYS = 90
 const DEFAULT_BATCH_SIZE = 100
+const DETAIL_CURSOR_BATCH_SIZE = 1_000
 
 export interface OperationItemRetentionOptions {
   retentionDays?: number
@@ -60,17 +61,38 @@ function increment(target: Record<string, number>, key: string | null) {
   target[key] = (target[key] ?? 0) + 1
 }
 
-function evidenceFor(rows: Record<string, unknown>[]) {
+function asRow(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && 'toObject' in value && typeof (value as { toObject?: unknown }).toObject === 'function') {
+    return (value as { toObject(): Record<string, unknown> }).toObject()
+  }
+  return value as Record<string, unknown>
+}
+
+/**
+ * Computes immutable detail evidence through a bounded Mongo cursor. A single
+ * bulk operation may own hundreds of thousands of rows; the worker must never
+ * materialize all of them just to calculate the archival digest.
+ */
+async function evidenceForOperation(items: DocumentModel, operationId: string) {
   const digest = createHash('sha256')
   const statusCounts: Record<string, number> = {}
   const reasonCounts: Record<string, number> = {}
-  for (const row of rows) {
+  let itemCount = 0
+  const cursor = items.find({ operationId })
+    .sort({ curationId: 1, _id: 1 })
+    .batchSize(DETAIL_CURSOR_BATCH_SIZE)
+    .cursor()
+
+  for await (const value of cursor) {
+    const row = asRow(value)
     digest.update(`${canonicalLine(row)}\n`)
     increment(statusCounts, typeof row.status === 'string' ? row.status : null)
     increment(reasonCounts, typeof row.reasonCode === 'string' ? row.reasonCode : null)
+    itemCount += 1
   }
+
   return {
-    itemCount: rows.length,
+    itemCount,
     statusCounts,
     reasonCounts,
     sha256: digest.digest('hex'),
@@ -92,7 +114,7 @@ function sameCounts(left: unknown, right: Record<string, number>): boolean {
   return JSON.stringify(Object.entries(normalized).sort()) === JSON.stringify(Object.entries(right).sort())
 }
 
-function archiveMatches(archive: Record<string, unknown>, evidence: ReturnType<typeof evidenceFor>): boolean {
+function archiveMatches(archive: Record<string, unknown>, evidence: Awaited<ReturnType<typeof evidenceForOperation>>): boolean {
   return Number(archive.itemCount) === evidence.itemCount
     && archive.sha256 === evidence.sha256
     && sameCounts(archive.statusCounts, evidence.statusCounts)
@@ -149,17 +171,16 @@ async function markItemsPurged(
  * operations older than the retention window are eligible; aggregate parent
  * operations never own item rows and are excluded at the scan boundary.
  *
- * A deterministic digest/count summary is persisted on the parent operation
- * under CAS before any item row is deleted. Successful operations additionally
- * require intact detail count (`selectedCount`) before the destructive phase
- * starts; failed/cancelled selection materialization may legitimately stop with
- * partial item detail.
+ * Before the destructive phase, raw detail is streamed in canonical order to a
+ * SHA/count summary. Successful operations must have `selectedCount` equal to
+ * that intact item count; otherwise retention preserves the rows for operator
+ * review. Failed/cancelled materialization may legitimately stop with partial
+ * item detail.
  *
- * `purgeStartedAt` is persisted before the first destructive write. Before that
- * marker, raw detail must still match the immutable summary exactly. After the
- * marker, a subset of rows is an expected interrupted-delete state, so later
- * maintenance runs delete whatever remains for the same operationId and finish
- * `itemsPurgedAt` without recalculating or mutating the original evidence.
+ * `purgeStartedAt` is durable before deletion. Once present, retries never
+ * rehash a partial subset: they delete whatever remains for the same
+ * operationId, verify the detail collection is empty, and finish
+ * `itemsPurgedAt` from the immutable pre-delete summary.
  */
 export async function compactTerminalOperationItems(
   payload: Payload,
@@ -193,91 +214,86 @@ export async function compactTerminalOperationItems(
       continue
     }
 
-    const rows = await itemsModel.find({ operationId }).sort({ curationId: 1, _id: 1 }).lean() as Record<string, unknown>[]
-    const evidence = evidenceFor(rows)
     let archive = existingArchive(operation)
     let purgeStarted = Boolean(archive && dateValue(archive.purgeStartedAt))
 
-    const selectedCount = Number(operation.selectedCount)
-    const successful = SUCCESS_TERMINAL_STATUSES.includes(status as never)
-    if (
-      !purgeStarted &&
-      successful &&
-      Number.isInteger(selectedCount) &&
-      selectedCount >= 0
-    ) {
-      const intactCount = archive ? Number(archive.itemCount) : rows.length
-      if (!Number.isInteger(intactCount) || intactCount !== selectedCount) {
-        preservedOperations += 1
-        continue
-      }
-    }
-
-    if (!archive) {
-      const itemArchive = {
-        ...evidence,
-        compactedAt: now.toISOString(),
-        sourceUpdatedAt: updatedAt.toISOString(),
-        purgeStartedAt: now.toISOString(),
-      }
-      const persisted = await operations.updateOne(
-        {
-          _id: operation.id ?? operation._id,
-          status,
-          updatedAt,
-          itemArchive: { $exists: false },
-        },
-        { $set: { itemArchive } },
-      )
-      if (Number(persisted.modifiedCount ?? 0) !== 1) {
-        preservedOperations += 1
-        continue
-      }
-      archive = itemArchive
-      purgeStarted = true
-    } else if (!purgeStarted) {
-      if (rows.length > 0 && !archiveMatches(archive, evidence)) {
-        // No destructive phase was ever recorded, so a mismatch here is not a
-        // legitimate partial purge. Preserve the detail for operator review.
-        preservedOperations += 1
-        continue
-      }
-      const started = await markPurgeStarted(operations, operation, String(archive.sha256), now)
-      if (!started) {
-        preservedOperations += 1
-        continue
-      }
-      archive = { ...archive, purgeStartedAt: now.toISOString() }
-      purgeStarted = true
-    }
-
     if (!purgeStarted) {
+      const evidence = await evidenceForOperation(itemsModel, operationId)
+      const successful = SUCCESS_TERMINAL_STATUSES.includes(status as never)
+      const selectedCount = Number(operation.selectedCount)
+      if (
+        successful &&
+        (!Number.isInteger(selectedCount) || selectedCount < 0 || evidence.itemCount !== selectedCount)
+      ) {
+        preservedOperations += 1
+        continue
+      }
+
+      if (!archive) {
+        const itemArchive = {
+          ...evidence,
+          compactedAt: now.toISOString(),
+          sourceUpdatedAt: updatedAt.toISOString(),
+          purgeStartedAt: now.toISOString(),
+        }
+        const persisted = await operations.updateOne(
+          {
+            _id: operation.id ?? operation._id,
+            status,
+            updatedAt,
+            itemArchive: { $exists: false },
+          },
+          { $set: { itemArchive } },
+        )
+        if (Number(persisted.modifiedCount ?? 0) !== 1) {
+          preservedOperations += 1
+          continue
+        }
+        archive = itemArchive
+        purgeStarted = true
+      } else {
+        if (!archiveMatches(archive, evidence)) {
+          // No destructive phase was ever recorded, so a mismatch here cannot
+          // be a legitimate partial purge.
+          preservedOperations += 1
+          continue
+        }
+        const started = await markPurgeStarted(operations, operation, String(archive.sha256), now)
+        if (!started) {
+          preservedOperations += 1
+          continue
+        }
+        archive = { ...archive, purgeStartedAt: now.toISOString() }
+        purgeStarted = true
+      }
+    }
+
+    if (!archive || !purgeStarted) {
       preservedOperations += 1
       continue
     }
 
     try {
-      if (rows.length > 0) {
-        const deletion = await itemsModel.deleteMany({ operationId })
-        const removed = Number(deletion.deletedCount ?? 0)
-        if (removed !== rows.length) {
-          // A partial delete is safe but incomplete. `purgeStartedAt` keeps the
-          // parent retryable; the next run deletes the remaining subset.
-          deletedItems += removed
-          preservedOperations += 1
-          continue
-        }
-        deletedItems += removed
+      const deletion = await itemsModel.deleteMany({ operationId })
+      const removed = Number(deletion.deletedCount ?? 0)
+      deletedItems += removed
+
+      const remaining = await itemsModel.countDocuments({ operationId })
+      if (remaining !== 0) {
+        // Partial delete is an expected retry state after purgeStartedAt.
+        preservedOperations += 1
+        continue
       }
 
       const archivedItemCount = Number(archive.itemCount)
-      const purgedItemCount = Number.isInteger(archivedItemCount) && archivedItemCount >= 0
-        ? archivedItemCount
-        : rows.length
-      const marked = await markItemsPurged(operations, operation, String(archive.sha256), now, purgedItemCount)
+      if (!Number.isInteger(archivedItemCount) || archivedItemCount < 0) {
+        preservedOperations += 1
+        continue
+      }
+      const marked = await markItemsPurged(operations, operation, String(archive.sha256), now, archivedItemCount)
       if (!marked) {
-        // Rows may already be gone, but leaving the completion marker absent is
-        // safe: the next run can finish the CAS from the durable summary.
+        // Detail may already be gone; absence of the completion marker keeps
+        // the operation eligible for a later CAS-only retry.
         preservedOperations += 1
         continue
       }
