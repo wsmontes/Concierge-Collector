@@ -130,6 +130,10 @@ export default buildConfig({
       queue: () => false,
       run: () => false,
     },
+    // Payload 3.86 defaults this to true; keep it explicit because successful
+    // scheduled jobs (notably minute-level heartbeats) must not accumulate in
+    // `payload-jobs`. Failed/incomplete jobs remain available to reconciliation.
+    deleteJobOnComplete: true,
     processingOrder: 'createdAt',
     tasks: [
       recordWorkerHeartbeat,
