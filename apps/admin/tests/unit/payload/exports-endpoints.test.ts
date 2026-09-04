@@ -142,7 +142,7 @@ describe('Export endpoints', () => {
     return {
       _id: 'dddddddddddddddddddddddd', selectionId: 'ffffffffffffffffffffffff', actorId: 'admin-1', format: 'ndjson', status: 'running',
       progress: {}, key: null, contentType: null, sha256: null,
-      expiresAt: new Date('2026-08-29T00:00:00.000Z'), idempotencyKey: 'k', requestHash: 'h', requestId: 'r',
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), idempotencyKey: 'k', requestHash: 'h', requestId: 'r',
       payloadJobId: 'job-1', leaseOwner: 'w', leaseExpiresAt: null, fencingToken: 1,
       ...overrides,
     }
@@ -183,7 +183,7 @@ describe('Export endpoints', () => {
     expect(completeBody.downloadUrl).toContain('private')
     expect(completeBody.downloadUrl).not.toContain('public-read')
     expect(new Date(completeBody.downloadExpiresAt).getTime()).toBeGreaterThan(Date.now())
-    expect(readUrl).toHaveBeenCalledWith(expect.objectContaining({ key: 'selection-1/export-done.csv' }))
+    expect(readUrl).toHaveBeenCalledWith(expect.objectContaining({ key: 'selection-1/export-done.csv' }), expect.any(Number))
   })
 
   test('GET 404s for another actor and 503s when storage is unconfigured on a complete export', async () => {
