@@ -24,6 +24,7 @@ from jose import jwt
 from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
 
+from app.core.authz_audit import append_authz_change
 from app.core.config import settings
 from app.core.database import get_database
 from app.core.security import create_access_token, verify_auth
@@ -182,6 +183,27 @@ def get_user_by_email(db: Database, email: str) -> Optional[UserInDB]:
     return None
 
 
+def _audit_oauth_allowlist_change(
+    db: Database,
+    *,
+    user_id: str,
+    email: str,
+    before: dict,
+    after: dict,
+    request_id: str | None = None,
+) -> None:
+    append_authz_change(
+        db,
+        actor_id="system:oauth_allowlist",
+        target_user_id=user_id,
+        target_email=email,
+        before=before,
+        after=after,
+        source="oauth_allowlist",
+        request_id=request_id,
+    )
+
+
 def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
     """Create/update the operational user without persisting Google tokens."""
     is_admin = settings.is_admin_email(user_data["email"])
@@ -189,6 +211,11 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
 
     if existing_user:
         now = datetime.now(timezone.utc)
+        before_authz = {
+            "authorized": existing_user.authorized,
+            "role": getattr(existing_user, "role", "curator"),
+        }
+        after_authz = dict(before_authz)
         update_data = {
             "name": user_data["name"],
             "picture": user_data.get("picture"),
@@ -201,18 +228,28 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         if is_admin:
             if not existing_user.authorized:
                 update_data["authorized"] = True
-                existing_user.authorized = True
+                after_authz["authorized"] = True
                 logger.info("[OAuth] Auto-authorized configured admin %s", user_data["email"])
             if getattr(existing_user, "role", "curator") != "admin":
                 update_data["role"] = "admin"
-                existing_user.role = "admin"
+                after_authz["role"] = "admin"
                 logger.info("[OAuth] Promoted configured admin %s", user_data["email"])
 
         db.users.update_one({"google_id": user_data["google_id"]}, {"$set": update_data})
+        if after_authz != before_authz:
+            _audit_oauth_allowlist_change(
+                db,
+                user_id=existing_user.id,
+                email=existing_user.email,
+                before=before_authz,
+                after=after_authz,
+            )
         existing_user.name = user_data["name"]
         existing_user.picture = user_data.get("picture")
         existing_user.last_login = now
         existing_user.refresh_token = None
+        existing_user.authorized = bool(after_authz["authorized"])
+        existing_user.role = after_authz["role"]
         logger.info("[OAuth] Updated existing user: %s", existing_user.email)
         return existing_user
 
@@ -235,10 +272,28 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         winner = get_user_by_google_id(db, user_data["google_id"])
         if not winner:
             raise
+        if is_admin and winner.authorized and getattr(winner, "role", "curator") == "admin":
+            _audit_oauth_allowlist_change(
+                db,
+                user_id=winner.id,
+                email=winner.email,
+                before={"authorized": None, "role": None},
+                after={"authorized": True, "role": "admin"},
+                request_id=f"oauth-bootstrap:{winner.id}",
+            )
         logger.info("[OAuth] Concurrent user creation won elsewhere; reusing %s", winner.email)
         return winner
 
     user_dict["_id"] = str(user_dict["_id"])
+    if is_admin:
+        _audit_oauth_allowlist_change(
+            db,
+            user_id=user_dict["_id"],
+            email=str(new_user.email),
+            before={"authorized": None, "role": None},
+            after={"authorized": True, "role": "admin"},
+            request_id=f"oauth-bootstrap:{user_dict['_id']}",
+        )
     logger.info("[OAuth] Created new user: %s", new_user.email)
     return UserInDB(**user_dict)
 
@@ -648,6 +703,7 @@ def dev_login(response: Response, db: Database = Depends(get_database)):
                     "name": dev_name,
                     "email": dev_email,
                     "picture": None,
+                    "google_id": dev_user["google_id"],
                     "updatedAt": datetime.now(timezone.utc),
                     "createdAt": datetime.now(timezone.utc),
                 }
