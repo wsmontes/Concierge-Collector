@@ -34,5 +34,10 @@ integrationSuite('Collections CMS indexes', () => {
       unique: true,
     })
     expect(await names('collection_publish_jobs')).toContain('publish_lease_expiry')
+
+    expect(await byName('collection_exports', 'export_artifact_ttl')).toBeUndefined()
+    expect(await byName('collection_exports', 'export_expiry_status')).toMatchObject({
+      key: { expiresAt: 1, status: 1 },
+    })
   })
 })
