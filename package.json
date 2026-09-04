@@ -30,6 +30,7 @@
     "test:admin": "npm run test --workspace=@concierge/admin",
     "test:admin:integration": "npm run test:integration --workspace=@concierge/admin",
     "test:e2e": "npm run test:e2e --workspace=@concierge/admin",
+    "chaos:worker-checkpoints": "npm run chaos:worker-checkpoints --workspace=@concierge/admin --",
     "lint:admin": "npm run lint --workspace=@concierge/admin",
     "typecheck:admin": "npm run typecheck --workspace=@concierge/admin",
     "generate:contracts": "node scripts/release/run-python.mjs scripts/export_admin_openapi.py && npm run generate --workspace=@concierge/fastapi-client",
