@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { gunzipSync } from 'node:zlib'
 import { expect, test, vi } from 'vitest'
 import { archiveAuditEvents } from '../../../src/jobs/archiveAuditEventsTask'
@@ -40,8 +41,17 @@ function harness(events: Record<string, unknown>[], options: { manifestFails?: b
     put: vi.fn().mockImplementation(async (request: { key: string; body: AsyncIterable<Uint8Array> }) => {
       order.push('upload')
       if (options.uploadFails) throw new Error('upload failed')
-      for await (const chunk of request.body) uploaded.push(chunk)
-      return { key: `cms/exports/${request.key}`, contentType: 'application/x-ndjson+gzip', sha256: 'storage-sha' }
+      const localChunks: Uint8Array[] = []
+      for await (const chunk of request.body) {
+        uploaded.push(chunk)
+        localChunks.push(chunk)
+      }
+      const bytes = Buffer.concat(localChunks.map((chunk) => Buffer.from(chunk)))
+      return {
+        key: `cms/exports/${request.key}`,
+        contentType: 'application/x-ndjson+gzip',
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+      }
     }),
   }
   return { payload, store, order, uploaded, manifestUpdateOne, deleteMany, auditUpdateOne }
