@@ -34,6 +34,7 @@ integrationSuite('Collections CMS indexes', () => {
         'operation_queue_order',
         'operation_lease_expiry',
         'operation_retention_scan',
+        'operation_retention_due',
       ]),
     )
     expect(await byName('collection_operations', 'operation_queue_order')).toMatchObject({
@@ -45,6 +46,15 @@ integrationSuite('Collections CMS indexes', () => {
     })
     expect(await byName('collection_operations', 'operation_retention_scan')).toMatchObject({
       key: { status: 1, 'itemArchive.itemsPurgedAt': 1, updatedAt: 1 },
+    })
+    expect(await byName('collection_operations', 'operation_retention_due')).toMatchObject({
+      key: {
+        status: 1,
+        'itemArchive.itemsPurgedAt': 1,
+        'itemArchive.retentionBlockedAt': 1,
+        updatedAt: 1,
+        _id: 1,
+      },
     })
     expect(await names('collection_publish_jobs')).toContain('publish_lease_expiry')
 
