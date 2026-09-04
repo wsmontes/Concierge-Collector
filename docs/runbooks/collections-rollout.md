@@ -4,104 +4,141 @@
 
 Enable Collections gradually without coupling product rollout to deployment. Every production capability is protected by a server-side feature flag. A deploy may contain the code while every Collections flag remains off.
 
-This runbook does not authorize a Render Blueprint adoption or service recreation. Deployment topology changes require a separately reviewed inventory of the existing Render services, IDs, domains and runtimes.
+This runbook does not authorize Render Blueprint adoption, service recreation, GitHub Actions, or a domain redesign.
 
 ## Non-negotiable gates
 
 Before the first production flag is enabled:
 
-1. The candidate commit is immutable and identified by a 40-character Git SHA.
-2. `npm run verify:full` passes against disposable `*-test` databases and the full local/staging stack.
-3. CMS migrations run once under the existing migration lock and complete successfully.
-4. `GET /ready` proves Mongo connectivity, the latest expected CMS migration and critical Collections indexes without running DDL.
-5. `scripts/operations/cms-backup-restore-smoke.sh` passes against a `*-restore-test` destination.
-6. Staging load, concurrency, crash/recovery, security and contract evidence is recorded.
-7. The worker-checkpoint harness is executed for draft, publish, selection and export against the same candidate SHA and disposable CMS database.
-8. `docs/evidence/collections-staging.json` is produced from real staging results for that exact commit.
-9. `npm run verify:collections:acceptance -- --evidence docs/evidence/collections-staging.json --expected-commit <SHA>` passes all 20 normative criteria.
-10. Worker heartbeat, queue age, error rate, Mongo health, FastAPI health and storage health are observable before traffic is enabled.
+1. Candidate is identified by an immutable 40-character Git SHA.
+2. Official Payload/OpenAPI generated artifacts are current.
+3. `npm run verify` and `npm run verify:full` have fresh green evidence for that SHA against disposable safe databases/full stack.
+4. CMS migrations are applied exactly once under the existing migration lock.
+5. `GET /ready` proves Mongo connectivity, migration `20260904_016_operation_retention_quarantine` and exact critical index signatures without running DDL.
+6. Backup/restore smoke passes against a separate `*-restore-test` namespace.
+7. Maintenance failure/backoff/quarantine/archive behavior has staging evidence.
+8. Worker checkpoint harness passes draft, publish, selection and export against the same original domain/Payload jobs.
+9. Staging load, concurrency, security, contract and UI evidence is captured.
+10. `docs/evidence/collections-staging.json` is real staging output for that SHA and `verify:collections:acceptance` reports 20/20.
+11. Worker heartbeat, queue age, error rate, Mongo health, FastAPI health and storage health are observable before traffic is enabled.
 
-The evidence file is an output of staging qualification. Do not copy the test fixture into `docs/evidence` and do not mark a criterion as `pass` without an executed evidence reference.
+The validator fixture under `tests/fixtures` is never release evidence.
 
 ## Required Admin/Worker configuration names
 
-Admin Web and Admin Worker use the same CMS database and the same versioned retention policy. Secret values remain only in the Render/environment secret store; release evidence records names and non-secret numeric/boolean settings, never credentials or connection strings.
+Admin Web and private Admin Worker use the same CMS database/storage boundary. Secret values remain only in the environment secret store; evidence records names and non-secret settings, never credentials or connection strings.
 
-Required operational names for the production candidate include:
+Required names/defaults include:
 
-- `CMS_MONGODB_URL`, `CMS_MONGODB_DB_NAME`, `PAYLOAD_SECRET`, `CMS_SERVICE_KEY`, `CMS_PUBLIC_SERVER_URL`, `CMS_COLLECTOR_ORIGINS`, `FASTAPI_BASE_URL`, `METRICS_KEY`;
-- `CMS_JOB_RECOVERY_STALE_SECONDS=180`, `CMS_JOB_MAX_RECOVERIES=3`;
-- `CMS_ORPHAN_STAGING_RETENTION_DAYS=30`, `CMS_ORPHAN_STAGING_BATCH_SIZE=500`;
-- `CMS_OPERATION_ITEM_RETENTION_DAYS=90`, `CMS_OPERATION_ITEM_BATCH_SIZE=100`;
-- `CMS_USED_SELECTION_RETENTION_DAYS=90`;
-- `EXPORT_ARTIFACT_TTL_SECONDS=604800`, `CMS_EXPORT_PURGE_BATCH_SIZE=100`;
-- `CMS_AUDIT_RETENTION_DAYS=365`, `CMS_AUDIT_ARCHIVE_BATCH_SIZE=1000`;
-- private object storage names `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE`, `S3_EXPORT_PREFIX`, `S3_SIGNED_URL_TTL_SECONDS`.
+```text
+CMS_MONGODB_URL
+CMS_MONGODB_DB_NAME
+PAYLOAD_SECRET
+CMS_SERVICE_KEY
+CMS_PUBLIC_SERVER_URL
+CMS_COLLECTOR_ORIGINS
+FASTAPI_BASE_URL
+METRICS_KEY
 
-Production must not silently shorten evidence-retention windows. Disposable staging may use shorter values only to exercise maintenance behavior and must record those values in staging evidence.
+CMS_JOB_RECOVERY_STALE_SECONDS=180
+CMS_JOB_MAX_RECOVERIES=3
+CMS_ORPHAN_STAGING_RETENTION_DAYS=30
+CMS_ORPHAN_STAGING_BATCH_SIZE=500
+CMS_OPERATION_ITEM_RETENTION_DAYS=90
+CMS_OPERATION_ITEM_BATCH_SIZE=100
+CMS_USED_SELECTION_RETENTION_DAYS=90
+EXPORT_ARTIFACT_TTL_SECONDS=604800
+CMS_EXPORT_PURGE_BATCH_SIZE=100
+CMS_AUDIT_RETENTION_DAYS=365
+CMS_AUDIT_ARCHIVE_BATCH_SIZE=1000
+
+S3_ENDPOINT
+S3_REGION
+S3_BUCKET
+S3_ACCESS_KEY_ID
+S3_SECRET_ACCESS_KEY
+S3_FORCE_PATH_STYLE
+S3_EXPORT_PREFIX
+S3_SIGNED_URL_TTL_SECONDS
+```
+
+Production must not silently shorten evidence-retention windows. Disposable staging may use shorter values only to exercise maintenance and must record them in evidence.
+
+## Migration tail required by this release
+
+```text
+20260904_011_export_cleanup_retention
+20260904_012_operation_item_retention
+20260904_013_audit_archival
+20260904_014_staging_retention_scan
+20260904_015_export_cleanup_backoff
+20260904_016_operation_retention_quarantine
+```
+
+Legacy `export_artifact_ttl` must be absent. Critical indexes include `export_expiry_status`, `export_cleanup_due`, `operation_retention_due`, `staging_retention_scan`, `audit_archive_scan` and unique `audit_archive_batch_unique`, plus the existing queue/lease/slug/heartbeat signatures required by `/ready`.
 
 ## Retention and archive invariants
 
-Maintenance is deliberately conservative:
+Maintenance is conservative and bounded:
 
-- export records do **not** use Mongo TTL. For expired completed/failed exports, the maintenance worker deletes the private object first and only then removes the CMS reference. A failed `DeleteObject` preserves the record for retry/operator visibility;
-- terminal `collection_operation_items` older than 90 days are removed only after the parent operation stores deterministic status/reason counts plus a SHA-256 digest of the canonical item stream;
-- orphan staged draft rows are removed only after 30 days and only when no nonterminal/resumable operation protects them;
-- Admin `audit_events` do **not** use TTL. Events older than 365 days are written as deterministic private NDJSON-gzip, manifested with count/SHA/object key and only then removed from the hot collection;
-- Collections, published versions, membership intervals, consumer applications and credentials never receive automatic retention TTLs.
+- export records do **not** use Mongo TTL. An expired complete/failed export with an object calls DeleteObject first and removes the CMS reference only after confirmed success;
+- DeleteObject failure preserves the export reference and records only operational attempt/next-attempt timestamps. Exponential cleanup backoff keeps one permanently bad key from occupying every bounded batch; provider error text is not persisted;
+- a backed-off export becomes eligible again only when `cleanupNextAttemptAt` is due;
+- terminal `collection_operation_items` older than retention are removed only after the parent stores deterministic status/reason counts plus SHA-256 of the canonical item stream;
+- `purgeStartedAt` is durable before deletion, so a retry never rehashes a partial subset; `itemsPurgedAt` is the completion marker;
+- retention bookkeeping uses Mongoose `timestamps:false` so maintenance does not renew semantic operation age;
+- a permanent intact-evidence contradiction is preserved and marked under `itemArchive.retentionBlocked*`. Quarantined operations leave later batches but remain available for investigation;
+- transient cursor/Mongo/delete/CAS failures are not quarantined and remain retryable;
+- orphan staged draft rows are removed only when old enough and no nonterminal/resumable operation protects them;
+- Admin `audit_events` do **not** use TTL. Old events are deterministic private NDJSON-gzip, manifested with count/SHA/object key, then removed from the hot collection;
+- an audit manifest/batch integrity mismatch deliberately blocks forward archival. Do not skip it to improve throughput; investigate the evidence chain;
+- Collections, published versions, membership intervals, applications and credentials have no automatic retention TTLs.
 
-The same private storage principal used for exports must have the documented prefix-scoped `DeleteObject` permission because object-first cleanup is now part of the production invariant. Audit archives are worker-only and do not receive a public/signed read endpoint.
+The storage principal must have prefix-scoped DeleteObject permission because object-first cleanup is a production invariant. Audit archives are Worker-only and have no public/signed read endpoint.
+
+## Recovery invariant
+
+Payload job recovery is job-first, not domain-history-first. The reconciler scans bounded stuck `payload-jobs`, maps only known Collections worker task slugs and validates the linked domain state before reopening the same job.
+
+- active/reclaimable domain + failed/stale-processing job → same job may reopen under CAS;
+- terminal-success domain + stuck internal job → same job may reopen idempotently so Payload can finish/delete it;
+- permanently failed/missing-domain job → classified once so it does not starve future recovery batches;
+- active domain whose referenced Payload job is absent remains operator-visible corruption and is detected separately;
+- recovery never manufactures a replacement domain intent or Payload job.
 
 ## Crash/recovery evidence
 
-The chaos harness never creates a replacement domain intent or a replacement Payload job. It proves recovery of the original pair.
+For remote staging Mongo, require a DB ending in `-test`, `CONCIERGE_ALLOW_REMOTE_CHAOS=1`, and for destructive arm `CONCIERGE_CHAOS_WORKER_STOPPED=1` after the Worker has actually been stopped.
 
-For remote staging Mongo, the harness requires both a database name ending in `-test` and `CONCIERGE_ALLOW_REMOTE_CHAOS=1`. Before the destructive `arm` phase, stop the staging worker and set `CONCIERGE_CHAOS_WORKER_STOPPED=1` for the harness process only. Example flow:
+Example:
 
 ```bash
-# Read the real checkpoint first.
 npm run chaos:worker-checkpoints -- --scenario publish --id "$PUBLISH_JOB_ID" --phase snapshot \
   --output evidence/publish-before.json
 
-# After the worker is stopped, make that SAME Payload job provably stale/reclaimable.
-CONCIERGE_CHAOS_WORKER_STOPPED=1 npm run chaos:worker-checkpoints -- \
-  --scenario publish --id "$PUBLISH_JOB_ID" --phase arm --checkpoint validated \
-  --output evidence/publish-armed.json
+CONCIERGE_ALLOW_REMOTE_CHAOS=1 CONCIERGE_CHAOS_WORKER_STOPPED=1 \
+  npm run chaos:worker-checkpoints -- --scenario publish --id "$PUBLISH_JOB_ID" --phase arm \
+  --checkpoint validated --output evidence/publish-armed.json
 
-# Restart the worker, then prove the original intent converges exactly once.
-npm run chaos:worker-checkpoints -- --scenario publish --id "$PUBLISH_JOB_ID" --phase verify \
+# restart Worker
+CONCIERGE_ALLOW_REMOTE_CHAOS=1 \
+  npm run chaos:worker-checkpoints -- --scenario publish --id "$PUBLISH_JOB_ID" --phase verify \
   --output evidence/publish-recovered.json
 ```
 
-Repeat with `draft`, `selection` and `export`. The harness emits machine-readable evidence only; Render service stop/start and real workload creation remain staging/Codex operations.
+Repeat for `draft`, `selection` and `export`. A Payload job may be absent after successful convergence because `deleteJobOnComplete=true`; absence is acceptable only when domain success invariants prove completion.
 
 ## Flag order
 
-The versioned flag ownership/removal metadata is in `config/collections-feature-flags.json`. Staging and production fail closed when an override is absent.
-
-Enable in this order, stopping after each step until health and invariants are verified:
+Enable sequentially, stopping after each step until health/invariants are verified:
 
 1. `CMS_AUTH_ENABLED=true`
-   - CMS session handoff and server-side introspection only.
-   - Verify login, logout/session expiry and role downgrade.
 2. `CATALOG_SCAN_ENABLED=true`
-   - Enables the server-side catalog scan used by large Explorer selections.
-   - Verify scans remain bounded and manifests are resumable.
 3. `COLLECTIONS_ADMIN_ENABLED=true`
-   - Enables Collections CRUD commands, Explorer/Bulk, publish and Operations Admin.
-   - Keep Collector mutation and external distribution disabled.
 4. `COLLECTOR_ASSOCIATION_READ_ENABLED=true`
-   - Exposes published association reads in the Collector.
-   - Verify this remains read-only for non-admin users.
 5. `COLLECTOR_DRAFT_MUTATION_ENABLED=true`
-   - Enables the single-Curation admin mutation from Collector cards.
-   - Verify it enters the same operation queue/CAS path as Admin bulk actions.
 6. `CONSUMER_CREDENTIALS_ENABLED=true`
-   - Enables application/credential administration.
-   - Issue only canary consumer credentials first.
 7. `COLLECTIONS_DISTRIBUTION_ENABLED=true`
-   - Enables consumer-facing Collection distribution last.
-   - Verify allowlists, 401/404/410/429 behavior and live hydration before widening consumers.
 
 Never enable a downstream flag while a prerequisite is unhealthy.
 
@@ -110,29 +147,25 @@ Never enable a downstream flag while a prerequisite is unhealthy.
 For each production flag:
 
 1. Record candidate SHA, flag change, operator, timestamp and previous value.
-2. Enable the flag for the smallest supported canary scope/environment.
-3. Exercise the corresponding smoke path.
-4. Observe at least:
-   - worker heartbeat and queue age;
-   - operation/publish failures and retries;
-   - Mongo/FastAPI/storage errors;
-   - selected/available/unavailable counts where applicable;
-   - unexpected `409`, `412`, `423`, `5xx` or authorization failures.
-5. If healthy, proceed to the next flag. If not, execute `docs/runbooks/collections-rollback.md` immediately.
+2. Enable the smallest supported canary.
+3. Exercise that capability's smoke path.
+4. Observe worker heartbeat/queue age, operation/publish failures/retries, Mongo/FastAPI/storage health, expected conflict rates and authorization failures.
+5. Observe maintenance/recovery for retry storms or starvation.
+6. If unhealthy, revert that flag and follow `docs/runbooks/collections-rollback.md`; do not advance.
 
 ## Collection-level kill switch
 
-If one published Collection is bad while the platform is healthy, archive that Collection instead of disabling the whole platform. Archive is reversible and preserves version history. It must produce `410` on public current/exact/dump reads until restored.
+If one published Collection is bad while the platform is healthy, archive that Collection rather than disabling the platform. Archive is reversible, preserves history and returns `410` on public current/exact/dump reads until restored.
 
 ## Data rules during rollout
 
 - Never hard-delete a Collection that has ever been published.
-- Never rewrite published membership intervals to repair a rollout issue.
-- A historical restore produces a new draft for review; it does not silently move the published pointer.
-- Forward data corrections use an explicit migration/command and audit event.
+- Never rewrite published membership intervals to repair rollout.
+- Historical restore creates a new draft; it does not silently move the published pointer.
+- Forward data corrections use explicit migration/command + audit event.
 - Consumer credentials remain individually revocable; do not share a platform-wide consumer secret.
-- Collections remain online-only in the Collector; no Collection data enters Dexie or the existing offline sync queue.
+- Collections remain online-only in Collector; no Collection data enters Dexie/offline sync.
 
-## Completion
+## Completion boundary
 
-Rollout is complete only when all enabled flags are recorded, canary credentials/users have been widened intentionally, maintenance/retention behavior has staging evidence, and the staging acceptance evidence for the deployed commit is retained with the release record.
+Rollout is complete only from executed evidence for the exact deployed SHA: generated artifacts current, migrations/readiness verified, full gates green, staging acceptance 20/20, four chaos scenarios green, backup/restore green, maintenance/recovery stable, canary flags recorded and observation complete.
