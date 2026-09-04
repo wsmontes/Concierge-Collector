@@ -105,7 +105,7 @@ function leaseReclaimable(domain: Record<string, unknown>, now: Date): boolean {
 }
 
 async function stuckJobCandidates(jobs: DocumentModel, staleBefore: Date): Promise<Record<string, unknown>[]> {
-  return jobs.find({
+  const rows = await jobs.find({
     taskSlug: { $in: DOMAIN_SOURCES.map((source) => source.taskSlug) },
     'meta.recoveryIgnoredAt': { $exists: false },
     $or: [
@@ -113,7 +113,8 @@ async function stuckJobCandidates(jobs: DocumentModel, staleBefore: Date): Promi
       { completedAt: { $exists: true, $ne: null } },
       { processing: true, updatedAt: { $lte: staleBefore } },
     ],
-  }).sort({ updatedAt: 1, _id: 1 }).limit(SCAN_LIMIT).lean() as Promise<Record<string, unknown>[]>
+  }).sort({ updatedAt: 1, _id: 1 }).limit(SCAN_LIMIT).lean()
+  return rows as Record<string, unknown>[]
 }
 
 async function domainForJob(
@@ -121,10 +122,11 @@ async function domainForJob(
   source: DomainSource,
   jobId: string,
 ): Promise<Record<string, unknown> | null> {
-  return modelFor(payload, source.slug)
+  const row = await modelFor(payload, source.slug)
     .findOne({ [source.jobField]: jobId })
     .select({ _id: 1, [source.jobField]: 1, status: 1, leaseExpiresAt: 1 })
-    .lean() as Promise<Record<string, unknown> | null>
+    .lean()
+  return row as Record<string, unknown> | null
 }
 
 /**
