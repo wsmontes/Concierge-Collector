@@ -102,14 +102,19 @@ def append_authz_change(
     source: AuthzSource,
     request_id: str | None = None,
     now: datetime | None = None,
+    compensate_on_failure: bool = True,
 ) -> str | None:
     """Append one idempotent mutation event; reads/no-op decisions write nothing.
 
-    This function is the fail-closed boundary for authz writers. Callers mutate
-    the user first and immediately append this event. If the append fails, the
-    user mutation is compensated from the supplied snapshots before the
-    original exception is propagated. This prevents an allowlisted/admin grant
-    from surviving without durable audit evidence.
+    Normal authz writers mutate the user first and leave
+    ``compensate_on_failure`` enabled. If the append fails, the mutation is
+    restored from the supplied snapshots before the original exception is
+    propagated.
+
+    ``compensate_on_failure=False`` is reserved for a caller that is only
+    ensuring an idempotent event for a mutation performed by another concurrent
+    writer. That caller must fail its own request when the append fails, but it
+    must never compensate/delete state it did not mutate itself.
     """
 
     normalized_before = _snapshot(
@@ -154,6 +159,8 @@ def append_authz_change(
             upsert=True,
         )
     except Exception as audit_error:
+        if not compensate_on_failure:
+            raise audit_error
         try:
             _compensate_failed_audit(
                 db,
