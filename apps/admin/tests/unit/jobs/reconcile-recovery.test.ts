@@ -115,6 +115,87 @@ test('recovers processing=true only after both the Payload heartbeat and domain 
   expect(payloadJobs.updateOne).toHaveBeenCalledTimes(1)
 })
 
+test('reopens a stale processing job left behind after its domain already committed successfully', async () => {
+  const payloadJob = {
+    _id: '65f000000000000000000104',
+    processing: true,
+    hasError: false,
+    completedAt: null,
+    totalTried: 1,
+    meta: {},
+    updatedAt: stalePayloadUpdatedAt,
+  }
+  const payloadJobs = {
+    findById: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(payloadJob) }),
+    updateOne: vi.fn().mockResolvedValue({ modifiedCount: 1 }),
+  }
+  const payload = {
+    db: { collections: {
+      'collection-operations': queryModel([{ _id: 'op-terminal', status: 'completed', jobId: payloadJob._id, leaseExpiresAt: null }]),
+      'collection-publish-jobs': queryModel([]),
+      'selection-manifests': queryModel([]),
+      'collection-exports': queryModel([]),
+      'payload-jobs': payloadJobs,
+    } },
+  }
+
+  const result = await reconcileRecoverableJobs(payload as never, now, { staleProcessingMs: 120_000 })
+
+  expect(result.recovered).toBe(1)
+  expect(payloadJobs.updateOne).toHaveBeenCalledWith(
+    { _id: payloadJob._id, processing: true, updatedAt: { $lte: new Date('2026-09-02T11:58:00.000Z') } },
+    expect.objectContaining({
+      $set: expect.objectContaining({
+        processing: false,
+        hasError: false,
+        completedAt: null,
+        waitUntil: now,
+      }),
+    }),
+  )
+})
+
+test('treats a missing Payload job as healthy after successful domain completion because Payload deletes completed jobs', async () => {
+  const payloadJobs = {
+    findById: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }),
+    updateOne: vi.fn(),
+  }
+  const payload = {
+    db: { collections: {
+      'collection-operations': queryModel([]),
+      'collection-publish-jobs': queryModel([{ _id: 'publish-terminal', status: 'completed', payloadJobId: 'payload-deleted', leaseExpiresAt: null }]),
+      'selection-manifests': queryModel([]),
+      'collection-exports': queryModel([]),
+      'payload-jobs': payloadJobs,
+    } },
+  }
+
+  const result = await reconcileRecoverableJobs(payload as never, now)
+
+  expect(result).toEqual({ recovered: 0, healthy: 1, exhausted: 0, missing: 0 })
+  expect(payloadJobs.updateOne).not.toHaveBeenCalled()
+})
+
+test('still reports a missing Payload job as corruption while domain intent is nonterminal', async () => {
+  const payloadJobs = {
+    findById: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }),
+    updateOne: vi.fn(),
+  }
+  const payload = {
+    db: { collections: {
+      'collection-operations': queryModel([]),
+      'collection-publish-jobs': queryModel([]),
+      'selection-manifests': queryModel([]),
+      'collection-exports': queryModel([{ _id: 'export-running', status: 'running', payloadJobId: 'payload-missing', leaseExpiresAt: expired }]),
+      'payload-jobs': payloadJobs,
+    } },
+  }
+
+  const result = await reconcileRecoverableJobs(payload as never, now)
+
+  expect(result).toEqual({ recovered: 0, healthy: 0, exhausted: 0, missing: 1 })
+})
+
 test('stops automatic recovery after the bounded recovery count', async () => {
   const payloadJobs = {
     findById: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue({
