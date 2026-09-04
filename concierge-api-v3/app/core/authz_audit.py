@@ -194,6 +194,24 @@ def append_authz_change(
     return event_key
 
 
+def _authz_cas_selector(user: dict, before: dict) -> dict:
+    """Match the raw pre-mutation authorization state, including legacy rows.
+
+    Older Mongo documents may rely on the User model defaults without storing
+    ``authorized`` and/or ``role`` physically. Treating those logical defaults
+    as literal equality in the CAS would falsely report a concurrent mutation,
+    because Mongo equality does not match an absent field. Preserve the same
+    optimistic-concurrency guarantee by requiring absence when the field was
+    absent in the raw document and exact equality otherwise.
+    """
+
+    return {
+        "_id": user["_id"],
+        "authorized": before["authorized"] if "authorized" in user else {"$exists": False},
+        "role": before["role"] if "role" in user else {"$exists": False},
+    }
+
+
 def apply_user_authz_change(
     db: Database,
     *,
@@ -225,11 +243,7 @@ def apply_user_authz_change(
         return {**user, **after}
 
     changed = db.users.update_one(
-        {
-            "_id": user["_id"],
-            "authorized": before["authorized"],
-            "role": before["role"],
-        },
+        _authz_cas_selector(user, before),
         {"$set": {"authorized": after["authorized"], "role": after["role"]}},
     )
     if getattr(changed, "matched_count", 0) != 1:
