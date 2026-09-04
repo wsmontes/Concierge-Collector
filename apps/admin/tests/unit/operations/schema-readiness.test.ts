@@ -12,6 +12,9 @@ const required: Record<string, IndexDoc[]> = {
   collections: [
     { name: 'collections_slug_unique', key: { slug: 1 }, unique: true },
   ],
+  'collection-draft-changes': [
+    { name: 'staging_retention_scan', key: { stageState: 1, updatedAt: 1, _id: 1 } },
+  ],
   'collection-operations': [
     { name: 'operation_queue_order', key: { collectionId: 1, operationSequence: 1, status: 1 } },
     { name: 'operation_retention_scan', key: { status: 1, 'itemArchive.itemsPurgedAt': 1, updatedAt: 1 } },
@@ -59,8 +62,8 @@ function payloadWith(input: {
   return { db: { collections } }
 }
 
-test('latest migration marker remains audit archival while readiness also checks older critical TTLs', () => {
-  expect(LATEST_CMS_MIGRATION).toBe('20260904_013_audit_archival')
+test('latest migration marker is the staging retention scan migration', () => {
+  expect(LATEST_CMS_MIGRATION).toBe('20260904_014_staging_retention_scan')
 })
 
 test('reports ready only when latest migration and critical index signatures are present', async () => {
@@ -77,12 +80,12 @@ test('fails closed when latest expected migration marker is missing', async () =
 })
 
 test('fails closed when any critical deployed index is missing', async () => {
-  const result = await checkCmsSchemaReadiness(payloadWith({ missingIndex: 'export_expiry_status' }) as never)
+  const result = await checkCmsSchemaReadiness(payloadWith({ missingIndex: 'staging_retention_scan' }) as never)
 
   expect(result).toEqual(expect.objectContaining({
     ready: false,
     indexes: 'missing',
-    missingIndexes: ['collection-exports:export_expiry_status'],
+    missingIndexes: ['collection-draft-changes:staging_retention_scan'],
   }))
 })
 
