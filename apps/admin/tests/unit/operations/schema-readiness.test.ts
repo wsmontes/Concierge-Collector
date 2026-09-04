@@ -15,6 +15,7 @@ function payloadWith(input: { migration?: boolean; missingIndex?: string } = {})
     'collection-exports': ['export_expiry_status'],
     'audit-events': ['audit_archive_scan'],
     'audit-archive-manifests': ['audit_archive_batch_unique'],
+    'worker-heartbeats': ['worker_heartbeat_ttl'],
   }
   const collections: Record<string, unknown> = {
     'payload-migrations': {
@@ -28,6 +29,10 @@ function payloadWith(input: { migration?: boolean; missingIndex?: string } = {})
   }
   return { db: { collections } }
 }
+
+test('latest migration marker includes heartbeat-retention migration', () => {
+  expect(LATEST_CMS_MIGRATION).toBe('20260904_014_worker_heartbeat_retention')
+})
 
 test('reports ready only when latest migration and critical indexes are present', async () => {
   const result = await checkCmsSchemaReadiness(payloadWith() as never)
@@ -49,5 +54,15 @@ test('fails closed when any critical deployed index is missing', async () => {
     ready: false,
     indexes: 'missing',
     missingIndexes: ['collection-exports:export_expiry_status'],
+  }))
+})
+
+test('fails closed when worker heartbeat TTL index is missing', async () => {
+  const result = await checkCmsSchemaReadiness(payloadWith({ missingIndex: 'worker_heartbeat_ttl' }) as never)
+
+  expect(result).toEqual(expect.objectContaining({
+    ready: false,
+    indexes: 'missing',
+    missingIndexes: ['worker-heartbeats:worker_heartbeat_ttl'],
   }))
 })
