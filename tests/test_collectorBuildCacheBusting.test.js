@@ -127,3 +127,44 @@ describe('Collector build cache busting', () => {
     expect(await readFile(join(root, 'service-worker.js'), 'utf8')).toBe(firstSw);
   });
 });
+
+describe('build do Collector — artefato publicado', () => {
+  // O artefato é o que o static site publica E o que o service worker
+  // precacheia. Duas garantias: nada de ferramenta de repositório no pacote
+  // público, e nada de arquivo que o app carrega deixado de fora.
+  const { existsSync, readFileSync } = require('node:fs');
+  const { dirname, resolve } = require('node:path');
+  const { fileURLToPath } = require('node:url');
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const outputDir = join(root, 'dist', 'collector');
+  const buildSource = readFileSync(join(root, 'scripts', 'build-collector.mjs'), 'utf8');
+
+  test('não publica ferramentas de repositório (python-tools, release, e2e…)', () => {
+    // `scripts/python-tools/` são 81 arquivos do pipeline local — incluindo
+    // mongo_tools.py (lê o .env com credenciais do Atlas) e data_cleanup.py
+    // (destrutivo). O static site é público: nada disso pode ser servido.
+    expect(buildSource).toContain('pruneArtifact');
+    expect(buildSource).toMatch(/python-tools|release\|build/);
+
+    if (!existsSync(outputDir)) return; // dist é gitignored; só valida se buildado
+    const manifest = JSON.parse(readFileSync(join(outputDir, '.manifest.json'), 'utf8'));
+    const paths = manifest.map((entry) => entry.path);
+
+    expect(paths.filter((p) => p.startsWith('scripts/python-tools/'))).toEqual([]);
+    expect(paths.filter((p) => /\.(py|pyc|mjs)$/.test(p))).toEqual([]);
+    expect(paths.filter((p) => p.startsWith('scripts/release/'))).toEqual([]);
+    expect(paths.filter((p) => p.startsWith('scripts/e2e/'))).toEqual([]);
+    expect(paths.filter((p) => p.includes('__pycache__') || p.includes('.pytest_cache'))).toEqual([]);
+    // O app precisa continuar inteiro
+    expect(paths).toContain('index.html');
+    expect(paths).toContain('service-worker.js');
+    expect(paths.some((p) => p.startsWith('capture/'))).toBe(true);
+  });
+
+  test('valida os loaders dinâmicos no artefato (não só o index.html)', () => {
+    // Módulos injetados por `script.src = '...'` não aparecem no index.html; um
+    // caminho quebrado só se revelaria em runtime, já offline.
+    expect(buildSource).toContain('missing dynamically loaded script');
+    expect(buildSource).toContain('collectScriptRefs');
+  });
+});

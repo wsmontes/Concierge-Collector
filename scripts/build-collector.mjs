@@ -58,12 +58,77 @@ async function validateHtml(directory) {
       throw new Error(`Collector output references a missing local asset: ${reference}`)
     }
   }
+
+  // Loaders dinâmicos: módulos injetados por `script.src = '...'` não passam
+  // pelo index.html, então uma remoção errada (ou um typo no caminho) só
+  // apareceria em runtime — em geral quando o app já está offline e sem como
+  // buscar o arquivo. O guard vale sobretudo porque o build agora poda
+  // ferramentas de repositório do artefato.
+  const dynamicRefs = new Set()
+  async function collectScriptRefs(current) {
+    for (const name of await readdir(current)) {
+      const absolute = join(current, name)
+      const info = await stat(absolute)
+      if (info.isDirectory()) {
+        await collectScriptRefs(absolute)
+      } else if (name.endsWith('.js')) {
+        const source = await readFile(absolute, 'utf8')
+        for (const match of source.matchAll(/['"](scripts\/[A-Za-z0-9_./-]+\.js)(?:\?[^'"]*)?['"]/g)) {
+          dynamicRefs.add(match[1])
+        }
+      }
+    }
+  }
+  await collectScriptRefs(directory)
+  for (const reference of dynamicRefs) {
+    if (!(await stat(resolve(directory, reference)).catch(() => null))) {
+      throw new Error(`Collector output references a missing dynamically loaded script: ${reference}`)
+    }
+  }
+}
+
+// Ferramentas de repositório que NÃO são carregadas pelo navegador. Ficam fora
+// do artefato publicado por dois motivos: peso (python-tools sozinho é 81
+// arquivos) e exposição — o static site é público e servia, por exemplo,
+// `scripts/python-tools/mongo_tools.py` (lê o .env com credenciais do Atlas) e
+// `data_cleanup.py` (destrutivo). Verificado: a página só referencia
+// scripts/{auth,core,managers,modules,services,storage,sync,ui,ui-core,utils}.
+const excludedFromArtifact = [
+  /^scripts\/(python-tools|release|build|operations|e2e)\//,
+  /(^|\/)(__pycache__|\.pytest_cache|node_modules)\//,
+  /\.(py|pyc|pyo|mjs)$/,
+  /\.md$/,
+  /^scripts\/(build-collector\.mjs|design-tokens\.mjs)$/
+]
+
+async function pruneArtifact(directory) {
+  async function walk(current) {
+    for (const name of await readdir(current)) {
+      const absolute = join(current, name)
+      const rel = relative(directory, absolute)
+      const info = await stat(absolute)
+      if (info.isDirectory()) {
+        if (excludedFromArtifact.some((re) => re.test(`${rel}/`))) {
+          await rm(absolute, { force: true, recursive: true })
+        } else {
+          await walk(absolute)
+        }
+      } else if (excludedFromArtifact.some((re) => re.test(rel))) {
+        await rm(absolute, { force: true })
+      }
+    }
+  }
+  await walk(directory)
 }
 
 async function build(destination) {
   await rm(destination, { force: true, recursive: true })
   await mkdir(destination, { recursive: true })
   for (const input of inputs) await cp(join(root, input), join(destination, basename(input)), { recursive: true })
+
+  // Antes de gerar o manifest: o que não é publicado não deve entrar no hash da
+  // geração do shell nem ser precacheado pelo service worker.
+  await pruneArtifact(destination)
 
   // One generation is computed from the pristine copied shell. Dynamic loader
   // graphs use that stable generation (no recursive content-hash dependency).
