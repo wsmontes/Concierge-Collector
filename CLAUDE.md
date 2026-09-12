@@ -32,17 +32,37 @@ Estas regras se aplicam ao frontend (`scripts/`, `capture/`):
 
 ## Hospedagem e deploy (Render)
 
-Produção tem **2 serviços no Render**, configurados **manualmente no dashboard** — não há `render.yaml`/Dockerfile/Procfile (infra não é versionada; a referência é `docs/DEPLOYMENT.md`):
+Produção tem **2 serviços no Render** (1 web service + 1 static site), configurados **manualmente no dashboard** — a infra segue não versionada, mas o **imagem Docker do web service agora É versionada** (`Dockerfile` na raiz):
 
 | Serviço | Detalhe |
 |---|---|
-| **API** — web service "Concierge-Collector" (`srv-d4fngpjuibrs73bo70vg`) | root `concierge-api-v3`, build `pip install -r requirements.txt`, start `uvicorn main:app --host 0.0.0.0 --port $PORT`, URL `https://concierge-collector.onrender.com` (API em `/api/v3`), health check `GET /api/v3/health` (ping no Mongo) |
+| **App** — web service "Concierge-Collector" (`srv-d4fngpjuibrs73bo70vg`) | runtime **Docker**, `Dockerfile` na raiz (contexto = repo inteiro, `rootDir` vazio), URL `https://api.concierge-collector.com`, health check `GET /api/v3/health` |
 | **Web** — static site "Concierge-Collector-Web" (`srv-d4fnrlje5dus7397lii0`) | root `/`, sem build, publish `.`, URL `https://concierge-collector-web.onrender.com` |
 
-- ⚠️ **Ambos os serviços auto-deployam da branch `main`** (verificado contra a API do Render em 2026-08-14). O auto-deploy **existe mas não é confiável** — após push em `main`, verificar o deploy de cada serviço e disparar manualmente se necessário (via dashboard ou `scripts/python-tools/render_deployment_manager.py`). Deploy leva ~2-3 min.
-- Sem preDeployCommand/migrações/seeds. Única migração: índice TTL de `capture_sessions` (48h) criado no startup (`concierge-api-v3/app/core/lifespan.py`).
-- Env vars vivem no dashboard do Render (só nomes): `MONGODB_URL`, `MONGODB_DB_NAME`, `API_SECRET_KEY`, `OPENAI_API_KEY`, `GOOGLE_PLACES_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID/SECRET`, `CORS_ORIGINS` (**precisa incluir o domínio do static site**), `ENVIRONMENT`, `LOG_LEVEL`, `TRUSTED_CALLBACK_ORIGINS`. Render injeta `PORT` e `RENDER_SERVICE_NAME` (usadas para detecção de prod em `app/core/config.py`). `MONGODB_CURATIONS_VECTOR_INDEX` (lido em `app/api/curations.py`) deve normalmente ficar **unset** — quando setado, tenta `$vectorSearch`; sem ele, roda a varredura fallback, que é o caminho que realmente executa (o índice vector consome cota do Atlas).
-- Gotcha: `runtime.txt` (Python 3.13.4) fica na **raiz**, mas o root do web service é `concierge-api-v3` — a versão efetiva do Python pode vir do dashboard.
+### O web service roda TRÊS processos no mesmo container (nginx roteia uma porta só)
+
+Desde 2026-09-12 o Admin (Payload) e o runner de jobs vivem **dentro** do serviço da API — antes eram 3 serviços pagos separados, o que não se justificava sem clientes. Roteamento (`deploy/nginx.conf.template`):
+
+```
+/api/v3, /capture, /            -> uvicorn  (FastAPI, 127.0.0.1:8000)
+/admin, /_next, /api/<não-v3>   -> next     (Payload, 127.0.0.1:3000)
+jobs:run (sem porta)            -> payload jobs: filas + agendamentos
+```
+
+- Processos sob `supervisor` (`deploy/supervisord.conf`); entrypoint em `deploy/entrypoint.sh` gera a config do nginx com o `$PORT` do Render.
+- **Consequência de arquitetura:** o Admin mora no MESMO host da API. O Collector fala com `https://api.concierge-collector.com/api/admin/v1/...` (`scripts/core/config.js` → `cms.adminBaseUrl`). **Não existe** `admin.concierge-collector.com`.
+- ⚠️ **Dois detalhes do nginx que existem para não perder dado:** `proxy_buffering off` em `/api/v3` (a API faz streaming — NDJSON de export e proxy de fotos; bufferizar transforma stream em memória) e `client_max_body_size 100m` (a IA recebe áudio e imagens em base64; o default de 1m recusaria).
+- O runner de jobs é processo próprio, **não** `jobs.autoRun` do Payload: o `jobs:run --handle-schedules` também CRIA os jobs agendados (heartbeat, reconciliação, retenção). `autoRun` só drena filas — trocar por ele pararia os agendados em silêncio.
+- Os bancos continuam separados: `concierge-collector` (API) e `concierge-cms` (Payload), ambos no mesmo cluster Atlas (`CMS_MONGODB_DB_NAME=concierge-cms`).
+- Migrações do Payload **não** rodam no boot (nem web nem jobs): são passo explícito de release, hoje via `npm run migrate:cms:locked` de uma máquina local com `apps/admin/.env` apontando para produção.
+
+- ⚠️ **Ambos os serviços auto-deployam da branch `main`**. O auto-deploy **existe mas não é confiável** — verificado em 2026-09-12 que o static site estava atualizado enquanto a API ficou ~180 commits atrás; **conferir os dois** após cada push e disparar manualmente se necessário (via dashboard ou `scripts/python-tools/render_deployment_manager.py`). Deploy do serviço fundido leva ~3,5 min (build Node + Next + Python).
+- Sem preDeployCommand/seeds. O boot cria apenas o índice TTL de `capture_sessions` (48h, em `concierge-api-v3/app/core/lifespan.py`); as migrações do Payload são passo explícito (ver acima).
+- Env vars vivem no dashboard do Render (só nomes). **Atenção ao ler via API:** `GET /services/{id}/env-vars` **pagina em 20 por padrão** — sem `?limit=100` a leitura trunca e um merge read-modify-write apagaria o resto. Escrever sempre por chave (`PUT /env-vars/{key}`), que é aditivo (verificado).
+  - API/captura: `MONGODB_URL`, `MONGODB_DB_NAME`, `API_SECRET_KEY`, `ADMIN_API_KEYS`, `ADMIN_EMAILS`, `JWT_SIGNING_SECRET`, `OPENAI_API_KEY`, `GOOGLE_PLACES_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID/SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`, `CORS_ORIGINS`, `TRUSTED_CALLBACK_ORIGINS`, `ENVIRONMENT`, `LOG_LEVEL`, `FRONTEND_URL(_PRODUCTION)`.
+  - CMS/Payload (mesmo serviço): `CMS_MONGODB_URL`, `CMS_MONGODB_DB_NAME`, `CMS_MONGODB_READ_URL`, `PAYLOAD_SECRET`, `CMS_SERVICE_KEY`, `METRICS_KEY`, `CMS_PUBLIC_SERVER_URL`, `CMS_COLLECTOR_ORIGINS`, `FASTAPI_BASE_URL`, `CMS_ADMIN_ORIGIN`, `CMS_ADMIN_CALLBACK_URL`, `CMS_JOB_*`, `CMS_ORPHAN_STAGING_*`, `CMS_USED_SELECTION_RETENTION_DAYS`.
+  - Feature flags (ver `config/collections-feature-flags.json`): API lê `CMS_AUTH_ENABLED`, `CATALOG_SCAN_ENABLED`, `COLLECTOR_ASSOCIATION_READ_ENABLED`, `COLLECTIONS_DISTRIBUTION_ENABLED`; o Admin lê `COLLECTIONS_ADMIN_ENABLED`, `COLLECTOR_DRAFT_MUTATION_ENABLED`, `CONSUMER_CREDENTIALS_ENABLED`. Todas fail-closed em produção se ausentes.
+- O Python da imagem é **3.12** (pinado no `Dockerfile`, que usa `python:3.12-slim-bookworm` + binários do Node 22 copiados da imagem oficial). O `runtime.txt` da raiz **não se aplica mais** ao serviço.
 - GitHub Actions roda **apenas testes** (não faz deploy): backend unit tests + flake8/black; frontend vitest.
 - Legado: GitHub Pages (`wsmontes.github.io/Concierge-Collector`) + PythonAnywhere ainda aparecem como fallback em `config.js`/`config.py`.
 

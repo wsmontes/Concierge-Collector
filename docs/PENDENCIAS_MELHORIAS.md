@@ -45,31 +45,27 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 - [ ] CI do GitHub Actions removido (billing) — decidir se reativa
 - [ ] Auto-deploy do Render não confiável — sempre verificar após push
 - [x] ~~API parada em commit antigo~~ — RESOLVIDO em 2026-09-12: o serviço `Concierge-Collector` (API) estava live em `077c1633` (01/09) enquanto `main` já tinha ~180 commits; o auto-deploy existe mas não pega. Deploy manual disparado via API do Render: `b545626a` subiu em 77s, `/api/v3/ready` com 31 índices e 0 falhas, zero 5xx. **Lição: `Concierge-Collector-Web` (static) estava atualizado e a API não — verificar os DOIS depois de cada push, eles divergem.**
-- [x] ~~Admin/Worker não existiam~~ — CRIADOS em 2026-09-12 (4 serviços no total agora):
-  - `Concierge-Collector-Admin` (web_service, Docker, `Dockerfile.admin`) — `srv-daigcl7qj5pc73a0jd70`
-  - `Concierge-Collector-Admin-Worker` (background_worker, `npm run start:admin-worker`) — `srv-daigclh594qs738lbp4g`
-  - Ambos região `oregon`, plano `starter`, autoDeploy de `main`. Worker grava heartbeat 1/min e roda as filas (verificado: `worker_heartbeats` + `payload-jobs` com 4 tasks).
-  - Banco `concierge-cms` no MESMO cluster Atlas, lógico e separado.
-- [x] ~~Migrations do Payload pendentes~~ — 11/11 APLICADAS em 2026-09-12 (banco novo). Dois bloqueios reais apareceram e foram corrigidos:
-  1. `Module not found: '@concierge/fastapi-client'` — o `dist` do client é gerado e cai no `.dockerignore`; o `Dockerfile.admin` nunca o gerava. Corrigido com `npm run generate && npm run build` do workspace `fastapi-client` antes do build do admin.
+- [x] ~~Admin/Worker em serviços separados~~ — **DESMONTADOS em 2026-09-12, por decisão de custo.** Criados como 2 serviços pagos (`Concierge-Collector-Admin` + `-Admin-Worker`) e no mesmo dia fundidos no serviço da API: 3 instâncias pagas para um sistema sem clientes não se justificava. Agora o web service da API roda **três processos em um container** (nginx roteia a porta única):
+  ```
+  /api/v3, /capture, /            -> uvicorn (FastAPI)
+  /admin, /_next, /api/<não-v3>   -> next    (Payload)
+  jobs:run (sem porta)            -> payload jobs: filas + agendamentos
+  ```
+  `Dockerfile` na raiz + `deploy/{nginx.conf.template,supervisord.conf,entrypoint.sh}`. `Dockerfile.admin` foi removido. Os dois serviços antigos e o domínio `admin.*` foram deletados do Render; **resta 1 web service pago** (`starter`) + o static site (free).
+  - Ganho colateral: **o DNS deixou de ser bloqueio** — não existe mais `admin.concierge-collector.com`, o Collector fala com `https://api.concierge-collector.com/api/admin/v1/...` (host que já tinha TLS e CORS).
+  - Verificado após a fusão: `/api/v3/health`, `/api/v3/ready`, `/api/v3/docs`, `/capture/`, `/admin`, `/health`, `/ready` todos 200; `/api/admin/v1/collections` → 401 `authentication_required` (gate ativo, não 503); smoke da API **zero 5xx**; heartbeat do runner a cada 1min e jobs novos (`reconcile-leases`, `sync-consumer-usage`) sem erro dentro do container.
+  - ⚠️ **Duas opções do nginx existem para não perder/corromper dado:** `proxy_buffering off` em `/api/v3` (a API faz streaming — NDJSON de export e proxy de fotos; bufferizar transforma stream em memória) e `client_max_body_size 100m` (IA recebe áudio/imagem em base64; o default de 1m recusaria).
+  - ⚠️ O runner de jobs é processo próprio, **não** `jobs.autoRun`: `jobs:run --handle-schedules` também CRIA os agendados (heartbeat, reconciliação, retenção); `autoRun` só drena filas, então trocar pararia os agendados em silêncio.
+  - ⚠️ Com 1 instância o runner não duplica; se o serviço escalar para N instâncias, os jobs passam a rodar N vezes (as leases do Payload protegem a correção, mas o custo de execução multiplica). Revisitar antes de escalar horizontalmente.
+- [x] ~~Migrations do Payload pendentes~~ — 11/11 APLICADAS em 2026-09-12 (banco novo). Três bloqueios reais apareceram e foram corrigidos:
+  1. `Module not found: '@concierge/fastapi-client'` — o `dist` do client é gerado e cai no `.dockerignore`; a imagem nunca o gerava. Corrigido com `npm run generate && npm run build` do workspace `fastapi-client` antes do build do admin.
   2. `next start --hostname 0.0.0.0 10000` → `Invalid project directory` — `npm run start:admin -- --port N` não repassa a flag (o script interno é outro `npm run`, sem `--`). Agora `next` lê `PORT` do ambiente.
   3. `Index already exists with a different name: slug_1` — o `autoIndex` do Mongoose (default true) criava os nomes padrão (`slug_1`), enquanto as migrations usam nomes explícitos (`collections_slug_unique`). Corrigido com `connectOptions.autoIndex: false` — migrations passam a ser donas exclusivas dos índices. **Atenção: `collectionsSchemaOptions` NÃO serve para isso (é indexado por slug de coleção).**
-- [ ] **`admin.concierge-collector.com` ainda NÃO resolve em DNS** — ÚNICO bloqueio restante da funcionalidade. O domínio já está anexado ao serviço Admin no Render (`cdm-daiggo15efls73deb3eg`, status `unverified`) esperando o registro; não há mais nada a fazer do lado do Render.
-  - **Provedor de DNS: Namecheap** (nameservers `dns1/dns2.registrar-servers.com`). Não existe credencial de API de DNS no ambiente, então este passo é manual.
-  - Caminho no painel: Namecheap → Domain List → `concierge-collector.com` → **Advanced DNS** → Add New Record:
-    ```
-    Type: CNAME Record
-    Host: admin                                        (só "admin", não o FQDN)
-    Value/Target: concierge-collector-admin.onrender.com
-    TTL: Automatic
-    ```
-  - Mesmo padrão dos já verificados: `api.*` e `capture.*` → `concierge-collector.onrender.com`; `www.*` → `concierge-collector-web.onrender.com`.
-  - Depois de salvar, o Render detecta sozinho e emite o TLS (alguns minutos). Verificação: `dig +short CNAME admin.concierge-collector.com` deve devolver o alvo, e `curl -sI https://admin.concierge-collector.com/health` deve dar 200.
-  - Enquanto isso, o **modal de Collections do Collector falha com `network_error`** (degrada tipado, não quebra a app) porque `scripts/core/config.js` aponta `cms.adminBaseUrl` para esse host.
-  - **Não** aponte o Collector para o host `*.onrender.com` como paliativo: `CMS_ADMIN_ORIGIN`, `CMS_ADMIN_CALLBACK_URL`, `CMS_PUBLIC_SERVER_URL` e a allowlist de CORS/CSRF são todos o origin canônico — trocar o host quebraria o modelo de sessão em vez de contorná-lo.
+- [x] ~~`admin.concierge-collector.com` sem DNS~~ — **deixou de existir**: com o Admin dentro do serviço da API, não há subdomínio a criar. Nenhuma ação de DNS pendente.
+- [ ] **Privacidade de env vars na API do Render**: `GET /services/{id}/env-vars` **pagina em 20 por padrão**. Ler sem `?limit=100` trunca e um merge read-modify-write do conjunto inteiro apagaria as demais — foi o que quase me fez concluir (errado) que 7 variáveis de produção haviam sumido. Escrever sempre por chave (`PUT /env-vars/{key}`), que é aditivo.
 - [x] ~~7 feature flags `default: false` em production~~ — TODAS LIGADAS em 2026-09-12, na ordem do runbook, com verificação a cada passo. Cada uma foi confirmada abrindo o gate (503 `feature_disabled` → 401/404 real):
   - API: `CMS_AUTH_ENABLED`, `CATALOG_SCAN_ENABLED`, `COLLECTOR_ASSOCIATION_READ_ENABLED`, `COLLECTIONS_DISTRIBUTION_ENABLED`
-  - Admin: `COLLECTIONS_ADMIN_ENABLED`, `COLLECTOR_DRAFT_MUTATION_ENABLED`, `CONSUMER_CREDENTIALS_ENABLED`
+  - Mesmo serviço, lidas pelo processo Next: `COLLECTIONS_ADMIN_ENABLED`, `COLLECTOR_DRAFT_MUTATION_ENABLED`, `CONSUMER_CREDENTIALS_ENABLED`
   - Prova da credencial compartilhada: com `X-CMS-Service-Key` correta o `/catalog/curations` passa de "Invalid CMS service credential" para "CMS actor is required" (ou seja, autenticou); com chave errada continua 401.
   - Smoke final: **zero 5xx**, distribution devolve `401 Consumer credential required` (fail-closed para anônimo).
   - **Prova server-to-server (a mais forte obtida sem credencial de usuário):** o Worker chama a API em `/api/v3/internal/consumer-usage` com `X-CMS-Service-Key`. Antes de a `CMS_SERVICE_KEY` existir na API, o job `sync-consumer-usage` falhava a cada ciclo com `service_unavailable` (4 erros: 08:17/08:24/08:29/08:34). Depois da chave configurada + deploy, o job de 08:46 rodou **sem erro** e os 3 jobs dos 10 min seguintes (incl. `reconcile-leases` e `record-worker-heartbeat`) também. Ou seja: a credencial compartilhada Admin↔API está validada por tráfego real, não só por abertura de gate.

@@ -1,5 +1,19 @@
 # Render Collections Production Implementation Plan
 
+> ⚠️ **SUPERADO em 2026-09-12.** Este plano provisiona Admin e Worker como **dois
+> serviços separados** (`Concierge-Collector-Admin` web + `-Admin-Worker`
+> background) e cria o subdomínio `admin.concierge-collector.com`. Nada disso
+> existe mais: os dois serviços foram criados, ficaram ~1 dia no ar e foram
+> **fundidos no serviço da API**, que agora roda API + Admin + jobs em um único
+> container com nginx roteando (`Dockerfile` na raiz + `deploy/`). O subdomínio
+> `admin.*` foi abandonado junto — o Admin vive em
+> `https://api.concierge-collector.com/admin`.
+>
+> Mantido como registro histórico do desenho. Para a topologia vigente, ver
+> `docs/PENDENCIAS_MELHORIAS.md` (seção Infra) e `CLAUDE.md` (Hospedagem e
+> deploy). O que deste plano **continua válido e foi executado**: as migrações
+> (Task 3), os canários de flag (Task 4) e a config de origem/callback na API.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Provision production Admin and Worker services in Render, then release Collections through observable canaries.
