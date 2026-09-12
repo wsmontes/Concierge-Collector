@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { PublishPreviewDto } from '../../collections/admin-client'
 
 export interface PublishCollectionDialogProps {
@@ -31,9 +31,9 @@ export function PublishCollectionDialog({
   const [confirmedUnavailable, setConfirmedUnavailable] = useState(preview.unavailableCount === 0)
   const needsUnavailableConfirmation = preview.unavailableCount > 0
 
-  useEffect(() => {
-    setConfirmedUnavailable(preview.unavailableCount === 0)
-  }, [preview.unavailableCount, preview.draftRevision, preview.revision])
+  // Sem efeito de ressincronização: a identidade do preview é o `key` do
+  // diálogo no call site, então um preview novo remonta o componente e este
+  // inicializador já reflete os contadores atuais.
 
   return (
     <div className="collection-dialog-backdrop" role="presentation">

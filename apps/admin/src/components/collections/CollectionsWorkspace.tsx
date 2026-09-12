@@ -58,9 +58,25 @@ export function CollectionsWorkspace({
     }
   }, [client])
 
+  // Carga inicial: os setState ficam DENTRO do bloco assíncrono (nunca no corpo
+  // síncrono do efeito, que dispararia renders em cascata). `reload` continua
+  // existindo para os handlers imperativos, onde ligar o loading é intencional.
   useEffect(() => {
-    void reload()
-  }, [reload])
+    let active = true
+    void (async () => {
+      try {
+        const next = await client.list()
+        if (!active) return
+        setRows(next)
+        setError(null)
+      } catch (cause) {
+        if (active) setError(humanError(cause))
+      } finally {
+        if (active) setLoading(false)
+      }
+    })()
+    return () => { active = false }
+  }, [client])
 
   const visible = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
