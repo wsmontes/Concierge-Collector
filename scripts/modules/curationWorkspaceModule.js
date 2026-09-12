@@ -6,6 +6,12 @@
  * this module changes responsibility and hierarchy before legacy internals
  * are removed, avoiding a schema/sync big bang.
  */
+// Retry do installSaveCompatibility: 300 × 100ms = 30s, a mesma janela que os
+// módulos de durabilidade usam. O retry existe porque o conceptModule chega
+// DEPOIS do primeiro install (ver o docstring do método).
+const SAVE_COMPATIBILITY_MAX_ATTEMPTS = 300;
+const SAVE_COMPATIBILITY_RETRY_MS = 100;
+
 class CurationWorkspaceModule {
     constructor(uiManager = null) {
         this.uiManager = uiManager || window.uiManager || null;
@@ -18,6 +24,7 @@ class CurationWorkspaceModule {
         this._visibilityObserver = null;
         this._legacyIndicatorObserver = null;
         this._installed = false;
+        this._saveCompatibilityTimer = null;
     }
 
     static deriveState(curation = null, entity = null) {
@@ -641,9 +648,44 @@ class CurationWorkspaceModule {
         this._conceptObserver.observe(container, { childList: true, subtree: true });
     }
 
-    installSaveCompatibility() {
+    /**
+     * Instala o wrapper de compatibilidade sobre `conceptModule.saveRestaurant`.
+     *
+     * RE-TENTA enquanto o `conceptModule` não existir, porque essa é a ordem
+     * NORMAL do boot: `window.uiManager` é atribuído no parse do script
+     * (uiManager.js:3680), então `bootstrap()` (no DOMContentLoaded) chama este
+     * install ANTES de `uiManager.init()` rodar — e é o `init()` que cria o
+     * `conceptModule`, depois do await de autenticação.
+     *
+     * Sem o retry este método retornava para sempre e
+     * `__curationWorkspaceSaveCompatibilityInstalled` nunca era setado.
+     * `OfflineDurabilityModule` espera exatamente esse flag (`workspaceReady`) e
+     * desistia após 30s ("durability wrappers not installed"), derrubando em
+     * cadeia os quatro módulos que dependem de
+     * `__offlineDurabilityEditRestoreInstalled` — ownership guard, authoring
+     * controller, source identity bridge e save coordinator. Os cinco avisos
+     * "could not attach" do boot de produção têm esta única causa.
+     */
+    installSaveCompatibility(attempt = 0) {
         const conceptModule = this.uiManager?.conceptModule;
-        if (!conceptModule?.saveRestaurant || conceptModule.__curationWorkspaceSaveCompatibilityInstalled) {
+
+        if (!conceptModule?.saveRestaurant) {
+            if (attempt >= SAVE_COMPATIBILITY_MAX_ATTEMPTS) {
+                const logger = window.Logger?.module?.('CurationWorkspace');
+                const message = 'Save compatibility could not attach: conceptModule.saveRestaurant ausente';
+                if (logger?.warn) logger.warn(message);
+                else console.warn(message);
+                return;
+            }
+            clearTimeout(this._saveCompatibilityTimer);
+            this._saveCompatibilityTimer = setTimeout(
+                () => this.installSaveCompatibility(attempt + 1),
+                SAVE_COMPATIBILITY_RETRY_MS
+            );
+            return;
+        }
+
+        if (conceptModule.__curationWorkspaceSaveCompatibilityInstalled) {
             return;
         }
 
