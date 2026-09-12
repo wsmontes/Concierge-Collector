@@ -74,8 +74,27 @@ export default buildConfig({
     // Migrations run only in the explicit release/manual command
     // (`payload migrate`), never as web or worker boot side effects.
     migrationDir: 'src/migrations',
+    // Os índices são propriedade EXCLUSIVA das migrations.
+    //
+    // Sem isto o Mongoose cria os seus por conta própria no boot (autoIndex
+    // default = true), com os nomes PADRÃO (`slug_1`, `eventKey_1`), enquanto
+    // as migrations criam os mesmos campos com nomes explícitos
+    // (`collections_slug_unique`, `audit_event_key_unique`). O Mongo não aceita
+    // dois índices com a mesma chave e nomes diferentes, então o primeiro boot
+    // do Admin em produção criava os nomes default e a migration seguinte
+    // falhava com "Index already exists with a different name: slug_1" —
+    // deixando o schema sem os índices que a suíte de integração exige
+    // (tests/integration/payload/collection-indexes.int.test.ts).
+    //
+    // O Payload não cria índices por si (`ensureIndexes` já é false); quem
+    // criava era o Mongoose, com `autoIndex` default = true. É esse que
+    // desligamos, no nível da CONEXÃO: `collectionsSchemaOptions` é indexado
+    // por slug de coleção (`?.[collection.slug]`), então `{ autoIndex: false }`
+    // ali não teria efeito nenhum. Verificado empiricamente: com
+    // connectOptions.autoIndex=false nenhum índice é criado no boot.
     connectOptions: {
       dbName: env.cmsDatabaseName,
+      autoIndex: false,
     },
   }),
   admin: {
