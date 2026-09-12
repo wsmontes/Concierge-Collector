@@ -54,11 +54,19 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
   1. `Module not found: '@concierge/fastapi-client'` — o `dist` do client é gerado e cai no `.dockerignore`; o `Dockerfile.admin` nunca o gerava. Corrigido com `npm run generate && npm run build` do workspace `fastapi-client` antes do build do admin.
   2. `next start --hostname 0.0.0.0 10000` → `Invalid project directory` — `npm run start:admin -- --port N` não repassa a flag (o script interno é outro `npm run`, sem `--`). Agora `next` lê `PORT` do ambiente.
   3. `Index already exists with a different name: slug_1` — o `autoIndex` do Mongoose (default true) criava os nomes padrão (`slug_1`), enquanto as migrations usam nomes explícitos (`collections_slug_unique`). Corrigido com `connectOptions.autoIndex: false` — migrations passam a ser donas exclusivas dos índices. **Atenção: `collectionsSchemaOptions` NÃO serve para isso (é indexado por slug de coleção).**
-- [ ] **`admin.concierge-collector.com` ainda NÃO resolve em DNS** — ÚNICO bloqueio restante da funcionalidade. O domínio já está anexado ao serviço Admin no Render (`cdm-daiggo15efls73deb3eg`, status `unverified`) esperando o registro. Precisa de:
-  ```
-  Tipo: CNAME    Nome: admin    Valor: concierge-collector-admin.onrender.com
-  ```
-  Mesmo padrão dos já verificados (`api.*` e `capture.*` → `concierge-collector.onrender.com`). Enquanto isso, o **modal de Collections do Collector falha com `network_error`** (degrada tipado, não quebra a app) porque `scripts/core/config.js` aponta `cms.adminBaseUrl` para esse host.
+- [ ] **`admin.concierge-collector.com` ainda NÃO resolve em DNS** — ÚNICO bloqueio restante da funcionalidade. O domínio já está anexado ao serviço Admin no Render (`cdm-daiggo15efls73deb3eg`, status `unverified`) esperando o registro; não há mais nada a fazer do lado do Render.
+  - **Provedor de DNS: Namecheap** (nameservers `dns1/dns2.registrar-servers.com`). Não existe credencial de API de DNS no ambiente, então este passo é manual.
+  - Caminho no painel: Namecheap → Domain List → `concierge-collector.com` → **Advanced DNS** → Add New Record:
+    ```
+    Type: CNAME Record
+    Host: admin                                        (só "admin", não o FQDN)
+    Value/Target: concierge-collector-admin.onrender.com
+    TTL: Automatic
+    ```
+  - Mesmo padrão dos já verificados: `api.*` e `capture.*` → `concierge-collector.onrender.com`; `www.*` → `concierge-collector-web.onrender.com`.
+  - Depois de salvar, o Render detecta sozinho e emite o TLS (alguns minutos). Verificação: `dig +short CNAME admin.concierge-collector.com` deve devolver o alvo, e `curl -sI https://admin.concierge-collector.com/health` deve dar 200.
+  - Enquanto isso, o **modal de Collections do Collector falha com `network_error`** (degrada tipado, não quebra a app) porque `scripts/core/config.js` aponta `cms.adminBaseUrl` para esse host.
+  - **Não** aponte o Collector para o host `*.onrender.com` como paliativo: `CMS_ADMIN_ORIGIN`, `CMS_ADMIN_CALLBACK_URL`, `CMS_PUBLIC_SERVER_URL` e a allowlist de CORS/CSRF são todos o origin canônico — trocar o host quebraria o modelo de sessão em vez de contorná-lo.
 - [x] ~~7 feature flags `default: false` em production~~ — TODAS LIGADAS em 2026-09-12, na ordem do runbook, com verificação a cada passo. Cada uma foi confirmada abrindo o gate (503 `feature_disabled` → 401/404 real):
   - API: `CMS_AUTH_ENABLED`, `CATALOG_SCAN_ENABLED`, `COLLECTOR_ASSOCIATION_READ_ENABLED`, `COLLECTIONS_DISTRIBUTION_ENABLED`
   - Admin: `COLLECTIONS_ADMIN_ENABLED`, `COLLECTOR_DRAFT_MUTATION_ENABLED`, `CONSUMER_CREDENTIALS_ENABLED`
