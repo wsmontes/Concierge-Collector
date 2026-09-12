@@ -12,7 +12,11 @@ import {
 
 const root = resolve(import.meta.dirname, '..')
 const outputDir = join(root, 'dist', 'collector')
-const inputs = ['index.html', 'service-worker.js', 'images', 'scripts', 'styles']
+// `capture` entra porque /capture/ é servido na MESMA origem do Collector e é
+// um app funcional (o static site o serve hoje). Sem ele no artefato, trocar o
+// publishPath para dist/collector derrubaria a rota — regressão silenciosa
+// numa feature que funciona.
+const inputs = ['index.html', 'service-worker.js', 'images', 'scripts', 'styles', 'capture']
 const externalHosts = new Set(['fonts.googleapis.com', 'fonts.gstatic.com', 'cdn.jsdelivr.net'])
 
 async function fileManifest(directory) {
