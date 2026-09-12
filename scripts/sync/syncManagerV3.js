@@ -927,34 +927,35 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             // e o watermark nunca salvava se o usuário fechasse antes do fim)
             const idList = Array.from(linkedEntityIds);
             if (idList.length) {
+                // Duas passadas, porque `?since` responde a duas perguntas
+                // diferentes e só uma delas é incremental:
+                //
+                //   BACKFILL — vinculadas que NÃO existem no cache local.
+                //     Precisam ser buscadas SEM `since`. O filtro é por
+                //     updatedAt, então uma entidade antiga e nunca puxada ficava
+                //     excluída PARA SEMPRE: era a causa das "curadorias órfãs"
+                //     que apareciam em todo boot ("27 issues found, 0 repaired").
+                //     A referência é válida no servidor (verificado: 1035/1035
+                //     existem) e a entidade simplesmente nunca chegava ao cache.
+                //   REFRESH — as já presentes: aí sim só o que mudou.
+                const localIds = await this.collectLocalEntityIds(idList);
+                const missingIds = idList.filter((id) => !localIds.has(id));
+                const refreshIds = idList.filter((id) => localIds.has(id));
+
+                if (missingIds.length) {
+                    this.log.info(
+                        `⬇️ Backfill de ${missingIds.length} entidade(s) vinculada(s) ausente(s) no cache local (sem filtro incremental)`
+                    );
+                }
+
                 // Lotes por CONTAGEM **e TAMANHO DE URL** (RequestChunking): o
                 // cap do servidor é 500 ids, mas 500 ids longos (overture_… tem
                 // 38 chars) produzem ~21KB de URL e o edge responde `414 URI Too
                 // Long`. Como a resposta de erro não traz CORS, o browser
-                // reportava "bloqueado por CORS" e o pull falhava inteiro nos
-                // dois chunks. Falha de um chunk não derruba o pull: loga e
-                // segue (retry no próximo ciclo).
-                const chunks = window.RequestChunking.chunkIds(idList);
-                for (let i = 0; i < chunks.length; i++) {
-                    const chunk = chunks[i];
-                    const params = { limit: chunk.length, ids: chunk.join(',') };
-                    if (since) {
-                        params.since = since;  // incremental: só vinculadas MUDADAS desde o último pull
-                    }
-                    try {
-                        const response = await window.ApiService.listEntities(params);
-                        const items = response.items || [];
-                        for (const serverEntity of items) {
-                            await this.processServerEntity(serverEntity);
-                            totalPulled++;
-                        }
-                    } catch (chunkError) {
-                        this.stats.failed++;
-                        this.log.warn(
-                            `Chunk ${i + 1}/${chunks.length} do pull de entities falhou (${chunkError?.message}) — será re-tentado no próximo sync`
-                        );
-                    }
-                }
+                // reportava "bloqueado por CORS" e o pull falhava inteiro.
+                // Falha de um chunk não derruba o pull: loga e segue.
+                totalPulled += await this.pullEntityIdBatches(missingIds, null);
+                totalPulled += await this.pullEntityIdBatches(refreshIds, since);
             }
 
             // FALLBACK (sem ids locais): paginação por CURSOR como antes
@@ -1015,6 +1016,68 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.log.error('Failed to pull linked entities:', error);
             throw error;
         }
+    }
+
+    /**
+     * Ids vinculados que já existem no cache local.
+     *
+     * Consulta INDEXADA em lotes (`where('entity_id').anyOf`) em vez de carregar
+     * a tabela inteira — o cache local pode ter milhares de entidades e o pull
+     * roda a cada ciclo.
+     *
+     * @param {string[]} ids
+     * @returns {Promise<Set<string>>}
+     */
+    async collectLocalEntityIds(ids) {
+        const found = new Set();
+        const CHUNK = 500;
+        for (let i = 0; i < ids.length; i += CHUNK) {
+            const rows = await window.DataStore.db.entities
+                .where('entity_id')
+                .anyOf(ids.slice(i, i + CHUNK))
+                .toArray();
+            for (const row of rows) {
+                if (row && row.entity_id) found.add(row.entity_id);
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Busca lotes de entidades por `?ids=` e persiste cada uma.
+     *
+     * @param {string[]} ids
+     * @param {string|null} since  Watermark incremental; `null` = sem filtro
+     *                             (usado no backfill de ausentes no cache).
+     * @returns {Promise<number>} quantas foram processadas
+     */
+    async pullEntityIdBatches(ids, since) {
+        if (!ids || !ids.length) return 0;
+
+        const chunks = window.RequestChunking.chunkIds(ids);
+        let pulled = 0;
+
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            const params = { limit: chunk.length, ids: chunk.join(',') };
+            if (since) {
+                params.since = since;
+            }
+            try {
+                const response = await window.ApiService.listEntities(params);
+                for (const serverEntity of response.items || []) {
+                    await this.processServerEntity(serverEntity);
+                    pulled++;
+                }
+            } catch (chunkError) {
+                this.stats.failed++;
+                this.log.warn(
+                    `Chunk ${i + 1}/${chunks.length} do pull de entities falhou (${chunkError?.message}) — será re-tentado no próximo sync`
+                );
+            }
+        }
+
+        return pulled;
     }
 
     /**

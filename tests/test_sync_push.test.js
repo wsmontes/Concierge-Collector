@@ -217,6 +217,23 @@ describe('pushEntities — delete ops (admin-only + 409)', () => {
 });
 
 describe('pullLinkedEntities — lotes de ids (contagem + tamanho de URL)', () => {
+  /** Cache local com as entidades informadas (o resto é "ausente no cache"). */
+  function mockLocalEntities(cachedIds = []) {
+    window.DataStore = {
+      db: {
+        entities: {
+          where: () => ({
+            anyOf: (ids) => ({
+              toArray: async () => cachedIds
+                .filter((id) => ids.includes(id))
+                .map((entity_id) => ({ entity_id }))
+            })
+          })
+        }
+      }
+    };
+  }
+
   test('1.200 ids → 3 chamadas com slices de 500; falha de chunk não derruba o pull', async () => {
     const sm = makeSyncManager();
     sm.collectLinkedEntityIdsFromCurations = vi.fn(
@@ -226,6 +243,7 @@ describe('pullLinkedEntities — lotes de ids (contagem + tamanho de URL)', () =
     sm.pruneUnlinkedSyncedEntities = vi.fn(async () => {});
     sm.saveSyncMetadata = vi.fn(async () => {});
     sm.stats = { lastEntityPullAt: null, lastPullAt: null, entitiesPulled: 0 };
+    mockLocalEntities([]);
 
     const calls = [];
     let callCount = 0;
@@ -247,6 +265,59 @@ describe('pullLinkedEntities — lotes de ids (contagem + tamanho de URL)', () =
     expect(calls[0].ids.startsWith('ent_0,')).toBe(true);
     expect(calls[1].ids.split(',').length).toBe(200);
     expect(calls[1].ids.startsWith('ent_1000,')).toBe(true);
+  });
+
+  test('vinculada AUSENTE no cache é buscada SEM `since` (senão nunca chega)', async () => {
+    // Regressão do bug das "curadorias órfãs": a entidade existe no servidor
+    // mas nunca foi puxada, e não foi modificada desde o watermark. Com `since`
+    // o servidor a excluía e ela ficava órfã para sempre ("27 issues found,
+    // 0 repaired" repetindo em todo boot).
+    const sm = makeSyncManager();
+    sm.collectLinkedEntityIdsFromCurations = vi.fn(
+      async () => new Set(['ent_cache', 'ent_faltante'])
+    );
+    sm.processServerEntity = vi.fn(async () => {});
+    sm.pruneUnlinkedSyncedEntities = vi.fn(async () => {});
+    sm.saveSyncMetadata = vi.fn(async () => {});
+    sm.stats = { lastEntityPullAt: '2026-09-01T00:00:00.000Z', lastPullAt: null, entitiesPulled: 0 };
+    mockLocalEntities(['ent_cache']); // só uma está no cache
+
+    const calls = [];
+    window.ApiService = {
+      listEntities: vi.fn(async (params) => {
+        calls.push(params);
+        return { items: [] };
+      })
+    };
+
+    await sm.pullLinkedEntities();
+
+    const backfill = calls.find((c) => c.ids.includes('ent_faltante'));
+    const refresh = calls.find((c) => c.ids.includes('ent_cache'));
+    expect(backfill).toBeTruthy();
+    expect(backfill.since).toBeUndefined();          // sem filtro incremental
+    expect(refresh).toBeTruthy();
+    expect(refresh.since).toBe('2026-09-01T00:00:00.000Z'); // já em cache: só o que mudou
+  });
+
+  test('tudo em cache → NENHUM backfill (não recarrega o acervo todo a cada sync)', async () => {
+    const sm = makeSyncManager();
+    sm.collectLinkedEntityIdsFromCurations = vi.fn(async () => new Set(['a', 'b', 'c']));
+    sm.processServerEntity = vi.fn(async () => {});
+    sm.pruneUnlinkedSyncedEntities = vi.fn(async () => {});
+    sm.saveSyncMetadata = vi.fn(async () => {});
+    sm.stats = { lastEntityPullAt: '2026-09-01T00:00:00.000Z', lastPullAt: null, entitiesPulled: 0 };
+    mockLocalEntities(['a', 'b', 'c']);
+
+    const calls = [];
+    window.ApiService = {
+      listEntities: vi.fn(async (params) => { calls.push(params); return { items: [] }; })
+    };
+
+    await sm.pullLinkedEntities();
+
+    expect(calls).toHaveLength(1);                      // uma única passada
+    expect(calls[0].since).toBe('2026-09-01T00:00:00.000Z');
   });
 });
 
