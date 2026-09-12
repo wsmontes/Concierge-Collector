@@ -45,9 +45,27 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 - [ ] CI do GitHub Actions removido (billing) — decidir se reativa
 - [ ] Auto-deploy do Render não confiável — sempre verificar após push
 - [x] ~~API parada em commit antigo~~ — RESOLVIDO em 2026-09-12: o serviço `Concierge-Collector` (API) estava live em `077c1633` (01/09) enquanto `main` já tinha ~180 commits; o auto-deploy existe mas não pega. Deploy manual disparado via API do Render: `b545626a` subiu em 77s, `/api/v3/ready` com 31 índices e 0 falhas, zero 5xx. **Lição: `Concierge-Collector-Web` (static) estava atualizado e a API não — verificar os DOIS depois de cada push, eles divergem.**
-- [ ] **`admin.concierge-collector.com` NÃO EXISTE em DNS** (verificado 2026-09-12: sem registro). O `scripts/core/config.js` aponta `cms.adminBaseUrl` para esse host, então o **modal de Collections do Collector falha com `network_error` em produção** — degrada com erro tipado (não quebra a app), mas a feature está inutilizável. Decisão pendente: (a) deployar o Payload/Admin em algum host (não há serviço dele em NENHUM dos 7 serviços do workspace Render) ou (b) desligar `app.features.collectionsModal` enquanto não houver host.
-- [ ] **Todas as 7 feature flags em `config/collections-feature-flags.json` estão `default: false` para production** — inclusive `collections_admin`, `consumer_credentials` e `collections_distribution`. Consequência: os ~180 commits de convergência do Collections Admin estão deployados (a partir de 2026-09-12) mas DESLIGADOS em produção; os endpoints respondem 503 `feature_disabled`. Falta o rollout consciente (o runbook de Collections menciona a verificação de aceitação: `npm run verify:collections:acceptance`).
-- [ ] Migrations do Payload (`20260902_009_operational_retention`, `20260902_010_selection_retention`) exigem `payload migrate` no host do Admin — **bloqueado enquanto não existir host** (ver item acima).
+- [x] ~~Admin/Worker não existiam~~ — CRIADOS em 2026-09-12 (4 serviços no total agora):
+  - `Concierge-Collector-Admin` (web_service, Docker, `Dockerfile.admin`) — `srv-daigcl7qj5pc73a0jd70`
+  - `Concierge-Collector-Admin-Worker` (background_worker, `npm run start:admin-worker`) — `srv-daigclh594qs738lbp4g`
+  - Ambos região `oregon`, plano `starter`, autoDeploy de `main`. Worker grava heartbeat 1/min e roda as filas (verificado: `worker_heartbeats` + `payload-jobs` com 4 tasks).
+  - Banco `concierge-cms` no MESMO cluster Atlas, lógico e separado.
+- [x] ~~Migrations do Payload pendentes~~ — 11/11 APLICADAS em 2026-09-12 (banco novo). Dois bloqueios reais apareceram e foram corrigidos:
+  1. `Module not found: '@concierge/fastapi-client'` — o `dist` do client é gerado e cai no `.dockerignore`; o `Dockerfile.admin` nunca o gerava. Corrigido com `npm run generate && npm run build` do workspace `fastapi-client` antes do build do admin.
+  2. `next start --hostname 0.0.0.0 10000` → `Invalid project directory` — `npm run start:admin -- --port N` não repassa a flag (o script interno é outro `npm run`, sem `--`). Agora `next` lê `PORT` do ambiente.
+  3. `Index already exists with a different name: slug_1` — o `autoIndex` do Mongoose (default true) criava os nomes padrão (`slug_1`), enquanto as migrations usam nomes explícitos (`collections_slug_unique`). Corrigido com `connectOptions.autoIndex: false` — migrations passam a ser donas exclusivas dos índices. **Atenção: `collectionsSchemaOptions` NÃO serve para isso (é indexado por slug de coleção).**
+- [ ] **`admin.concierge-collector.com` ainda NÃO resolve em DNS** — ÚNICO bloqueio restante da funcionalidade. O domínio já está anexado ao serviço Admin no Render (`cdm-daiggo15efls73deb3eg`, status `unverified`) esperando o registro. Precisa de:
+  ```
+  Tipo: CNAME    Nome: admin    Valor: concierge-collector-admin.onrender.com
+  ```
+  Mesmo padrão dos já verificados (`api.*` e `capture.*` → `concierge-collector.onrender.com`). Enquanto isso, o **modal de Collections do Collector falha com `network_error`** (degrada tipado, não quebra a app) porque `scripts/core/config.js` aponta `cms.adminBaseUrl` para esse host.
+- [x] ~~7 feature flags `default: false` em production~~ — TODAS LIGADAS em 2026-09-12, na ordem do runbook, com verificação a cada passo. Cada uma foi confirmada abrindo o gate (503 `feature_disabled` → 401/404 real):
+  - API: `CMS_AUTH_ENABLED`, `CATALOG_SCAN_ENABLED`, `COLLECTOR_ASSOCIATION_READ_ENABLED`, `COLLECTIONS_DISTRIBUTION_ENABLED`
+  - Admin: `COLLECTIONS_ADMIN_ENABLED`, `COLLECTOR_DRAFT_MUTATION_ENABLED`, `CONSUMER_CREDENTIALS_ENABLED`
+  - Prova da credencial compartilhada: com `X-CMS-Service-Key` correta o `/catalog/curations` passa de "Invalid CMS service credential" para "CMS actor is required" (ou seja, autenticou); com chave errada continua 401.
+  - Smoke final: **zero 5xx**, distribution devolve `401 Consumer credential required` (fail-closed para anônimo).
+  - ⚠️ Os CANÁRIOS de verdade (login de admin, publicar uma Collection, emitir credencial) **não foram executados** — exigem uma pessoa com conta Google autorizada. Foram verificados só os gates, não os fluxos.
+- [ ] **Privilégio amplo a estreitar**: o Admin/Worker usam a MESMA credencial Atlas da API (que tem readWrite em `concierge-collector`), e `CMS_MONGODB_READ_URL` da API usa a mesma credencial. O desenho pedia usuários separados (o comentário em `config.py` é explícito: "a API nunca é dona de mutations nem de índices desse namespace"). Criar usuários scoped no Atlas quando houver acesso à API do Atlas.
 - [ ] `frame-ancestors` (anti-clickjacking) não pode ser definido por `<meta>` (ignorado por spec) — precisa de header HTTP. No static site do Render, configurar em Headers customizados do dashboard. O resto da CSP já está no shell (script-src estrito).
 
 ### Segurança (auditoria 2026-09-12)
