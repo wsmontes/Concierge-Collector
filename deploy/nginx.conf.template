@@ -20,6 +20,14 @@ server {
     server_name _;
     server_tokens off;
 
+    # Logs para stdout/stderr: o default do nginx escreve em /var/log/nginx/*.log
+    # DENTRO do container, onde o Render não vê — e foi exatamente por isso que os
+    # erros de CORS/ERR_FAILED relatados pelo browser não tinham contrapartida em
+    # log nenhum: o lado do edge estava mudo. Com os logs no stdout, um 502/504 do
+    # nginx aparece junto do log do uvicorn.
+    access_log /dev/stdout combined;
+    error_log /dev/stderr warn;
+
     # Uploads: a API recebe áudio e imagens em base64 (data URL) nos endpoints
     # de IA; o default do nginx (1m) truncaria/recusaria isso silenciosamente.
     client_max_body_size 100m;
