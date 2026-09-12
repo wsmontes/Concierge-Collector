@@ -1,6 +1,6 @@
 # Pendências & Melhorias do Concierge Collector
 
-Lista viva de áreas, pendências e melhorias — atualizada em 2026-08-15.
+Lista viva de áreas, pendências e melhorias — atualizada em 2026-09-12.
 Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e estudo do feedmine.
 
 ## Áreas
@@ -12,7 +12,7 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 5. **Places/Google** — Places API (New), fotos, autocomplete
 6. **Pipeline Python** — OSM/Overture/Michelin → merge → rich → import → curations draft
 7. **Infra/Deploy** — Render (2 serviços), Atlas, deploy manual quando auto falha
-8. **Testes/Qualidade** — vitest (569/10), pytest (205 unit), lint local (CI removido)
+8. **Testes/Qualidade** — vitest (1064 passed/70 skipped, 113 arquivos), pytest (478 unit), lint local (CI removido)
 
 ## Pendências
 
@@ -44,6 +44,20 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 ### Infra
 - [ ] CI do GitHub Actions removido (billing) — decidir se reativa
 - [ ] Auto-deploy do Render não confiável — sempre verificar após push
+- [x] ~~API parada em commit antigo~~ — RESOLVIDO em 2026-09-12: o serviço `Concierge-Collector` (API) estava live em `077c1633` (01/09) enquanto `main` já tinha ~180 commits; o auto-deploy existe mas não pega. Deploy manual disparado via API do Render: `b545626a` subiu em 77s, `/api/v3/ready` com 31 índices e 0 falhas, zero 5xx. **Lição: `Concierge-Collector-Web` (static) estava atualizado e a API não — verificar os DOIS depois de cada push, eles divergem.**
+- [ ] **`admin.concierge-collector.com` NÃO EXISTE em DNS** (verificado 2026-09-12: sem registro). O `scripts/core/config.js` aponta `cms.adminBaseUrl` para esse host, então o **modal de Collections do Collector falha com `network_error` em produção** — degrada com erro tipado (não quebra a app), mas a feature está inutilizável. Decisão pendente: (a) deployar o Payload/Admin em algum host (não há serviço dele em NENHUM dos 7 serviços do workspace Render) ou (b) desligar `app.features.collectionsModal` enquanto não houver host.
+- [ ] **Todas as 7 feature flags em `config/collections-feature-flags.json` estão `default: false` para production** — inclusive `collections_admin`, `consumer_credentials` e `collections_distribution`. Consequência: os ~180 commits de convergência do Collections Admin estão deployados (a partir de 2026-09-12) mas DESLIGADOS em produção; os endpoints respondem 503 `feature_disabled`. Falta o rollout consciente (o runbook de Collections menciona a verificação de aceitação: `npm run verify:collections:acceptance`).
+- [ ] Migrations do Payload (`20260902_009_operational_retention`, `20260902_010_selection_retention`) exigem `payload migrate` no host do Admin — **bloqueado enquanto não existir host** (ver item acima).
+- [ ] `frame-ancestors` (anti-clickjacking) não pode ser definido por `<meta>` (ignorado por spec) — precisa de header HTTP. No static site do Render, configurar em Headers customizados do dashboard. O resto da CSP já está no shell (script-src estrito).
+
+### Segurança (auditoria 2026-09-12)
+- [x] ~~`href` do site da entity sem escape no card (injeção de atributo)~~ — CORRIGIDO. Dado de produção verificado: 21.604 entities, **0 com aspa/`<`/`>`** em website — superfície de código real, sem payload armazenado (não era incidente em curso).
+- [x] ~~9 helpers de escape não escapavam aspas~~ (quebra de atributo em `aria-label`/`data-*`/`src`/`alt`) — CORRIGIDO e normalizado no mesmo contrato do `cardFactory`.
+- [x] ~~`uiUtils.confirmDialog`/`showLoading` e `updateProcessingStatus` interpolavam texto externo cru~~ (nome de curador do servidor virava markup no dialog de ownership) — CORRIGIDO.
+- [x] ~~CDNs sem SRI e `toastify-js` sem versão (resolvia "latest" a cada request)~~ — CORRIGIDO (sha384 + versão pinada; hash adulterado é bloqueado, verificado em browser).
+- [x] ~~Sem CSP~~ — CORRIGIDO: `script-src 'self' https://cdn.jsdelivr.net` estrito (inline injection e host arbitrário bloqueados em browser). `style-src` mantém `'unsafe-inline'` por causa dos `style=""` estáticos do markup — não governa execução.
+- [x] ~~Refresh token no `localStorage` no caminho cookie-first~~ — CORRIGIDO: `storeTokens({persistRefreshToken:false})` quando o cookie HttpOnly responde.
+- [ ] Remover o `localStorage` no Safari: **impossível** — o fragment+localStorage do login cross-site é load-bearing (ver nota em Auth/Segurança). O alvo realista é manter o access token fora do storage e o refresh só no cookie onde ele funciona.
 
 ## Melhorias
 
@@ -61,6 +75,9 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 
 ### API
 - [x] ~~Endpoint agregado por entity (`/entities/{id}/image`) que encapsula og+places~~ ✓ — GET /api/v3/entities/{entity_id}/image resolve website/place_id da própria entity (mesma cadeia tolerante dos cards, `_extract_image_sources`) e devolve o JPEG via og_image_service; 404 sem entity/fonte, 400 URL rejeitada; 6 unit tests sem mongo
+- [x] ~~`semantic_search_curations` montava payload de resposta para todo candidato e descartava no slice final~~ ✓ — pontuação agora fica em tuplas leves e o payload só é montado para o top-k (payload builder é puro; ordenação estável preservada). Sem mudança de contrato.
+- [ ] **Alavanca de crescimento do fallback semântico**: o scan exaustivo (`_vector_search_or_fallback`) materializa TODOS os candidatos elegíveis de propósito — é contrato testado (`test_semantic_fallback_recall.py` falha se truncar ou ordenar por recência, porque o ponto é não esconder uma Curation antiga e boa). Com ~1k curations são poucos MB; quando a coleção crescer muito, o caminho é (a) voltar a indexar o vetor no Atlas (o índice não funciona com o formato Binary float32 — ver `app/core/vector_packing.py`), ou (b) denormalizar um vetor float de busca separado. NÃO truncar o scan.
+- [ ] `_filter_by_entity_types` faz um único `$in` com um id por curation (~1k valores hoje) — cresce junto com a coleção; batchar quando passar de alguns milhares.
 - [x] ~~Docs OpenAPI com exemplos dos endpoints novos (og-image)~~ ✓ — examples em url/place_id do /og-image + docstring com o contrato de resposta
 
 ### UX
