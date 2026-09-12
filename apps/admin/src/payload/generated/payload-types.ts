@@ -135,6 +135,8 @@ export interface Config {
   jobs: {
     tasks: {
       'record-worker-heartbeat': TaskRecordWorkerHeartbeat;
+      'reconcile-leases': TaskReconcileLeases;
+      'purge-expired-artifacts': TaskPurgeExpiredArtifacts;
       'apply-draft-operation': TaskApplyDraftOperation;
       'publish-collection': TaskPublishCollection;
       'materialize-selection': TaskMaterializeSelection;
@@ -273,6 +275,7 @@ export interface SelectionManifest {
   requestId: string;
   payloadJobId?: string | null;
   expiresAt: string;
+  retainedUntil?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -689,6 +692,8 @@ export interface PayloadJob {
         taskSlug:
           | 'inline'
           | 'record-worker-heartbeat'
+          | 'reconcile-leases'
+          | 'purge-expired-artifacts'
           | 'apply-draft-operation'
           | 'publish-collection'
           | 'materialize-selection'
@@ -730,6 +735,8 @@ export interface PayloadJob {
     | (
         | 'inline'
         | 'record-worker-heartbeat'
+        | 'reconcile-leases'
+        | 'purge-expired-artifacts'
         | 'apply-draft-operation'
         | 'publish-collection'
         | 'materialize-selection'
@@ -950,6 +957,7 @@ export interface SelectionManifestsSelect<T extends boolean = true> {
   requestId?: T;
   payloadJobId?: T;
   expiresAt?: T;
+  retainedUntil?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1325,6 +1333,31 @@ export interface TaskRecordWorkerHeartbeat {
   };
   output: {
     observedAt: string;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskReconcile-leases".
+ */
+export interface TaskReconcileLeases {
+  input?: unknown;
+  output: {
+    recovered: number;
+    healthy: number;
+    exhausted: number;
+    missing: number;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskPurge-expired-artifacts".
+ */
+export interface TaskPurgeExpiredArtifacts {
+  input?: unknown;
+  output: {
+    scanned: number;
+    deleted: number;
+    preserved: number;
   };
 }
 /**
