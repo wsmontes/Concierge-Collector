@@ -6,7 +6,7 @@ import re
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request, Response
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime, timezone
 from bson import ObjectId
 import logging
@@ -356,13 +356,13 @@ def list_entities(
         description="Alias de name — regex case-insensitive no nome (paridade com /curations/search).",
     ),
     since: Optional[str] = Query(None, description="ISO timestamp - only return entities updated after this time"),
-    ids: Optional[str] = Query(
+    ids: Optional[List[str]] = Query(
         None,
         description=(
-            "Comma-separated entity ids (_id string, hex ObjectId ou slug). "
-            "Usado pelo pull do collector: busca SÓ as entidades vinculadas "
-            "a curadorias locais em vez de paginar as ~21k do acervo "
-            "(108 requests → 1)."
+            "Entity ids exatos, REPETIDO na query (?ids=a&ids=b). Aceita ids "
+            "que contenham vírgula. Usado pelo pull do collector: busca SÓ as "
+            "entidades vinculadas a curadorias locais em vez de paginar as "
+            "~21k do acervo (108 requests → 1)."
         ),
     ),
     limit: int = Query(50, ge=1, le=1000),
@@ -410,13 +410,21 @@ def list_entities(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid since timestamp format. Use ISO 8601.")
 
-    if isinstance(ids, str) and ids:
+    if isinstance(ids, list) and ids:
         # ids explícitos: $in com variantes string E ObjectId (hex válido) —
         # cobre _id string, _id ObjectId e slug (campo entity_id), o mesmo
         # padrão do pre-fetch do bulk_upsert. Limite de segurança no tamanho.
+        #
+        # Cada item do parâmetro é um id COMPLETO: nada de split por vírgula.
+        # 408 entities do acervo têm ids do formato `rest_<slug>_<lat>,<lng>`
+        # (a vírgula separa lat/lng), e o split transformava
+        # `rest_x_-23.5,_-46.6` em `rest_x_-23.5` + `_-46.6` — nenhum dos dois
+        # casa com nada, então essas entidades NUNCA eram devolvidas e as
+        # curadorias que as referenciam ficavam órfãs no cache local para
+        # sempre. Ver o teste de regressão em tests/test_entities.py.
         # isinstance: chamadas DIRETAS (testes) recebem o default Query(...)
-        # como objeto — sem o guard, .split() estoura.
-        id_list = [i.strip() for i in ids.split(",") if i.strip()][:500]
+        # como objeto — sem o guard, a iteração quebra.
+        id_list = [i.strip() for i in ids if isinstance(i, str) and i.strip()][:500]
         variants = list(id_list)
         for eid in id_list:
             if ObjectId.is_valid(eid):

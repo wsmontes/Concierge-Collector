@@ -192,7 +192,10 @@ class TestAuth:
 @pytest.mark.mongo
 def test_list_entities_ids_filter(client, test_db, clean_test_entities, auth_headers):
     """GET /entities?ids= busca SÓ as entidades pedidas (string + hex
-    ObjectId + slug) — o fast-path do pull do collector depende disso."""
+    ObjectId + slug) — o fast-path do pull do collector depende disso.
+
+    O parâmetro é REPETIDO (?ids=a&ids=b), um id completo por item: ids do
+    acervo podem conter vírgula (ver o teste de regressão abaixo)."""
     test_db.entities.insert_many(
         [
             {
@@ -222,7 +225,11 @@ def test_list_entities_ids_filter(client, test_db, clean_test_entities, auth_hea
         ]
     )
 
-    r = client.get("/api/v3/entities", params={"ids": "ids_slug_ent,ids_hex_ent", "limit": 50}, headers=auth_headers)
+    r = client.get(
+        "/api/v3/entities",
+        params={"ids": ["ids_slug_ent", "ids_hex_ent"], "limit": 50},
+        headers=auth_headers,
+    )
     assert r.status_code == 200
     items = r.json()["items"]
     ids = {i.get("entity_id") or i.get("_id") for i in items}
@@ -243,7 +250,11 @@ def test_list_entities_ids_filter(client, test_db, clean_test_entities, auth_hea
             "updatedAt": "2026-08-13T00:00:00Z",
         }
     )
-    r2 = client.get("/api/v3/entities", params={"ids": "507f1f77bcf86cd799439011", "limit": 50}, headers=auth_headers)
+    r2 = client.get(
+        "/api/v3/entities",
+        params={"ids": ["507f1f77bcf86cd799439011"], "limit": 50},
+        headers=auth_headers,
+    )
     assert r2.status_code == 200
     r2_ids = [i.get("entity_id") or i.get("_id") for i in r2.json()["items"]]
     assert any(str(i) == "507f1f77bcf86cd799439011" for i in r2_ids) or "hex-oid-slug" in r2_ids
@@ -460,11 +471,171 @@ def test_list_entities_ids_accepts_more_than_500(client, auth_headers):
     descartado no transporte e nunca chegava aqui) — o servidor precisa
     aceitar listas longas e limitar internamente.
     """
-    ids = ",".join(f"ent_nonexistent_{i}" for i in range(505))
-    r = client.get(f"/api/v3/entities?ids={ids}", headers=auth_headers)
+    ids = [f"ent_nonexistent_{i}" for i in range(505)]
+    r = client.get("/api/v3/entities", params=[("ids", i) for i in ids], headers=auth_headers)
     assert r.status_code == 200
     data = r.json()
     assert "items" in data
+
+
+# ============================================================================
+# ?ids= — parsing puro (roda SEM mongo; o bug estava na montagem da query)
+# ============================================================================
+
+
+class _RecordingCollection:
+    """Coleção falsa: registra a query e devolve página vazia.
+
+    O endpoint monta count+página num único `$facet`, então a query observável
+    é o `$match` do pipeline de aggregate.
+    """
+
+    def __init__(self):
+        self.queries = []
+
+    def aggregate(self, pipeline, *args, **kwargs):
+        self.queries.append(pipeline[0]["$match"])
+        return []
+
+    def find(self, query, *args, **kwargs):
+        self.queries.append(query)
+        return []
+
+    def count_documents(self, query):
+        return 0
+
+
+class _RecordingDb:
+    def __init__(self):
+        self.entities = _RecordingCollection()
+
+
+def _entity_ids_in_query(db):
+    """Ids passados ao $in de entity_id na última query em $match."""
+    query = db.entities.queries[-1]
+    for clause in query.get("$or", []):
+        if "entity_id" in clause:
+            return list(clause["entity_id"]["$in"])
+    raise AssertionError(f"query sem filtro de entity_id: {query}")
+
+
+def test_list_entities_ids_keeps_comma_ids_intact():
+    """Cada item de ?ids= é um id COMPLETO — sem split por vírgula.
+
+    Regressão (2026-09-12): o parâmetro era um CSV único e o servidor fazia
+    `ids.split(",")`. Os ids do pipeline `rest_<slug>_<lat>,<lng>` contêm a
+    vírgula que separa lat/lng (408 entidades no acervo), então o split
+    produzia `rest_x_-23.5` + `_-46.6` — nenhum casava, a entidade nunca era
+    devolvida e a curadoria que a referenciava ficava órfã para sempre no cache
+    local do collector ("N orphaned curations" repetindo a cada boot).
+
+    Este teste roda sem Mongo de propósito: o defeito era a montagem da query,
+    então é aqui que ele precisa ficar travado.
+    """
+    from app.api.entities import list_entities
+
+    comma_id = "rest_a_pizza_da_mooca_-23.5520,_-46.6200"
+    db = _RecordingDb()
+
+    list_entities(
+        type=None,
+        name=None,
+        status=None,
+        city=None,
+        q=None,
+        since=None,
+        ids=[comma_id, "outro_id_simples"],
+        limit=50,
+        offset=0,
+        after_id=None,
+        db=db,
+        auth={"role": "curator"},
+    )
+
+    assert _entity_ids_in_query(db) == [comma_id, "outro_id_simples"]
+
+
+def test_list_entities_ids_ignores_empty_and_non_string_items():
+    """Espaços em branco e itens não-string não entram na query."""
+    from app.api.entities import list_entities
+
+    db = _RecordingDb()
+
+    list_entities(
+        type=None,
+        name=None,
+        status=None,
+        city=None,
+        q=None,
+        since=None,
+        ids=["  ", "valido", None],
+        limit=50,
+        offset=0,
+        after_id=None,
+        db=db,
+        auth={"role": "curator"},
+    )
+
+    assert _entity_ids_in_query(db) == ["valido"]
+
+
+@pytest.mark.mongo
+def test_list_entities_ids_filter_finds_ids_containing_comma(client, test_db, clean_test_entities, auth_headers):
+    """Entidade cujo id contém vírgula PRECISA ser encontrada por ?ids=.
+
+    Regressão (2026-09-12): o parâmetro era um CSV único e o servidor fazia
+    `ids.split(",")`. Os ids do pipeline `rest_<slug>_<lat>,<lng>` contêm a
+    vírgula que separa lat/lng (408 entidades no acervo), então o split
+    produzia `rest_x_-23.5` + `_-46.6` — nenhum casava, a entidade nunca era
+    devolvida e a curadoria que a referenciava ficava órfã indefinidamente no
+    cache local do collector (o sintoma era "N orphaned curations" repetindo a
+    cada boot, com o backfill incapaz de resolver).
+    """
+    from bson import ObjectId
+
+    comma_id = "rest_a_pizza_da_mooca_-23.5520,_-46.6200"
+    oid = ObjectId("507f1f77bcf86cd799439011")
+    test_db.entities.insert_many(
+        [
+            {
+                "_id": comma_id,
+                "entity_id": comma_id,
+                "name": "A Pizza da Mooca",
+                "status": "active",
+                "type": "restaurant",
+                "updatedAt": "2026-08-13T00:00:00Z",
+            },
+            {
+                "_id": oid,
+                "entity_id": "outra_entidade",
+                "name": "Outra",
+                "status": "active",
+                "type": "restaurant",
+                "updatedAt": "2026-08-13T00:00:00Z",
+            },
+        ]
+    )
+
+    r = client.get(
+        "/api/v3/entities",
+        params={"ids": [comma_id], "limit": 50},
+        headers=auth_headers,
+    )
+
+    assert r.status_code == 200
+    encontrados = {i.get("entity_id") or str(i.get("_id")) for i in r.json()["items"]}
+    assert comma_id in encontrados
+    assert "outra_entidade" not in encontrados
+
+    # E o mesmo id acompanhado de outro (o caso do pull, com mais de um item)
+    r2 = client.get(
+        "/api/v3/entities",
+        params={"ids": [comma_id, str(oid)], "limit": 50},
+        headers=auth_headers,
+    )
+    assert r2.status_code == 200
+    dois = {i.get("entity_id") or str(i.get("_id")) for i in r2.json()["items"]}
+    assert len(dois) == 2, f"esperava os dois ids, veio {dois}"
 
 
 # ============================================================================
