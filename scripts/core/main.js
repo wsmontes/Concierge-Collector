@@ -318,8 +318,17 @@ async function initializeApp() {
             console.warn('⚠️ Import Manager not available');
         }
 
-        // Initialize UI Manager with clean DataStore integration
-        window.uiManager = new UIManager();
+        // REUSA a instância global criada no parse do uiManager.js (linha
+        // ~3680, ModuleWrapper.createInstance). Criar uma SEGUNDA instância
+        // aqui substituía window.uiManager e deixava órfão quem já tinha
+        // capturado a primeira: CurationWorkspaceModule guarda o uiManager no
+        // construtor (DOMContentLoaded, antes deste ponto), então seguia
+        // apontando para a instância que nunca recebeu .init() — e é o init()
+        // que cria `conceptModule`. Resultado: `uiManager.conceptModule`
+        // undefined para sempre, `__curationWorkspaceSaveCompatibilityInstalled`
+        // nunca setado, e os cinco módulos de durabilidade/ownership lendo
+        // `global.uiManager` (vivo) esperando um flag que nunca chegava.
+        window.uiManager = window.uiManager || new UIManager();
         window.uiManager.init();
 
         // Navegação explícita (Collection ↔ Editor ↔ New Curation):

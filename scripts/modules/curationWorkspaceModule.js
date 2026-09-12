@@ -14,7 +14,7 @@ const SAVE_COMPATIBILITY_RETRY_MS = 100;
 
 class CurationWorkspaceModule {
     constructor(uiManager = null) {
-        this.uiManager = uiManager || window.uiManager || null;
+        this._uiManager = uiManager || window.uiManager || null;
         this.currentCuration = null;
         this.currentEntity = null;
         this.state = CurationWorkspaceModule.deriveState(null, null);
@@ -25,6 +25,25 @@ class CurationWorkspaceModule {
         this._legacyIndicatorObserver = null;
         this._installed = false;
         this._saveCompatibilityTimer = null;
+    }
+
+    /**
+     * Resolve o uiManager VIVO a cada leitura em vez de capturar a instância
+     * do boot.
+     *
+     * `window.uiManager` é a fonte de verdade — é a convenção que todos os
+     * outros módulos já seguem (leem `global.uiManager` dentro do poll, não no
+     * construtor). Este módulo era o único que capturava, e por isso era o
+     * único que quebrava quando a instância global era substituída depois do
+     * DOMContentLoaded: ficava preso a um UIManager que nunca recebeu .init()
+     * (`conceptModule` inexistente) e o save-compatibility nunca instalava,
+     * derrubando em cascata os cinco boundaries de durabilidade.
+     *
+     * O fallback para a instância injetada mantém a injeção explícita
+     * funcionando onde não há global (testes).
+     */
+    get uiManager() {
+        return window.uiManager || this._uiManager || null;
     }
 
     static deriveState(curation = null, entity = null) {

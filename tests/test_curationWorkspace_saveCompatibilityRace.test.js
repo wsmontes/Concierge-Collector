@@ -68,6 +68,7 @@ afterEach(() => {
   vi.useRealTimers();
   delete globalThis.CurationWorkspaceModule;
   delete globalThis.curationWorkspace;
+  delete window.uiManager;
   window.__CURATION_WORKSPACE_AUTO_INIT__ = true;
 });
 
@@ -131,5 +132,33 @@ describe('CurationWorkspaceModule — corrida do installSaveCompatibility', () =
 
     expect(uiManager.conceptModule?.__curationWorkspaceSaveCompatibilityInstalled).toBeUndefined();
     delete globalThis.Logger;
+  });
+
+  test('segue o uiManager VIVO quando a instância global é substituída', async () => {
+    // Este é o boot real de produção: o workspace bota no DOMContentLoaded e
+    // captura a instância criada no parse do uiManager.js. Depois, main.js
+    // (após o await de autenticação) atribui OUTRA instância a
+    // window.uiManager e chama .init() nela — e é o init() que cria o
+    // conceptModule. Se o módulo ficar preso à instância antiga, o
+    // save-compatibility nunca instala em nenhuma das duas, e os cinco
+    // boundaries de durabilidade ficam sem o flag que esperam.
+    const staleInstance = makeUiManager({ withConceptModule: false });
+    window.uiManager = staleInstance;
+    const CurationWorkspaceModule = loadWorkspaceModule();
+
+    const workspace = new CurationWorkspaceModule(window.uiManager);
+    workspace.install();
+
+    // main.js: `window.uiManager = new UIManager(); window.uiManager.init()`
+    const liveInstance = makeUiManager({ withConceptModule: true });
+    window.uiManager = liveInstance;
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(
+      liveInstance.conceptModule.__curationWorkspaceSaveCompatibilityInstalled,
+      'o wrapper tem de instalar na instância VIVA (a que recebeu .init()), não na órfã'
+    ).toBe(true);
+    expect(staleInstance.conceptModule).toBeUndefined();
   });
 });
