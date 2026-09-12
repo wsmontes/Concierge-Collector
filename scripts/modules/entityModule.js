@@ -1313,7 +1313,9 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
     escapeHtml(value) {
         const div = document.createElement('div');
         div.textContent = value || '';
-        return div.innerHTML;
+        // Aspas também: o serializer de innerHTML não as escapa em texto e o
+        // resultado entra em aria-label/title dos painéis de detalhe.
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     /**

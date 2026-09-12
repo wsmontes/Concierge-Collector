@@ -2269,7 +2269,7 @@ if (typeof window.UIManager === 'undefined') {
             });
             const conceptDisplay = conceptNames.slice(0, 3).join(', ');
             const totalConcepts = Object.values(categories).flat().length;
-            const _escC = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
+            const _escC = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
             const restaurantName = _escC(curation.restaurant_name ||
                 curation.name ||
                 (curation.categories?.restaurant_name && curation.categories.restaurant_name[0]) ||
@@ -2652,7 +2652,7 @@ if (typeof window.UIManager === 'undefined') {
             const esc = (v) => {
                 const d = document.createElement('div');
                 d.textContent = v == null ? '' : String(v);
-                return d.innerHTML;
+                return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             };
 
             const displayName = this.getCurationDisplayName(curation) || 'Review Details';

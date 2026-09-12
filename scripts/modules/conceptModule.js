@@ -1059,7 +1059,7 @@ class ConceptModule {
                 conceptsGrid.className = 'grid grid-cols-1 md:grid-cols-2 gap-2';
 
                 // Add each concept
-                const esc = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
+                const esc = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
                 for (const concept of conceptsByCategory[category]) {
                     const cssClass = category.toLowerCase().replace(' ', '-');
 
@@ -1283,7 +1283,7 @@ class ConceptModule {
             return;
         }
 
-        const esc = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
+        const esc = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
 
         const body = document.createElement('div');
         body.className = 'space-y-4';

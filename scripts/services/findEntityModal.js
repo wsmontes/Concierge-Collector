@@ -1064,7 +1064,9 @@ window.FindEntityModal = class FindEntityModal {
     escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text || '';
-        return div.innerHTML;
+        // Aspas também: o serializer de innerHTML não as escapa em texto e o
+        // resultado entra em data-place-name/alt dos cards de resultado.
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     /**

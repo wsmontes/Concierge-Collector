@@ -26,7 +26,8 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
     _escapeHtml(value) {
         const div = document.createElement('div');
         div.textContent = value == null ? '' : String(value);
-        return div.innerHTML;
+        // Aspas também: o valor entra em title= do indicador de erro.
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     /**
