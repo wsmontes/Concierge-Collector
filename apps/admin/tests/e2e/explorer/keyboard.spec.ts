@@ -104,7 +104,7 @@ liveExplorer('keyboard selection: guarded shortcut, indeterminate header, shift 
   // 4. Header checkbox: indeterminate partial state, then the full loaded range.
   // ---------------------------------------------------------------------------
   await rowCheckboxes.nth(0).click()
-  await expect(status).toContainText('1 Curations selected')
+  await expect(status).toContainText('1 Curation selected')
   await expect(headerCheckbox).toHaveJSProperty('indeterminate', true)
 
   await rowCheckboxes.nth(1).click()
@@ -137,7 +137,7 @@ liveExplorer('keyboard selection: guarded shortcut, indeterminate header, shift 
   await table.press('ArrowDown')
   await expect(table.locator('[data-active="true"]')).toHaveAttribute('data-index', '1')
   await table.press(' ')
-  await expect(status).toContainText('1 Curations selected')
+  await expect(status).toContainText('1 Curation selected')
 
   await table.press('ArrowUp')
   await expect(table.locator('[data-active="true"]')).toHaveAttribute('data-index', '0')
