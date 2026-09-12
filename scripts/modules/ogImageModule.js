@@ -297,6 +297,9 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         // 2) Endpoint ranqueado por entity (rank 0 = hero default;
         //    rank ≥1 = escolha do concierge no editor)
         let entityDefinitive = false;
+        // `serverKnowsEntity`: o servidor RESPONDEU sobre as fontes DESTA entity
+        // (website/place_id). É o que decide se o fallback legado acrescenta algo.
+        let serverKnowsEntity = false;
         try {
             const response = await window.ApiService.request(
                 'GET',
@@ -310,11 +313,31 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                     return this._freshObjectUrl(key, blob);
                 }
                 entityDefinitive = true; // 200 mas vazio: sem imagem
+                serverKnowsEntity = true;
             } else if (response) {
                 entityDefinitive = true; // 404/400 do servidor: sem imagem
+                serverKnowsEntity = true;
             }
         } catch (error) {
-            // erro de REDE não é definitivo — não grava negativo
+            // O ApiService LANÇA em 4xx (handleErrorResponse consome o body e
+            // converte em Error). Tratar todo throw como "erro de rede" fazia o
+            // 400/404 virar fallback legado — e o servidor já tinha tentado
+            // exatamente as mesmas fontes, então cada card sem imagem gastava
+            // DUAS requisições e duas buscas server-side (download da página +
+            // Places). Verificado no log de produção: entity
+            // overture_fc7bec32… (sushidoescadao.foxdelivery.app) devolvia 400 no
+            // endpoint por entity e o cliente repetia a MESMA URL no og-image.
+            const status = error && error.status;
+            if (status === 400 || status === 404) {
+                entityDefinitive = true;
+                // 404 "Entity … not found" = o servidor nunca olhou as fontes
+                // (entity local/pending ainda não sincronizada) → o fallback
+                // legado TEM valor. Qualquer outra resposta 4xx = o servidor
+                // avaliou website+place_id e não achou imagem.
+                const detail = String((error && error.detail) || '');
+                serverKnowsEntity = !/not\s*found/i.test(detail);
+            }
+            // sem status (falha de rede/offline) → não definitivo, como antes
             this.log.debug(`imagem por entity falhou para ${entityId}:`, error);
         }
 
@@ -325,11 +348,43 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             if (entityDefinitive) await this._writeNoImage(key);
             return null;
         }
+
+        // Pula o fallback quando o servidor já avaliou as MESMAS fontes: o
+        // website/place_id vieram do próprio servidor, então repetir a busca
+        // aqui só duplica trabalho. Exceção: edição local ainda não enviada
+        // (pending/conflict) — aí o servidor pode ter uma URL antiga e o
+        // fallback com a URL do curador é legítimo.
+        if (entityDefinitive && serverKnowsEntity && !(await this._hasUnsyncedLocalEdit(entityId))) {
+            await this._writeNoImage(key);
+            return null;
+        }
+
         try {
             return await this._resolve(url, placeId, key);
         } catch (error) {
             this.log.debug(`og-image legado falhou para ${key}:`, error);
             return null;
+        }
+    }
+
+    /**
+     * True quando a entity tem edição local ainda não enviada ao servidor.
+     *
+     * Nesses casos o website/place_id do servidor podem estar desatualizados, e
+     * o fallback legado passa a ter valor real. Qualquer falha na consulta
+     * devolve `true` (conservador: prefere tentar a fonte a pular o card).
+     *
+     * @param {string} entityId
+     * @returns {Promise<boolean>}
+     */
+    async _hasUnsyncedLocalEdit(entityId) {
+        try {
+            const local = await window.DataStore.getEntity(entityId);
+            const status = local && local.sync && local.sync.status;
+            return status === 'pending' || status === 'conflict';
+        } catch (error) {
+            this.log.debug(`não foi possível ler o status local de ${entityId}:`, error);
+            return true;
         }
     }
 

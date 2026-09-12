@@ -1094,3 +1094,140 @@ describe('CardFactory — data-entity-id de entity legada (2026-08-18)', () => {
     expect(card.dataset.entityId).toBe('obj-legacy-123');
   });
 });
+
+describe('OgImageModule — não repete a busca que o servidor já fez (2026-09-12)', () => {
+  /**
+   * Contexto medido em produção: o endpoint por entity devolve 400/404 e o
+   * ApiService LANÇA (handleErrorResponse consome o body e converte em Error).
+   * Tratar todo throw como erro de rede fazia o cliente cair no caminho legado
+   * `og-image?url=…` com a MESMA URL que o servidor acabara de tentar — dois
+   * requests e duas buscas server-side (download da página + Places) por card
+   * sem imagem. Confirmado com dado real: a entity
+   * overture_fc7bec32… (sushidoescadao.foxdelivery.app) devolvia 400 no
+   * endpoint por entity e o cliente repetia a URL no og-image.
+   */
+  function stubFetch({ entity, legacy }) {
+    // `entity`/`legacy` são FUNÇÕES chamadas a cada requisição — precisam
+    // lançar no momento da chamada, não na montagem do stub.
+    const calls = [];
+    const fakeCache = {
+      match: vi.fn().mockResolvedValue(undefined),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined)
+    };
+    window.caches = { open: vi.fn().mockResolvedValue(fakeCache) };
+    window.ApiService = {
+      request: vi.fn(async (method, endpoint) => {
+        calls.push(endpoint);
+        return endpoint.startsWith('/entities/') ? entity() : legacy?.();
+      })
+    };
+    return { calls, fakeCache };
+  }
+
+  function httpError(status, detail) {
+    const err = new Error(`HTTP ${status}`);
+    err.status = status;
+    if (detail) err.detail = detail;
+    return err;
+  }
+
+  test('404 "imagem não encontrada" + website: NÃO repete a busca no og-image', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const { calls, fakeCache } = stubFetch({
+      entity: () => { throw httpError(404, 'imagem não encontrada (og:image e Places sem resultado)'); }
+    });
+    // O servidor conhece a entity e já avaliou o website dela.
+    window.DataStore = { getEntity: vi.fn().mockResolvedValue({ entity_id: 'e1', sync: { status: 'synced' } }) };
+
+    const module = new OgImageModuleClass();
+    const result = await module._resolveEntityImage(
+      'e1', 0, 'http://site-existente.com.br', '', 'entity:e1:rank:0'
+    );
+
+    expect(result).toBeNull();
+    expect(calls).toHaveLength(1);                  // só o endpoint por entity
+    expect(calls[0]).toContain('/entities/e1/image');
+    expect(fakeCache.put).toHaveBeenCalled();       // negativo persistido
+  });
+
+  test('400 (domínio morto / SSRF) + website: NÃO repete a busca', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const { calls } = stubFetch({
+      entity: () => { throw httpError(400, 'destino de imagem não permitido (rede interna)'); }
+    });
+    window.DataStore = { getEntity: vi.fn().mockResolvedValue({ entity_id: 'e2', sync: { status: 'synced' } }) };
+
+    const module = new OgImageModuleClass();
+    const result = await module._resolveEntityImage(
+      'e2', 0, 'http://dominio-morto.com.br', '', 'entity:e2:rank:0'
+    );
+
+    expect(result).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  test('404 "Entity … not found" (ainda não sincronizada): TENTA o fallback legado', async () => {
+    // Aqui o servidor nunca olhou as fontes — a entity é local/pending. O
+    // fallback com a URL do curador tem valor real.
+    const OgImageModuleClass = loadOgImageModule();
+    const { calls } = stubFetch({
+      entity: () => { throw httpError(404, 'Entity ent_nova not found'); },
+      legacy: () => ({ ok: false, status: 404 })
+    });
+    window.DataStore = { getEntity: vi.fn().mockResolvedValue(undefined) };
+
+    const module = new OgImageModuleClass();
+    await module._resolveEntityImage(
+      'ent_nova', 0, 'http://site-novo.com.br', '', 'entity:ent_nova:rank:0'
+    );
+
+    // Duas chamadas: o endpoint por entity e o caminho legado
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toContain('ogImage');
+  });
+
+  test('edição local pendente: TENTA o fallback (servidor pode ter URL antiga)', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const { calls } = stubFetch({
+      entity: () => { throw httpError(404, 'imagem não encontrada (og:image e Places sem resultado)'); },
+      legacy: () => ({ ok: false, status: 404 })
+    });
+    window.DataStore = { getEntity: vi.fn().mockResolvedValue({ entity_id: 'e3', sync: { status: 'pending' } }) };
+
+    const module = new OgImageModuleClass();
+    await module._resolveEntityImage('e3', 0, 'http://site-editado.com.br', '', 'entity:e3:rank:0');
+
+    expect(calls).toHaveLength(2);
+  });
+
+  test('erro de REDE (sem status) continua tentando o fallback', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const { calls } = stubFetch({
+      entity: () => { throw new TypeError('Failed to fetch'); },
+      legacy: () => ({ ok: false, status: 404 })
+    });
+    window.DataStore = { getEntity: vi.fn().mockResolvedValue({ entity_id: 'e4', sync: { status: 'synced' } }) };
+
+    const module = new OgImageModuleClass();
+    await module._resolveEntityImage('e4', 0, 'http://site.com.br', '', 'entity:e4:rank:0');
+
+    expect(calls).toHaveLength(2);
+  });
+
+  test('imagem encontrada no endpoint por entity: uma única chamada', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const { calls } = stubFetch({
+      entity: () => ({ ok: true, blob: async () => new Blob(['jpeg'], { type: 'image/jpeg' }) })
+    });
+    window.DataStore = { getEntity: vi.fn().mockResolvedValue({ entity_id: 'e5', sync: { status: 'synced' } }) };
+
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:e5') });
+
+    const module = new OgImageModuleClass();
+    const url = await module._resolveEntityImage('e5', 0, 'http://site.com.br', '', 'entity:e5:rank:0');
+
+    expect(calls).toHaveLength(1);
+    expect(url).toBe('blob:e5');
+  });
+});
