@@ -65,7 +65,20 @@ const consumerCredentialEndpoints = guardFeatureEndpoints('consumer_credentials'
 
 export default buildConfig({
   serverURL: env.publicServerUrl,
-  cors: browserOrigins,
+  // O Collector fala com estes endpoints cross-origin (Bearer + headers
+  // próprios). A forma de ARRAY usa só a lista default do Payload
+  // (Origin/X-Requested-With/Content-Type/Accept/Authorization/...), que NÃO
+  // cobre os headers que o cliente realmente envia — e o navegador recusa o
+  // preflight quando um header pedido não está liberado. Como o Collector manda
+  // `X-Request-Id` em TODA requisição, a funcionalidade de Collections ficava
+  // bloqueada no browser mesmo com o roteamento correto.
+  //
+  // `X-Request-Id` e `Idempotency-Key` são observabilidade/idempotência de
+  // escrita; `If-Match` é o CAS do rascunho (draftRevision). Nenhum curinga.
+  cors: {
+    origins: browserOrigins,
+    headers: ['X-Request-Id', 'Idempotency-Key', 'If-Match'],
+  },
   // Payload itself appends serverURL to CSRF during config sanitization.
   csrf: [...env.collectorOrigins],
   secret: env.payloadSecret,

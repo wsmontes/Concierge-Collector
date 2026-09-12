@@ -24,16 +24,35 @@ describe('Payload browser security configuration', () => {
     const { default: pendingConfig } = await import('../../../payload.config')
     const config = await pendingConfig
 
-    expect(config.cors).toEqual([
-      'https://admin.example.test',
-      'https://concierge-collector.com',
-      'https://staging.concierge-collector.com',
-    ])
+    // Origens continuam sendo allowlist exata (sem curinga). O formato passou de
+    // array para objeto porque a forma de array usa apenas a lista DEFAULT de
+    // headers do Payload — insuficiente para o Collector, que envia headers
+    // próprios e teria o preflight recusado pelo navegador.
+    expect(config.cors).toEqual({
+      origins: [
+        'https://admin.example.test',
+        'https://concierge-collector.com',
+        'https://staging.concierge-collector.com',
+      ],
+      headers: ['X-Request-Id', 'Idempotency-Key', 'If-Match'],
+    })
     expect(config.csrf).toEqual([
       'https://concierge-collector.com',
       'https://staging.concierge-collector.com',
       'https://admin.example.test',
     ])
+  })
+
+  test('never widens CORS to a wildcard or reflects an unknown origin', async () => {
+    const { default: pendingConfig } = await import('../../../payload.config')
+    const config = await pendingConfig
+    const cors = config.cors as { origins: string[]; headers: string[] }
+
+    expect(cors.origins).not.toContain('*')
+    expect(cors.headers).not.toContain('*')
+    // Cada header liberado precisa ser um dos que o cliente realmente envia:
+    // liberar a mais reabre a superfície; liberar a menos quebra o preflight.
+    expect([...cors.headers].sort()).toEqual(['Idempotency-Key', 'If-Match', 'X-Request-Id'].sort())
   })
 
   test('registers the lifecycle API as guarded root endpoints', async () => {
