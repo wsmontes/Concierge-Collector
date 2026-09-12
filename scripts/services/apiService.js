@@ -292,8 +292,21 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         // Bug 2026-08-15: ids era SILENCIOSAMENTE descartado — o fast path do
         // pullLinkedEntities baixava as 500 primeiras entities do acervo
         // inteiro em vez das vinculadas às curadorias locais.
+        //
+        // Bug 2026-09-12: o parâmetro era um CSV único (`join(',')`) e o
+        // servidor fazia split por vírgula. Os ids do pipeline
+        // `rest_<slug>_<lat>,<lng>` CONTÊM vírgula (a que separa lat/lng — 408
+        // entidades do acervo), então o split fragmentava o id e a entidade
+        // nunca era devolvida: as curadorias que a referenciam ficavam órfãs
+        // para sempre. Agora o parâmetro é REPETIDO (?ids=a&ids=b) — cada item
+        // é um id completo, sem ambiguidade possível.
         if (filters.ids) {
-            params.append('ids', Array.isArray(filters.ids) ? filters.ids.join(',') : filters.ids);
+            const idList = Array.isArray(filters.ids) ? filters.ids : [filters.ids];
+            for (const id of idList) {
+                if (id !== null && id !== undefined && String(id).trim()) {
+                    params.append('ids', String(id));
+                }
+            }
         }
 
         const queryString = params.toString();

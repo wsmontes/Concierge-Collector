@@ -261,10 +261,13 @@ describe('pullLinkedEntities — lotes de ids (contagem + tamanho de URL)', () =
     // 3 chunks (500/500/200) — o antigo slice(0,500) faria UMA chamada só
     expect(callCount).toBe(3);
     expect(calls).toHaveLength(2); // chunk 2 falhou, 1 e 3 registrados
-    expect(calls[0].ids.split(',').length).toBe(500);
-    expect(calls[0].ids.startsWith('ent_0,')).toBe(true);
-    expect(calls[1].ids.split(',').length).toBe(200);
-    expect(calls[1].ids.startsWith('ent_1000,')).toBe(true);
+    // `ids` vai como ARRAY (parâmetro repetido no transporte): o ApiService
+    // monta ?ids=a&ids=b. Um id com vírgula sobrevive intacto.
+    expect(Array.isArray(calls[0].ids)).toBe(true);
+    expect(calls[0].ids).toHaveLength(500);
+    expect(calls[0].ids[0]).toBe('ent_0');
+    expect(calls[1].ids).toHaveLength(200);
+    expect(calls[1].ids[0]).toBe('ent_1000');
   });
 
   test('vinculada AUSENTE no cache é buscada SEM `since` (senão nunca chega)', async () => {
@@ -298,6 +301,34 @@ describe('pullLinkedEntities — lotes de ids (contagem + tamanho de URL)', () =
     expect(backfill.since).toBeUndefined();          // sem filtro incremental
     expect(refresh).toBeTruthy();
     expect(refresh.since).toBe('2026-09-01T00:00:00.000Z'); // já em cache: só o que mudou
+  });
+
+  test('id com vírgula (rest_<slug>_<lat>,<lng>) chega INTEIRO ao ApiService', async () => {
+    // Regressão: o id era juntado num CSV e o servidor fazia split por vírgula,
+    // fragmentando `rest_x_-23.5,_-46.6` em dois pedaços que não casavam com
+    // nada — a entidade nunca era devolvida e a curadoria ficava órfã para
+    // sempre no cache local.
+    const sm = makeSyncManager();
+    const comVirgula = [
+      'rest_a_pizza_da_mooca_-23.5520,_-46.6200',
+      'rest_akari_sushi_-23.5050,_-46.6550'
+    ];
+    sm.collectLinkedEntityIdsFromCurations = vi.fn(async () => new Set(comVirgula));
+    sm.processServerEntity = vi.fn(async () => {});
+    sm.pruneUnlinkedSyncedEntities = vi.fn(async () => {});
+    sm.saveSyncMetadata = vi.fn(async () => {});
+    sm.stats = { lastEntityPullAt: null, lastPullAt: null, entitiesPulled: 0 };
+    mockLocalEntities([]);
+
+    const calls = [];
+    window.ApiService = {
+      listEntities: vi.fn(async (params) => { calls.push(params); return { items: [] }; })
+    };
+
+    await sm.pullLinkedEntities();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].ids).toEqual(comVirgula);
   });
 
   test('tudo em cache → NENHUM backfill (não recarrega o acervo todo a cada sync)', async () => {

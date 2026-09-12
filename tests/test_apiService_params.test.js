@@ -56,21 +56,37 @@ describe('ApiService.listEntities — query params', () => {
     expect(url).not.toContain('q=');
   });
 
-  test('envia ids (array) como CSV na URL — bug do fast path', async () => {
+  test('envia ids como PARÂMETRO REPETIDO — bug do fast path', async () => {
     // Regressão 2026-08-15: o filtro ids era SILENCIOSAMENTE descartado —
     // o fast path do pull baixava 500 entities arbitrárias do acervo em vez
     // das vinculadas às curadorias locais.
+    //
+    // Regressão 2026-09-12: o array virava CSV (`join(',')`) e o servidor
+    // fazia split por vírgula. Ids do acervo contêm vírgula
+    // (`rest_<slug>_<lat>,<lng>` — 408 entidades), então o id era fragmentado
+    // e a entidade nunca voltava. O transporte é ?ids=a&ids=b: cada item é um
+    // id completo.
     await apiService.listEntities({ ids: ['a1', 'b2', 'c3'] });
 
     const url = window.fetch.mock.calls[0][0];
-    expect(decodeURIComponent(url)).toContain('ids=a1,b2,c3');
+    expect(url).toContain('ids=a1&ids=b2&ids=c3');
+    // e o servidor recebe exatamente os três, sem ambiguidade
+    expect(new URLSearchParams(url.split('?')[1]).getAll('ids')).toEqual(['a1', 'b2', 'c3']);
   });
 
-  test('envia ids (string) sem quebrar', async () => {
-    await apiService.listEntities({ ids: 'a1,b2' });
+  test('id com vírgula é enviado inteiro (não vira dois ids)', async () => {
+    const comVirgula = 'rest_a_pizza_da_mooca_-23.5520,_-46.6200';
+    await apiService.listEntities({ ids: [comVirgula, 'outro'] });
 
     const url = window.fetch.mock.calls[0][0];
-    expect(decodeURIComponent(url)).toContain('ids=a1,b2');
+    expect(new URLSearchParams(url.split('?')[1]).getAll('ids')).toEqual([comVirgula, 'outro']);
+  });
+
+  test('ids como string única continua funcionando', async () => {
+    await apiService.listEntities({ ids: 'a1' });
+
+    const url = window.fetch.mock.calls[0][0];
+    expect(new URLSearchParams(url.split('?')[1]).getAll('ids')).toEqual(['a1']);
   });
 });
 

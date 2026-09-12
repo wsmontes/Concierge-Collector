@@ -1,8 +1,13 @@
 /**
  * RequestChunking: o corte de `?ids=` precisa respeitar DOIS limites — o cap do
- * servidor (500) e o tamanho da URL. Ignorar o segundo fazia o edge responder
- * `414 URI Too Long`, cuja resposta de erro não traz CORS: o browser reportava
- * "bloqueado por CORS" e o pull de entidades vinculadas falhava inteiro.
+ * servidor (500) e o tamanho da URL.
+ *
+ * Regressão (2026-09-12): ids do acervo podem CONTER vírgula
+ * (`rest_<slug>_<lat>,<lng>` — 408 entidades) e o transporte era um CSV único,
+ * então o servidor fragmentava o id e a entidade nunca era devolvida (as
+ * curadorias que a referenciam ficavam órfãs para sempre no cache local). O
+ * transporte agora é parâmetro REPETIDO (?ids=a&ids=b), sem ambiguidade — e o
+ * orçamento é medido com o MESMO codificador usado no envio.
  */
 import { readFileSync } from 'fs';
 import path from 'path';
@@ -22,6 +27,8 @@ function loadChunking(appConfig) {
 
 // Id real do pipeline: 38 chars, o que fazia 500 ids passarem de 20KB de URL.
 const overtureId = (i) => `overture_${String(i).padStart(32, '0')}`;
+// Id real COM vírgula (lat,lng) — a família rest_* do acervo.
+const restId = (name, lat, lng) => `rest_${name}_${lat},${lng}`;
 
 afterEach(() => {
   delete window.RequestChunking;
@@ -45,12 +52,10 @@ describe('RequestChunking.chunkIds', () => {
 
     const chunks = chunking.chunkIds(ids);
 
-    // 500 ids de 38 chars dariam ~21KB de URL (> limite do edge). Nenhum lote
-    // pode passar do orçamento, então precisa haver mais de um lote.
+    // 500 ids de 38 chars dariam ~21KB de URL (> limite do edge).
     expect(chunks.length).toBeGreaterThan(1);
     for (const chunk of chunks) {
-      const encoded = chunk.map(encodeURIComponent).join(',').length;
-      expect(encoded).toBeLessThanOrEqual(6000);
+      expect(chunking.idsQuery(chunk).length).toBeLessThanOrEqual(6000);
     }
   });
 
@@ -63,19 +68,37 @@ describe('RequestChunking.chunkIds', () => {
     expect(flat).toEqual(ids);
   });
 
-  test('conta o tamanho CODIFICADO, não o cru (ids com acento)', () => {
-    // "rest_pé_de_manga_-23.5647,_-46.6962" tem 35 chars crus mas 42 codificados
-    // (é → %C3%A9, vírgula → %2C). Com orçamento 43, contar o tamanho CRU
-    // agruparia este id com "osm_w_1" (35+1+7=43 ≤ 43); contar o codificado não
-    // (42+1+7=50 > 43). A URL é o que vai na requisição, então o codificado manda.
-    const chunking = loadChunking({ api: { backend: { entitiesIdsMaxChars: 43 } } });
-    const accentedId = 'rest_pé_de_manga_-23.5647,_-46.6962';
+  test('id COM vírgula sobrevive ao chunking e ao transporte (sem ambiguidade)', () => {
+    const chunking = loadChunking();
+    const comVirgula = [
+      restId('a_pizza_da_mooca', '-23.5520', '-46.6200'),
+      restId('akari_sushi', '-23.5050', '-46.6550'),
+      'overture_sem_virgula',
+    ];
 
-    const chunks = chunking.chunkIds([accentedId, 'osm_w_1', 'osm_w_2']);
+    const chunks = chunking.chunkIds(comVirgula);
+    const voltaram = chunks.flat();
+
+    // O id chega intacto: nada de split/rejoin por vírgula.
+    expect(voltaram).toEqual(comVirgula);
+    // E a query decodifica de volta para exatamente os mesmos ids — é isso que
+    // o servidor passa a receber (um id completo por item).
+    const params = new URLSearchParams(chunking.idsQuery(chunks[0]));
+    expect(params.getAll('ids')).toEqual(comVirgula);
+  });
+
+  test('conta o tamanho CODIFICADO, não o cru (ids com acento)', () => {
+    const chunking = loadChunking();
+    const accentedId = restId('pé_de_manga', '-23.5647', '-46.6962');
+    // Orçamento derivado do próprio codificador: cabe UM id, não dois.
+    const umId = chunking.idsQuery([accentedId]).length;
+    const comDois = loadChunking({ api: { backend: { entitiesIdsMaxChars: umId } } });
+
+    const chunks = comDois.chunkIds([accentedId, 'osm_w_1', 'osm_w_2']);
 
     expect(chunks[0]).toEqual([accentedId]);
     for (const chunk of chunks) {
-      expect(chunk.map(encodeURIComponent).join(',').length).toBeLessThanOrEqual(43);
+      expect(comDois.idsQuery(chunk).length).toBeLessThanOrEqual(umId);
     }
   });
 
@@ -98,5 +121,25 @@ describe('RequestChunking.chunkIds', () => {
 
     expect(chunking.chunkIds([])).toEqual([]);
     expect(chunking.chunkIds(undefined)).toEqual([]);
+  });
+});
+
+describe('RequestChunking.idsQuery', () => {
+  test('usa parâmetro repetido (não CSV) e ignora vazios', () => {
+    const chunking = loadChunking();
+
+    expect(chunking.idsQuery(['a', 'b'])).toBe('ids=a&ids=b');
+    expect(chunking.idsQuery(['a', null, '', '  ', undefined, 'b'])).toBe('ids=a&ids=b');
+    expect(chunking.idsQuery([])).toBe('');
+  });
+
+  test('codifica a vírgula do id como dado, não como separador', () => {
+    const chunking = loadChunking();
+    const id = restId('x', '-23.5', '-46.6');
+
+    const query = chunking.idsQuery([id]);
+
+    expect(query).toBe(`ids=${encodeURIComponent(id)}`);
+    expect(new URLSearchParams(query).getAll('ids')).toEqual([id]);
   });
 });

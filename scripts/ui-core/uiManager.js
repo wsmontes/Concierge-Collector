@@ -1818,7 +1818,9 @@ if (typeof window.UIManager === 'undefined') {
                     try {
                         var response = await window.ApiService.listEntities({
                             limit: chunks[c].length,
-                            ids: chunks[c].join(',')
+                            // ARRAY: o ApiService envia ?ids= repetido — ids do
+                            // acervo podem conter vírgula (rest_<slug>_<lat>,<lng>)
+                            ids: chunks[c]
                         });
                         for (var item of (response && response.items) || []) {
                             var eid = item.entity_id || String(item._id || '');

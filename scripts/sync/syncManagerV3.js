@@ -1059,7 +1059,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
-            const params = { limit: chunk.length, ids: chunk.join(',') };
+            // `ids` vai como ARRAY: o ApiService envia o parâmetro repetido
+            // (?ids=a&ids=b). Um id pode conter vírgula (rest_<slug>_<lat>,<lng>),
+            // então juntar num CSV fazia o servidor fragmentar o id e nunca
+            // devolver a entidade.
+            const params = { limit: chunk.length, ids: chunk };
             if (since) {
                 params.since = since;
             }
