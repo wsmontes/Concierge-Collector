@@ -2194,7 +2194,7 @@ if (typeof window.PlacesModule === 'undefined') {
                             button.innerHTML = '<span class="material-icons mr-1" style="font-size: 14px;">hourglass_empty</span>Importing...';
                             
                             try {
-                                await this.enhancedImportPlace(place);
+                                await this.importPlace(place);
                             } finally {
                                 button.disabled = false;
                                 button.innerHTML = '<span class="material-icons mr-1" style="font-size: 14px;">add</span>Import';

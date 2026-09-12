@@ -703,4 +703,26 @@ describe('PlacesModule — resultados: escape e wiring do import', () => {
     expect(window.__pwned).toBeUndefined();
   });
 
+  test('o botão Import dos resultados chama um método que existe (importPlace)', async () => {
+    vi.useFakeTimers();
+    const module = await makeModule();
+    const imported = vi.spyOn(module, 'importPlace').mockResolvedValue();
+
+    // O handler do botão lê this.searchResults[index] (o display recebe a lista
+    // mas o índice é resolvido contra o estado do módulo).
+    module.searchResults = [
+      { place_id: 'p1', name: 'Padaria', vicinity: 'Rua A', business_status: 'OPERATIONAL' }
+    ];
+    module.displayEnhancedSearchResults(module.searchResults);
+    // Os listeners são ligados num setTimeout(…, 10)
+    vi.advanceTimersByTime(50);
+
+    const button = document.querySelector('.import-place-btn');
+    expect(button).toBeTruthy();
+    button.click();
+
+    // Sem o método, o clique morria em TypeError (método inexistente)
+    expect(imported).toHaveBeenCalledTimes(1);
+    expect(imported.mock.calls[0][0]).toMatchObject({ place_id: 'p1' });
+  });
 });
