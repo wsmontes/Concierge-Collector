@@ -10,13 +10,21 @@ const INDEX_URL = './index.html';
 // These URLs are render-critical/runtime-critical because index.html currently
 // references them directly. They are copied into Cache Storage on the first
 // successful online install so a later reload can execute with no network.
+//
+// As URLs precisam ser IDÊNTICAS às do index.html: o `cacheFirst` casa URL
+// exata (ignoreSearch: false), então uma entrada precacheada com URL diferente
+// simplesmente nunca é usada pela página. O toastify era precacheado como
+// `toastify-js` e `toastify-js/src/...` (sem versão) enquanto a página carrega
+// `toastify-js@1.12.0/...` — resultado: Toastify (JS e CSS) indisponível
+// offline, sem erro nenhum. O teste de alinhamento em
+// tests/test_serviceWorker_assets.test.js trava isso.
 const CRITICAL_EXTERNAL_ASSETS = [
   'https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js',
   'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
   'https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js',
-  'https://cdn.jsdelivr.net/npm/toastify-js',
+  'https://cdn.jsdelivr.net/npm/toastify-js@1.12.0/src/toastify.min.js',
   'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css',
-  'https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css',
+  'https://cdn.jsdelivr.net/npm/toastify-js@1.12.0/src/toastify.min.css',
   'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap',
   'https://fonts.googleapis.com/icon?family=Material+Icons'
 ];
@@ -59,11 +67,19 @@ async function cacheStylesheetDependencies(cache, stylesheetUrl) {
 }
 
 async function precacheLocalBuild(cache) {
-  const manifestResponse = await fetch(MANIFEST_URL, { cache: 'no-store' });
-  if (!manifestResponse.ok) {
+  const response = await fetch(MANIFEST_URL, { cache: 'no-store' });
+  if (!response.ok) {
     throw new Error('Collector build manifest unavailable; refusing partial offline shell');
   }
-  const manifest = await manifestResponse.json();
+
+  // O clone precisa sair ANTES de ler o corpo: um Response só pode ser
+  // consumido uma vez, e `response.clone()` depois de `.json()` estoura
+  // "Failed to execute 'clone' on 'Response': Response body is already used".
+  // Este bug ficava escondido atrás do 404 do manifest (o fetch nunca dava
+  // certo, então a linha nem era alcançada); corrigido o 404, ele apareceu.
+  const manifestForCache = response.clone();
+  const manifest = await response.json();
+
   const manifestUrls = manifest.flatMap((entry) => {
     const bare = `./${entry.path}`;
     const aliases = [bare];
@@ -80,7 +96,7 @@ async function precacheLocalBuild(cache) {
     ...manifestUrls
   ])];
   await cache.addAll(localUrls);
-  await cache.put(MANIFEST_URL, manifestResponse.clone());
+  await cache.put(MANIFEST_URL, manifestForCache);
 }
 
 self.addEventListener('install', (event) => {
