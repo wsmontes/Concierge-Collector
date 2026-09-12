@@ -37,7 +37,12 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 
 ### Sync/Offline
 - [x] ~~Pull de entities vinculadas / consistência~~ ✓ — aba server-driven resolve entities por fora (local chunked + API ids + persistência) desde o fix do renderCurationsPage
-- [x] ~~"curadorias órfãs" reaparecendo em todo boot (`27 issues found, 0 repaired`)~~ — CORRIGIDO 2026-09-12. Causa: `pullLinkedEntities` buscava TODAS as vinculadas com `?since`, e esse filtro é por `updatedAt` — uma entidade antiga e nunca puxada ficava excluída para sempre, então a curadoria ficava órfã eternamente. Verificado antes de mexer: no SERVIDOR a integridade é perfeita (1035 entity_ids referenciados, 1035 existem, **0 dangling**), logo não era perda de dados — era o cache local que nunca recebia a entidade. Agora o pull faz duas passadas: BACKFILL das ausentes no cache (sem `since`) e REFRESH das presentes (com `since`). Presença local por consulta indexada em lotes (`where('entity_id').anyOf`), sem carregar a tabela inteira.
+- [x] ~~"curadorias órfãs" reaparecendo em todo boot (`27 issues found, 0 repaired`)~~ — RESOLVIDO em 2026-09-12, com DUAS causas encadeadas (a segunda só apareceu porque a primeira foi corrigida):
+  1. **Pull puramente incremental.** `pullLinkedEntities` buscava todas as vinculadas com `?since` (filtro por `updatedAt`), então uma entidade nunca puxada e não modificada desde o watermark era excluída em TODO sync, para sempre. Corrigido com duas passadas: BACKFILL das ausentes no cache (sem `since`) + REFRESH das presentes (com `since`). O contador caiu de 27 para 13 — não zerou, e isso expôs a causa 2.
+  2. **Ids com vírgula quebravam o `?ids=`** (o bug de verdade). O parâmetro era um CSV único e o servidor fazia `ids.split(",")`; os ids do pipeline `rest_<slug>_<lat>,<lng>` contêm a vírgula que separa lat/lng (**408 entidades**), então o split fragmentava o id em `rest_x_-23.5` + `_-46.6` — nenhum casava, a entidade nunca era devolvida e a curadoria ficava órfã INDEFINIDAMENTE (o backfill também não conseguia, porque ele usa o mesmo `?ids=`). Corrigido: `ids` agora é parâmetro REPETIDO (`?ids=a&ids=b`), cada item um id completo.
+  - **Prova contra dados reais de produção**: com ids `rest_*` reais, o formato novo devolve **3 de 3**; o formato antigo devolvia **0 de 3**.
+  - Integridade do servidor verificada antes de mexer e não era o problema: 1035 entity_ids referenciados, 1035 existem, 0 dangling — nada foi perdido, era só o cache local que nunca recebia essas entidades.
+  - ⚠️ Consequência no cliente: o `?ids=` repetido NÃO passa pelo `RequestChunking.idsQuery` (esse caminho existe para os chamadores do Collector). O parâmetro é apenas ≤500 ids curtos.
 - [ ] `cleanupBrowserData()` (main.js) **apaga a cada boot todo localStorage fora de `preserveKeys`**. O próprio comentário registra que isso já quebrou o onboarding ("a feature reaparecia em TODO reload"). Qualquer chave nova precisa ser adicionada lá ou some. É design deliberado, mas é armadilha: revisar se a limpeza deveria ser allowlist (só remove chaves conhecidas-obsoletas) em vez de denylist. Não alterado por ser comportamento intencional e sem teste.
 
 ### Dados
@@ -75,6 +80,12 @@ verificar o ciclo completo (abrir editor → autorar → interromper) seria troc
 regressão silenciosa. Falta: (a) instrumentar qual pré-condição falha (b) re-armar o poll quando o
 editor/workspace ficar pronto (ou escutar o evento de abertura do editor) (c) teste que prove que os
 wrappers instalam numa sessão que começa na lista.
+
+### ⚠️ RESIDUAL no static site: arquivos ANTIGOS ainda servidos
+Depois de trocar o static site para publicar `dist/collector` (build) em vez da raiz do repo, o **origin antigo não foi limpo**: caminhos que existiam no publish anterior e não existem no novo continuam respondendo 200 com o CONTEÚDO ANTIGO (congelado — não acompanha novos commits).
+- Verificado: `/CLAUDE.md` servido NÃO contém o texto publicado depois da troca (logo é cópia velha, não o repo ao vivo), enquanto `/.manifest.json` e `index.html?p=…` são claramente o artefato carimbado. `POST /services/{id}/cache/purge` (200) **não** resolveu — não é cache de CDN, é o conteúdo do publish antigo.
+- Exposição (stale, mas ainda pública): `/CLAUDE.md`, `/package.json`, `/package-lock.json`, `/Dockerfile`, `/concierge-api-v3/main.py`, `/scripts/python-tools/*`, `/tests/*`, `/docs/*`.
+- Ações possíveis: (a) remover esses arquivos do repo não adianta (o conteúdo já está lá); (b) **recriar o static site** apontando para `dist/collector` (origin limpo); (c) ou pedir remoção ao suporte do Render. Não executado por ser ação destrutiva na infra da conta — documento para decisão.
 
 ### Memória do serviço único — número a vigiar
 Plano `starter` = **512 MB / 0.5 CPU** ($7/mês). Medido no serviço fundido:
