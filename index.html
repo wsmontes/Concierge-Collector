@@ -130,6 +130,11 @@
         })();
     </script>
 
+    <!-- Restaurant validator utility: REMOVIDO (2026-09-12). Nada referenciou
+         RestaurantValidator/window.restaurantValidator — o defer ainda o
+         executava DEPOIS de main.js, que rodava initializeApp() no fim do
+         parse. Sem consumidor, era só peso morto. -->
+
     <!-- Add iOS detection script -->
     <script>
         // Detect iOS for special handling
