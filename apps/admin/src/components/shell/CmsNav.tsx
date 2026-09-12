@@ -1,40 +1,7 @@
+import { NavHamburger, NavWrapper } from '@payloadcms/next/client'
 import type { ReactNode } from 'react'
-
-export interface CmsNavItem {
-  href: string
-  label: string
-}
-
-export interface CmsNavGroup {
-  items: CmsNavItem[]
-  label: 'Overview' | 'Content' | 'Distribution' | 'Operations'
-}
-
-export const CMS_NAV_GROUPS: readonly CmsNavGroup[] = [
-  {
-    label: 'Overview',
-    items: [{ href: '/admin', label: 'Dashboard' }],
-  },
-  {
-    label: 'Content',
-    items: [
-      { href: '/admin/collections/collections', label: 'Collections' },
-      { href: '/admin/explorer', label: 'Curation Explorer' },
-    ],
-  },
-  {
-    label: 'Distribution',
-    items: [
-      { href: '/admin/applications', label: 'Applications' },
-      { href: '/admin/collections/consumer-applications', label: 'Consumer Applications (records)' },
-      { href: '/admin/collections/consumer-credentials', label: 'Consumer Credentials (records)' },
-    ],
-  },
-  {
-    label: 'Operations',
-    items: [{ href: '/admin/operations', label: 'Operations' }],
-  },
-]
+import { CmsNavLinks } from './CmsNavLinks'
+import { CMS_NAV_GROUPS } from './nav-groups'
 
 function Brand({ children }: { children: ReactNode }) {
   return <span className="cms-brand">{children}</span>
@@ -48,21 +15,29 @@ export function CmsLogo() {
   return <Brand>Concierge Collector</Brand>
 }
 
+/**
+ * `components.Nav` substitui o `DefaultNav` INTEIRO — inclusive a casca que ele
+ * desenha (`aside.nav` + `nav__scroll` + `nav__wrap`). Sem essas classes o CSS do
+ * Payload não casa em nada: a coluna do grid `.template-default` fica em 0 e a
+ * sidebar transborda sobre o conteúdo, os itens saem como lista com marcador e
+ * sublinhado, e o hambúrguer não tem estado para alternar (`nav--nav-open`, que o
+ * `NavWrapper` liga ao `useNav`).
+ *
+ * Por isso a casca vem do próprio `NavWrapper` (exportado em
+ * `@payloadcms/next/client`) em vez de ser reescrita à mão: largura, altura,
+ * `overflow`, `inert` quando fechada e a transição passam a ser as nativas.
+ */
 export function CmsNav() {
   return (
-    <nav aria-label="Concierge CMS">
-      {CMS_NAV_GROUPS.map((group) => (
-        <section className="cms-nav-group" key={group.label} aria-labelledby={`cms-nav-${group.label}`}>
-          <h2 id={`cms-nav-${group.label}`}>{group.label}</h2>
-          <ul>
-            {group.items.map((item) => (
-              <li key={item.href}>
-                <a href={item.href}>{item.label}</a>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-    </nav>
+    <NavWrapper baseClass="nav">
+      <nav aria-label="Concierge CMS" className="nav__wrap">
+        <CmsNavLinks groups={CMS_NAV_GROUPS} />
+      </nav>
+      <div className="nav__header">
+        <div className="nav__header-content">
+          <NavHamburger baseClass="nav" />
+        </div>
+      </div>
+    </NavWrapper>
   )
 }

@@ -19,7 +19,14 @@
   letter-spacing: -0.02em;
 }
 
+/* A sidebar é uma coluna flex com `align-items: flex-start`, então o grupo
+   precisa de largura própria para o separador atravessar a coluna. O separador
+   só aparece ENTRE grupos — o primeiro encosta no header. */
 .cms-nav-group {
+  width: 100%;
+}
+
+.cms-nav-group + .cms-nav-group {
   border-top: 1px solid var(--theme-border-color);
   margin-top: 1rem;
   padding-top: 1rem;
@@ -31,13 +38,6 @@
   letter-spacing: 0.08em;
   margin: 0 0 0.5rem;
   text-transform: uppercase;
-}
-
-.cms-nav-group p {
-  color: var(--cms-olive-600);
-  font-size: 0.875rem;
-  line-height: 1.4;
-  margin: 0;
 }
 
 .collection-views {

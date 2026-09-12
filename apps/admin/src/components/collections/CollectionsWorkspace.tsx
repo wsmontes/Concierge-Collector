@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   CollectionsAdminError,
@@ -159,7 +160,7 @@ export function CollectionsWorkspace({
               {visible.map((collection) => (
                 <tr key={collection.id}>
                   <td>
-                    <a href={`/admin/collections/collections/${collection.id}`}>{collection.title}</a>
+                    <Link href={`/admin/collections/collections/${collection.id}`}>{collection.title}</Link>
                     <span className="collections-workspace__slug">/{collection.slug}</span>
                   </td>
                   <td><span>{collection.lifecycle}</span></td>

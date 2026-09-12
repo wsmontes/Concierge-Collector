@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import type { CollectionDistributionClient } from '../../collections/distribution-client'
 import { ActivityView, type ActivityRow } from './ActivityView'
@@ -85,7 +86,7 @@ export function CollectionViews({
           {archived ? (
             <button type="button" onClick={actions.onRestore}>Restore collection</button>
           ) : <>
-            <a href={`/admin/explorer?collection=${encodeURIComponent(collection.id)}`}>Add Curations</a>
+            <Link href={`/admin/explorer?collection=${encodeURIComponent(collection.id)}`}>Add Curations</Link>
             <button type="button" onClick={actions.onEditMetadata}>Edit metadata</button>
             <button type="button" onClick={actions.onArchive}>Archive collection</button>
             <button type="button" disabled={publishing} aria-label="Publish new version" onClick={actions.onPublish}>
