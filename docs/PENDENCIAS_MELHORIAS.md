@@ -53,50 +53,88 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 O boot emitia cinco avisos em cadeia — `durability wrappers not installed`,
 `Ownership guard could not attach`, `Authoring controller could not attach`,
 `Source identity bridge could not attach`, `Save coordinator could not attach`.
-Eram **uma única causa**: uma corrida que se perde sempre, não um timeout.
 
-**Mecanismo** (rastreado até a linha): `window.uiManager` é atribuído no *parse
-do script* (uiManager.js:3680), mas `uiManager.conceptModule` só existe depois
-de `uiManager.init()`, que roda após o `await` de autenticação.
-`CurationWorkspaceModule.bootstrap()` dispara no `DOMContentLoaded`, encontra o
-`uiManager` já presente e chama `install()` → `installSaveCompatibility()` — que
-precisa de `conceptModule.saveRestaurant`, não acha e **retornava sem
-re-tentar**. Logo `__curationWorkspaceSaveCompatibilityInstalled` nunca era
-setado; `OfflineDurabilityModule` depende exatamente desse flag
-(`workspaceReady`) e desistia após 30s, e os outros quatro módulos, que dependem
-de `__offlineDurabilityEditRestoreInstalled`, nunca podiam prosseguir.
+**Duas causas empilhadas. A primeira análise (commit `ff3e4a17`) pegou só a de
+cima e a chamou de "causa única" — estava incompleta.** O registro completo:
 
-**Consequência**: os cinco boundaries de durabilidade/ownership do autoramento
-nunca foram instalados em produção.
+#### Causa 1 (parcial) — install sem retry
 
-**Correção**: `installSaveCompatibility` re-tenta (300 × 100ms, mesma janela dos
-módulos de durabilidade). O install é idempotente — re-checa o flag e retorna se
-já instalado — então um attach tardio não embrulha o save duas vezes.
+`installSaveCompatibility` precisava de `conceptModule.saveRestaurant`, não
+achava e **retornava sem re-tentar**, deixando
+`__curationWorkspaceSaveCompatibilityInstalled` nunca setado. Corrigido em
+`ff3e4a17` com retry (300 × 100ms).
 
-**Verificação em produção, sem sessão** (a corrida é observável pré-login, porque
-o `uiManager` existe e o `conceptModule` não):
+**O retry sozinho não resolveu** — e isso está no log de produção do usuário:
+`curationWorkspaceModule.js?v=9af479f2549c:681` re-tentando e mesmo assim
+`conceptModule.saveRestaurant ausente` até desistir. O retry estava re-tentando
+contra um objeto morto.
 
-| | antes | depois |
+#### Causa 2 (a raiz real) — `window.uiManager` era substituído, e o workspace
+#### guardava a instância órfã
+
+O app construía **duas** instâncias de `UIManager`:
+
+| # | onde | quando |
 |---|---|---|
-| `uiManager` / `conceptModule` pré-login | `object` / `undefined` | `object` / `undefined` |
-| workspace instalado | `true` | `true` |
-| **compatibilidade instalada** (após o `conceptModule` chegar) | **`false`** | **`true`** |
-| save original preservado | `undefined` | `function` |
+| **A** | `uiManager.js:~3680` `ModuleWrapper.createInstance` | no **parse** (index.html:1008) |
+| **B** | `main.js:322` `new UIManager()` | após o await de auth |
 
-Teste determinístico em `tests/test_curationWorkspace_saveCompatibilityRace.test.js`
-(fake timers, sem rede): falha no código anterior com "deveria ter sido instalado
-quando o conceptModule ficou pronto: expected undefined to be true".
+`curationWorkspaceModule.js` (index.html:1025) registra o listener de
+`DOMContentLoaded` **antes** do `main.js` (index.html:1065), então o
+`bootstrap()` roda primeiro e **captura A** em `this.uiManager`. Aí o `main.js`
+atribui B sobre `window.uiManager` e chama `B.init()` — e é o `init()` que cria
+o `conceptModule`.
+
+    grep: 2 atribuições a window.uiManager, 1 única chamada de init() (main.js:323, em B)
+
+Logo `A.init()` nunca roda, `A.conceptModule` é `undefined` para sempre, e o
+workspace — preso a A — nunca conseguia setar o flag.
+
+Todos os **outros** módulos leem `global.uiManager` *lazy* dentro do poll: veem
+B (viva) e apenas esperam um flag que o workspace nunca sobe. Por isso a cascata
+inteira parecia "timeout de 30s" quando era um alias errado.
+
+**Correção**: (1) `main.js` reusa a instância global em vez de criar a segunda;
+(2) `CurationWorkspaceModule` resolve `window.uiManager` via getter, a mesma
+convenção lazy de todos os outros módulos — era o único que capturava cedo, e
+por isso o único que quebrava.
+
+**Verificação em produção** (sem sessão; `49b240e4`):
+
+| medição | resultado |
+|---|---|
+| `curationWorkspace.uiManager === window.uiManager` | **true** |
+| executar a linha do `main.js` na instância reusada (`init()`) | **`UIManager initialized`**, `conceptModule` criado |
+| compat instalou sozinho após o `init()` | **true** |
+| substituir a instância global → instala na VIVA / órfã intocada | **true / true** |
+| **flags da cascata instalados** (com avisos capturados) | **7 de 8, e ZERO avisos** (antes: 0 de 8 e 5 avisos) |
+
+Flags confirmados: `__curationWorkspaceSaveCompatibilityInstalled`,
+`__offlineDurabilityDraftAutosaveInstalled`, `__offlineDurabilitySaveInstalled`,
+`__offlineDurabilityEditRestoreInstalled`, `__offlineOwnershipGuardInstalled`,
+`__curationAuthoringControllerInstalled`, `__offlineSourceIdentityBridgeInstalled`.
+
+- [ ] **O 8º (`__offlineSaveCoordinatorInstalled`) não fecha pré-login, e isso é
+  esperado — não é alias quebrado.** Medido: `wrappersReady()` exige
+  `__offlineKnownLinkageGuardInstalled`, e o `offlineKnownLinkageGuard.install()`
+  exige `DataStore.db.curations.put`, que é **`null` antes do login** (tabela
+  Dexie só existe após `DataStore.init()` no boot autenticado). Chamando
+  `install()` direto: retorna `false` com `curations === null`. A cadeia é uma
+  dependência legítima pós-auth.
+  > Armadilha de diagnóstico: `typeof null === "object"`, então um probe ingênuo
+  > reporta `curations: "object"` e esconde que é `null`. Foi o que me enganou
+  > por duas rodadas — conferir `=== null`, não `typeof`.
 
 - [ ] ⚠️ **NÃO verificado ponta a ponta**: o fluxo de autoração em si (abrir
-  editor → editar → salvar → interromper). Este commit **ativa cinco boundaries
-  que estavam dormentes**, então o fluxo do curador merece uma sessão real antes
-  de ser considerado fechado — em especial o restore de draft, que passa a poder
-  reescrever o conteúdo do editor.
-- [ ] As janelas de retry são de 30s (300 × 100ms) nos módulos de durabilidade.
-  O auth leva ~9s hoje, então há folga; se um cold start passar de 30s, os
-  boundaries voltam a não instalar. A correção robusta seria trocar o "desiste"
-  por um retry lento e perpétuo nos 5 módulos — **não feito** para não ampliar o
-  raio de mudança sem verificação.
+  editor → editar → salvar → interromper). Esta correção não só silencia os
+  avisos: **ativa** autosave durável de draft, restore de draft, guarda de
+  ownership, ponte de identidade de fonte e coordenador de save, todos inertes
+  até aqui. O restore de draft pode reescrever o conteúdo do editor — precisa de
+  uma sessão real de curador para fechar.
+- [ ] As janelas de retry são de 30s (300 × 100ms) em todos esses módulos. O auth
+  leva ~9s, então há folga; um cold start além de 30s volta a não instalar. A
+  correção robusta é retry lento e perpétuo — **não feito** (o `knownLinkageGuard`
+  legitimamente espera o `DataStore`, e um retry perpétuo é o que o comporta).
 
 ### Memória do serviço único — número a vigiar
 Plano `starter` = **512 MB / 0.5 CPU** ($7/mês). Medido no serviço fundido:
