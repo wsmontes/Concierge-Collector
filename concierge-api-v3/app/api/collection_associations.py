@@ -34,7 +34,10 @@ def published_associations(
     if operational_db.curations.find_one({"curation_id": curation_id}, {"_id": 1}) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Curation not found")
 
-    memberships = cms_db.collection_memberships.find({"curationId": curation_id})
+    # Teto explícito: uma curadoria pertence a um punhado de Collections. O
+    # loop abaixo faz um find_one por collection, então uma leitura sem limite
+    # aqui vira N+1 sem teto se o dado divergir.
+    memberships = cms_db.collection_memberships.find({"curationId": curation_id}).limit(500)
     collection_ids = sorted({str(item.get("collectionId")) for item in memberships if item.get("collectionId")})
     items = []
     for collection_id in collection_ids:

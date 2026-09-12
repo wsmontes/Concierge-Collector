@@ -146,7 +146,7 @@ class OpenAIConfigService:
         Returns:
             Dictionary of services with their status
         """
-        cursor = self.db.openai_configs.find({})
+        cursor = self.db.openai_configs.find({}).limit(200)
         services = {}
 
         for doc in cursor:
