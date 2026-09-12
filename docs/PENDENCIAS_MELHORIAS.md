@@ -43,6 +43,50 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 ### Dados
 - [ ] Junk de teste no banco: `entity_curation_test_*` (entities + curations) — limpar via `scripts/python-tools/data_cleanup.py` (destrutivo: confirmar antes)
 
+### ⚠️ ABERTO (investigar): wrappers de durabilidade não instalados
+
+O boot de produção (12/09, log do usuário) emite, em sequência:
+
+```
+[OfflineDurability]       Authoring runtime did not become ready; durability wrappers not installed
+[OfflineOwnership]        Ownership guard could not attach to the editor
+[CurationAuthoringController] Authoring controller could not attach to the editor
+[OfflineSourceIdentityBridge] Stable source identity bridge could not attach to Save
+[OfflineSaveCoordinator]  Save coordinator could not attach after all compatibility wrappers
+```
+
+São cinco fronteiras de durabilidade/ownership que NÃO foram instaladas naquela sessão.
+Isso é a superfície de "não perder informação" do autoramento, então precisa ser resolvido.
+
+Mecânica: `OfflineDurabilityModule.start()` (auto-start no load do script) chama
+`_pollForAuthoringRuntime()`, que tenta a cada 100ms e **desiste após 300 tentativas (30s)** —
+`_pollForAuthoringRuntime` só é chamado por `start()`, então **não há re-tentativa**. A condição
+exigida é `uiManager.conceptModule.saveRestaurant && workspaceReady`, onde
+`workspaceReady = !global.curationWorkspace || conceptModule.__curationWorkspaceSaveCompatibilityInstalled`
+(flag setado por `CurationWorkspaceModule.installSaveCompatibility()`).
+
+O problema de fundo, independente de qual pré-condição falhou: a janela de prontidão é **one-shot de
+30s**, enquanto o runtime de autoramento fica pronto **quando o editor monta** — ou seja, legitimamente
+depois. Numa sessão em que o usuário começa na lista (como a do log) e só depois abre o editor, os
+wrappers podem não existir justamente quando passam a importar, e o único sinal é uma linha de WARN.
+
+**Não corrigido de propósito**: é a fronteira de durabilidade de dados; mudar isso sem conseguir
+verificar o ciclo completo (abrir editor → autorar → interromper) seria trocar um aviso por uma
+regressão silenciosa. Falta: (a) instrumentar qual pré-condição falha (b) re-armar o poll quando o
+editor/workspace ficar pronto (ou escutar o evento de abertura do editor) (c) teste que prove que os
+wrappers instalam numa sessão que começa na lista.
+
+### Memória do serviço único — número a vigiar
+Plano `starter` = **512 MB / 0.5 CPU** ($7/mês). Medido no serviço fundido:
+- regime: **370-378 MB (73-74%)**; pico **428 MB (84%)** às 18:20 (pode incluir as duas instâncias
+  durante o blue/green de um deploy).
+- CPU folgadíssima: pico 0.05 de 0.5 núcleo.
+
+Os quatro processos (uvicorn + Next + jobs + nginx) dividem 512 MB. Se houver picos (muitas resoluções
+de imagem simultâneas, chamadas de IA com imagem/áudio em base64), o risco é OOM → reinício do
+container → **exatamente o sintoma de 502 sem CORS** já observado. Referência de custo: 3 serviços
+`starter` custavam $21/mês; hoje é 1 por $7; se apertar, `standard` (1c-2g, $25) dá 2 GB.
+
 ### Imagens dos cards (400 vs 404) — NÃO é bug
 Os erros de imagem no console têm dois significados distintos e ambos são o comportamento correto:
 - **400** = domínio do site **não resolve** (link morto). O guard SSRF (`_is_blocked_host`) bloqueia host que não resolve ("não dá para validar → bloqueia") e a rota converte em 400. Confirmado: `ipponsushi.com.br` não tem registro A. **Isto é sinal de qualidade de dado do acervo** (websites mortos vindos do scraping OSM/Overture), não defeito.
