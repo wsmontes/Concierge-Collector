@@ -37,9 +37,18 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 
 ### Sync/Offline
 - [x] ~~Pull de entities vinculadas / consistência~~ ✓ — aba server-driven resolve entities por fora (local chunked + API ids + persistência) desde o fix do renderCurationsPage
+- [x] ~~"curadorias órfãs" reaparecendo em todo boot (`27 issues found, 0 repaired`)~~ — CORRIGIDO 2026-09-12. Causa: `pullLinkedEntities` buscava TODAS as vinculadas com `?since`, e esse filtro é por `updatedAt` — uma entidade antiga e nunca puxada ficava excluída para sempre, então a curadoria ficava órfã eternamente. Verificado antes de mexer: no SERVIDOR a integridade é perfeita (1035 entity_ids referenciados, 1035 existem, **0 dangling**), logo não era perda de dados — era o cache local que nunca recebia a entidade. Agora o pull faz duas passadas: BACKFILL das ausentes no cache (sem `since`) e REFRESH das presentes (com `since`). Presença local por consulta indexada em lotes (`where('entity_id').anyOf`), sem carregar a tabela inteira.
+- [ ] `cleanupBrowserData()` (main.js) **apaga a cada boot todo localStorage fora de `preserveKeys`**. O próprio comentário registra que isso já quebrou o onboarding ("a feature reaparecia em TODO reload"). Qualquer chave nova precisa ser adicionada lá ou some. É design deliberado, mas é armadilha: revisar se a limpeza deveria ser allowlist (só remove chaves conhecidas-obsoletas) em vez de denylist. Não alterado por ser comportamento intencional e sem teste.
 
 ### Dados
 - [ ] Junk de teste no banco: `entity_curation_test_*` (entities + curations) — limpar via `scripts/python-tools/data_cleanup.py` (destrutivo: confirmar antes)
+
+### Imagens dos cards (400 vs 404) — NÃO é bug
+Os erros de imagem no console têm dois significados distintos e ambos são o comportamento correto:
+- **400** = domínio do site **não resolve** (link morto). O guard SSRF (`_is_blocked_host`) bloqueia host que não resolve ("não dá para validar → bloqueia") e a rota converte em 400. Confirmado: `ipponsushi.com.br` não tem registro A. **Isto é sinal de qualidade de dado do acervo** (websites mortos vindos do scraping OSM/Overture), não defeito.
+- **404** = site vivo, sem `og:image` aproveitável. Confirmado: `mcdonalds.com.br` resolve e devolve 404.
+- O cache negativo (Cache Storage `og-images-v2`) já persiste as duas respostas, e distingue definitivo (400/404) de erro de rede — então não há re-requisição infinita.
+- [ ] **Follow-up medido (não alterado):** quando o endpoint por entity falha, `_resolveEntityImage` cai no caminho legado `og-image?url=…` **mesmo o servidor já tendo tentado a mesma URL internamente**, gerando 2 requisições e 2 buscas server-side (download da página + Places) por card. O fallback é legítimo quando a entidade ainda não existe no servidor com a URL atualizada do curador; o ganho está em não repetir quando as fontes são idênticas. Mexer nisso muda comportamento de render — medir hit-rate do fallback antes.
 
 ### Infra
 - [ ] CI do GitHub Actions removido (billing) — decidir se reativa
