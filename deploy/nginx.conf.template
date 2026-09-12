@@ -1,0 +1,65 @@
+# Roteamento único do serviço Concierge.
+#
+# Um container, uma porta (a que o Render injeta em $PORT), três processos:
+#   FastAPI (uvicorn, 127.0.0.1:8000) — superfície inteira sob /api/v3 (+ /capture, /)
+#   Payload/Admin (Next, 127.0.0.1:3000) — admin em /admin, REST em /api/*
+#   Worker de jobs (payload jobs:run) — sem porta
+#
+# Por que nginx e não um proxy escrito à mão: a API faz STREAMING (NDJSON de
+# export e imagens do proxy de fotos). Um proxy ingênuo que bufferiza a resposta
+# inteira transformaria stream em memória — é exatamente o tipo de regressão que
+# quebra dado grande sem dar erro. O nginx lida com chunked/streaming correto.
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen __PORT__ default_server;
+    server_name _;
+    server_tokens off;
+
+    # Uploads: a API recebe áudio e imagens em base64 (data URL) nos endpoints
+    # de IA; o default do nginx (1m) truncaria/recusaria isso silenciosamente.
+    client_max_body_size 100m;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+
+    # Chamadas de IA (Whisper/visão) são lentas por natureza; o default de 60s
+    # abortaria a resposta no meio e o cliente veria erro em vez do resultado.
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+
+    # ---- FastAPI ----------------------------------------------------------
+    # Toda a superfície do FastAPI vive sob /api/v3 (docs/openapi incluídos).
+    location /api/v3 {
+        proxy_pass http://127.0.0.1:8000;
+        # Streaming: sem isto o nginx acumula a resposta inteira antes de
+        # entregar, o que quebra NDJSON de export e o proxy de imagens.
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
+    location /capture {
+        proxy_pass http://127.0.0.1:8000;
+    }
+
+    # Raiz continua redirecionando para /capture/ (comportamento já existente).
+    location = / {
+        proxy_pass http://127.0.0.1:8000;
+    }
+
+    # ---- Payload / Admin (Next) -------------------------------------------
+    # /admin (UI), /_next (assets), /api/* que NÃO seja /api/v3 (REST do
+    # Payload + os endpoints customizados /api/admin/v1/...).
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+    }
+}

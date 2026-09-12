@@ -166,10 +166,13 @@ const AppConfig = {
         }
     },
 
-    // CMS is a separate host on purpose: Collector requests use a live Bearer
-    // and never inherit the host-only CMS session cookie.
+    // CMS é o MESMO serviço da API (decisão de 2026-09-12): o Admin (Payload)
+    // roda como processo dentro do serviço da API, atrás do mesmo domínio. O
+    // Collector fala com /api/admin/v1/... e o roteamento interno manda para o
+    // Payload. Isso elimina o subdomínio admin.* e a instância separada que
+    // existiam antes — não há host novo para configurar aqui.
     cms: {
-        adminBaseUrl: isLocalhost ? 'http://localhost:3000' : 'https://admin.concierge-collector.com',
+        adminBaseUrl: isLocalhost ? 'http://localhost:3000' : 'https://api.concierge-collector.com',
         endpoints: {
             collectionOptions: '/api/admin/v1/curations',
             collectionOperation: '/api/admin/v1/collections',
