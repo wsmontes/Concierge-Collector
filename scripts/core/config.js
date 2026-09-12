@@ -88,32 +88,36 @@ const AppConfig = {
                 // System endpoints
                 info: '/info',                   // GET - API info (no auth)
                 health: '/health',               // GET - Health check (no auth)
-                ogImage: '/og-image',            // GET - og:image do site do restaurante (JWT)
+                ogImage: '/og-image',            // GET - og:image do site do restaurante (curator)
 
                 // Entity endpoints
-                entities: '/entities',           // GET list (filters, no auth), POST create (X-API-Key)
-                entityById: '/entities/{id}',    // GET (no auth), PATCH (X-API-Key + If-Match), DELETE (X-API-Key)
+                // NOTA (corrigida 2026-09-12): as notas antigas diziam X-API-Key;
+                // a API exige role VIVA no Mongo (require_role revalida a cada
+                // request) desde ago/2026 — X-API-Key segue válido apenas como
+                // credencial de serviço (bulk/scripts).
+                entities: '/entities',           // GET list (login), POST create (curator)
+                entityById: '/entities/{id}',    // GET (login), PATCH (curator + If-Match), DELETE (admin)
 
                 // Entity bulk endpoint
-                entitiesBulk: '/entities/bulk',  // POST - Bulk upsert entities (X-API-Key, max 500)
+                entitiesBulk: '/entities/bulk',  // POST - Bulk upsert entities (curator, max 500)
 
                 // Curation endpoints
-                curations: '/curations',         // GET list (filters, no auth), POST create (X-API-Key)
-                curationById: '/curations/{id}', // GET (no auth), PATCH (X-API-Key + If-Match), DELETE (X-API-Key)
-                curationsSearch: '/curations/search',  // GET - Search curations with filters (no auth)
+                curations: '/curations',         // GET list (login), POST create (curator)
+                curationById: '/curations/{id}', // GET (login), PATCH (curator + If-Match), DELETE (curator, só o dono)
+                curationsSearch: '/curations/search',  // GET - Search curations with filters (login)
                 // rota real da API: /curations/entities/{entity_id}/curations
                 entityCurations: '/curations/entities/{id}/curations',
-                curationsBulk: '/curations/bulk',  // POST - Bulk upsert curations (X-API-Key, max 500)
-                curators: '/curators',               // GET - List all curator profiles (no auth)
+                curationsBulk: '/curations/bulk',  // POST - Bulk upsert curations (curator, max 500)
+                curators: '/curators',               // GET - List all curator profiles (login)
 
                 // AI Service endpoints
-                aiOrchestrate: '/ai/orchestrate',      // POST - AI orchestration (audio+concepts)
-                aiExtractConcepts: '/ai/orchestrate',  // POST - Extract concepts via orchestrate (JWT)
-                aiExtractRestaurantName: '/ai/extract-restaurant-name', // POST - Extract restaurant name via dedicated OpenAI config
+                aiOrchestrate: '/ai/orchestrate',      // POST - AI orchestration (audio+concepts) (viewer)
+                aiExtractConcepts: '/ai/orchestrate',  // POST - Extract concepts via orchestrate (viewer)
+                aiExtractRestaurantName: '/ai/extract-restaurant-name', // POST - Extract restaurant name (viewer)
 
                 // Places Service endpoints
-                placesSearch: '/places/nearby',        // GET - Search Google Places (OAuth Bearer)
-                placesDetails: '/places/details/{id}'  // GET - Get place details (OAuth Bearer)
+                placesSearch: '/places/nearby',        // GET - Search Google Places (viewer)
+                placesDetails: '/places/details/{id}'  // GET - Get place details (viewer)
             }
         },
 

@@ -2149,7 +2149,7 @@ if (typeof window.PlacesModule === 'undefined') {
                                     ` : ''}
                                 </div>
                                 
-                                <p class="text-sm text-gray-600 mb-2 line-clamp-1">${place.vicinity || 'No address available'}</p>
+                                <p class="text-sm text-gray-600 mb-2 line-clamp-1">${this.escapeHtml(place.vicinity) || 'No address available'}</p>
                                 
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center space-x-2">
@@ -2194,7 +2194,7 @@ if (typeof window.PlacesModule === 'undefined') {
                             button.innerHTML = '<span class="material-icons mr-1" style="font-size: 14px;">hourglass_empty</span>Importing...';
                             
                             try {
-                                await this.enhancedImportPlace(place);
+                                await this.importPlace(place);
                             } finally {
                                 button.disabled = false;
                                 button.innerHTML = '<span class="material-icons mr-1" style="font-size: 14px;">add</span>Import';
@@ -2309,7 +2309,9 @@ if (typeof window.PlacesModule === 'undefined') {
         escapeHtml(value) {
             const div = document.createElement('div');
             div.textContent = value == null ? '' : String(value);
-            return div.innerHTML;
+            // Aspas também: o serializer de innerHTML não as escapa em texto e
+            // o resultado entra em src=/alt=/data-* do card de resultado.
+            return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
         
         /**

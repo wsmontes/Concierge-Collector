@@ -106,7 +106,7 @@ class CategoryService:
         Returns:
             List of entity type strings
         """
-        cursor = self.db.categories.find({"active": True})
+        cursor = self.db.categories.find({"active": True}).limit(500)
         entity_types = []
 
         async for doc in cursor:
@@ -121,7 +121,7 @@ class CategoryService:
         Returns:
             Dictionary mapping entity_type to category count
         """
-        cursor = self.db.categories.find({"active": True})
+        cursor = self.db.categories.find({"active": True}).limit(500)
         stats = {}
 
         async for doc in cursor:

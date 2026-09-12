@@ -25,6 +25,21 @@ class UIUtilsModule {
     }
 
     /**
+     * Escapes a value for safe interpolation into innerHTML (text AND
+     * attribute positions). Mensagens de status carregam texto de origem
+     * externa (erro de API, nome de restaurante) — sem escape viram markup.
+     * Aspas também: o serializer de innerHTML não as escapa em texto, e o
+     * valor pode entrar em atributo.
+     * @param {*} value - Value to escape
+     * @returns {string} Escaped text
+     */
+    escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    /**
      * Shows a loading overlay with a message
      * @param {string} message - The loading message to display
      */
@@ -150,7 +165,7 @@ class UIUtilsModule {
         
         statusElement.innerHTML = `
             <span class="material-icons status-icon">${icon}</span>
-            <span class="status-message">${message}</span>
+            <span class="status-message">${this.escapeHtml(message)}</span>
         `;
         
         this.log.debug(`Processing status updated for ${processId}: ${status} - ${message}`);

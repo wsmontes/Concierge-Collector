@@ -197,11 +197,14 @@ describe('PlacesModule — formatação (preço, abertura, distância, XSS)', ()
     expect(module.deg2rad(0)).toBe(0);
   });
 
-  test('escapeHtml escapa HTML (XSS via dados do Google Places)', async () => {
+  test('escapeHtml escapa HTML e aspas (XSS via dados do Google Places)', async () => {
     const module = await makeModule();
     expect(module.escapeHtml('<script>alert(1)</script>')).toBe('&lt;script&gt;alert(1)&lt;/script&gt;');
-    // jsdom (como os browsers) não escapa aspas em innerHTML
-    expect(module.escapeHtml('"quoted" & <b>')).toBe('"quoted" &amp; &lt;b&gt;');
+    // Aspas SÃO escapadas: o serializer de innerHTML não as escapa em texto, e
+    // os mesmos valores entram em src=/alt=/data-* dos cards de resultado —
+    // uma aspa crua fecha o atributo e injeta outro (ex.: onerror=).
+    expect(module.escapeHtml('"quoted" & <b>')).toBe('&quot;quoted&quot; &amp; &lt;b&gt;');
+    expect(module.escapeHtml("it's")).toBe('it&#39;s');
     expect(module.escapeHtml(null)).toBe('');
     expect(module.escapeHtml(undefined)).toBe('');
   });
@@ -676,5 +679,50 @@ describe('PlacesModule — busca e DOM do modal', () => {
       'warning'
     );
     expect(window.PlacesOrchestrationService).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Resultados: XSS no DOM e wiring do botão de import
+// ============================================================================
+
+describe('PlacesModule — resultados: escape e wiring do import', () => {
+  test('escapa vicinity no card de resultado (sem elemento injetado)', async () => {
+    const module = await makeModule();
+    const payload = '<img src=x onerror="window.__pwned=1">';
+    const resultsContainer = document.getElementById('places-search-results');
+    expect(resultsContainer).toBeTruthy();
+
+    module.displayEnhancedSearchResults([
+      { place_id: 'p1', name: 'Padaria', vicinity: payload, business_status: 'OPERATIONAL' }
+    ]);
+
+    // Nenhum <img> do payload vira elemento real; o texto fica inerte
+    expect(resultsContainer.querySelectorAll('img').length).toBe(0);
+    expect(resultsContainer.innerHTML).toContain('&lt;img');
+    expect(window.__pwned).toBeUndefined();
+  });
+
+  test('o botão Import dos resultados chama um método que existe (importPlace)', async () => {
+    vi.useFakeTimers();
+    const module = await makeModule();
+    const imported = vi.spyOn(module, 'importPlace').mockResolvedValue();
+
+    // O handler do botão lê this.searchResults[index] (o display recebe a lista
+    // mas o índice é resolvido contra o estado do módulo).
+    module.searchResults = [
+      { place_id: 'p1', name: 'Padaria', vicinity: 'Rua A', business_status: 'OPERATIONAL' }
+    ];
+    module.displayEnhancedSearchResults(module.searchResults);
+    // Os listeners são ligados num setTimeout(…, 10)
+    vi.advanceTimersByTime(50);
+
+    const button = document.querySelector('.import-place-btn');
+    expect(button).toBeTruthy();
+    button.click();
+
+    // Sem o método, o clique morria em TypeError (método inexistente)
+    expect(imported).toHaveBeenCalledTimes(1);
+    expect(imported.mock.calls[0][0]).toMatchObject({ place_id: 'p1' });
   });
 });

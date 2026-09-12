@@ -121,11 +121,19 @@ const AuthService = (function() {
      * @param {string} tokenData.access_token OAuth access token
      * @param {string} [tokenData.refresh_token] OAuth refresh token
      * @param {number} [tokenData.expires_in] Token lifetime in seconds
+     * @param {Object} [options]
+     * @param {boolean} [options.persistRefreshToken=true] Grava o refresh token
+     *   no localStorage. O caminho cookie-first (same-site) passa false: lá o
+     *   portador é o cookie HttpOnly e uma cópia em localStorage sobrevive a
+     *   XSS por 30 dias. E a cópia anterior já está revogada — a rotação
+     *   server-side invalida o jti antigo — então não há fallback a preservar.
      */
-    function storeTokens(tokenData) {
+    function storeTokens(tokenData, options = {}) {
+        const persistRefreshToken = options.persistRefreshToken !== false;
         console.log('[AuthService] storeTokens() called with:', {
             hasAccessToken: !!tokenData?.access_token,
             hasRefreshToken: !!tokenData?.refresh_token,
+            persistRefreshToken,
             expiresIn: tokenData?.expires_in
         });
         
@@ -148,9 +156,16 @@ const AuthService = (function() {
         console.log(`[AuthService] ✓ Access token stored to key: ${keys.oauthToken}`);
 
         // Store refresh token if present
-        if (tokenData.refresh_token) {
+        if (persistRefreshToken && tokenData.refresh_token) {
             localStorage.setItem(keys.oauthRefreshToken, tokenData.refresh_token);
             console.log(`[AuthService] ✓ Refresh token stored to key: ${keys.oauthRefreshToken}`);
+        } else if (!persistRefreshToken) {
+            // Same-site: o cookie HttpOnly é o portador do refresh. Remover a
+            // cópia local (a rotação anterior já a revogou) mantém a invariante
+            // "nenhum refresh token em storage acessível por JS quando o cookie
+            // responde" — ver comentário de persistRefreshToken.
+            localStorage.removeItem(keys.oauthRefreshToken);
+            console.log('[AuthService] Refresh token não persistido (cookie HttpOnly é o portador)');
         } else {
             console.warn('[AuthService] ⚠️ No refresh token in tokenData');
         }
@@ -312,11 +327,16 @@ const AuthService = (function() {
 
             if (response.ok) {
                 const data = await response.json();
-                storeTokens({
-                    access_token: data.access_token,
-                    refresh_token: data.refresh_token,
-                    expires_in: data.expires_in || 3600
-                });
+                // Cookie HttpOnly respondeu: o refresh fica FORA do
+                // localStorage (ver persistRefreshToken em storeTokens).
+                storeTokens(
+                    {
+                        access_token: data.access_token,
+                        refresh_token: data.refresh_token,
+                        expires_in: data.expires_in || 3600
+                    },
+                    { persistRefreshToken: false }
+                );
                 console.log('[AuthService] ✓ Token refreshed successfully (cookie)');
                 return true;
             }

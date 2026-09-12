@@ -79,7 +79,7 @@ def list_concepts(db: Database = Depends(get_database)) -> Dict[str, Any]:
             "count": 1
         }
     """
-    cursor = db.categories.find({"active": True})
+    cursor = db.categories.find({"active": True}).limit(500)
     concepts = []
 
     for doc in cursor:

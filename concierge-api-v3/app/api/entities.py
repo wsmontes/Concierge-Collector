@@ -535,13 +535,34 @@ def bulk_upsert_entities(
                 created += 1
 
         except DuplicateKeyError:
-            # Unique index collision (e.g. duplicate place_id) — update existing
+            # Unique index collision (e.g. duplicate place_id) — update existing.
+            # A recuperação PRECISA ser reportada: antes a exceção era engolida
+            # (`except Exception: pass`) e `updated` incrementava de qualquer
+            # forma, então o import recebia sucesso para itens que não foram
+            # gravados. matched_count == 0 é o mesmo caso por outro caminho: o
+            # upsert não encontrou o documento alvo e nada foi persistido.
             try:
-                db.entities.update_one({"_id": entity.entity_id}, {"$set": doc})
-                refreshed_entity = {**(existing or {}), **doc, "_id": entity.entity_id, "entity_id": entity.entity_id}
-                refresh_linked_curation_projections(db, refreshed_entity, requested_id=entity.entity_id)
-            except Exception:
-                pass
+                result = db.entities.update_one({"_id": entity.entity_id}, {"$set": doc})
+            except Exception as exc:
+                errors.append(
+                    BulkItemError(
+                        index=idx,
+                        id=entity.entity_id,
+                        error=f"unique index collision recovery failed: {exc}",
+                    )
+                )
+                continue
+            if result.matched_count == 0:
+                errors.append(
+                    BulkItemError(
+                        index=idx,
+                        id=entity.entity_id,
+                        error="unique index collision: no document matched entity_id to update",
+                    )
+                )
+                continue
+            refreshed_entity = {**(existing or {}), **doc, "_id": entity.entity_id, "entity_id": entity.entity_id}
+            refresh_linked_curation_projections(db, refreshed_entity, requested_id=entity.entity_id)
             updated += 1
         except Exception as exc:
             errors.append(BulkItemError(index=idx, id=entity.entity_id, error=str(exc)))

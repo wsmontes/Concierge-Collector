@@ -20,6 +20,23 @@ window.uiUtils = {
     },
 
     /**
+     * Escape a value for safe interpolation into innerHTML.
+     *
+     * Callers pass externally-sourced text (curator names, API error
+     * messages) into loading overlays and dialogs. Aspas entram no replace
+     * porque o serializer de innerHTML não as escapa em texto — sem isso o
+     * valor quebraria atributos quando interpolado dentro deles.
+     *
+     * @param {*} value - Value to escape
+     * @returns {string} Escaped text
+     */
+    escapeHtml: function (value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    },
+
+    /**
      * Show loading overlay
      * @param {string} message - Loading message
      */
@@ -37,7 +54,7 @@ window.uiUtils = {
         loadingOverlay.innerHTML = `
             <div class="bg-white p-4 rounded-lg shadow-lg flex flex-col items-center">
                 <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                <p class="text-gray-800 loading-message">${message}</p>
+                <p class="text-gray-800 loading-message">${this.escapeHtml(message)}</p>
             </div>
         `;
 
@@ -185,14 +202,14 @@ window.uiUtils = {
             modal.innerHTML = `
                 <div class="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden transition-all transform scale-100 animate-in fade-in zoom-in duration-200">
                     <div class="p-6">
-                        <h3 class="text-xl font-bold text-gray-900 mb-2">${title}</h3>
-                        <p class="text-gray-600 mb-6">${message}</p>
+                        <h3 class="text-xl font-bold text-gray-900 mb-2">${this.escapeHtml(title)}</h3>
+                        <p class="text-gray-600 mb-6">${this.escapeHtml(message)}</p>
                         <div class="flex justify-end gap-3">
                             <button id="confirm-cancel" class="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
-                                ${cancelLabel}
+                                ${this.escapeHtml(cancelLabel)}
                             </button>
                             <button id="confirm-ok" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm">
-                                ${confirmLabel}
+                                ${this.escapeHtml(confirmLabel)}
                             </button>
                         </div>
                     </div>

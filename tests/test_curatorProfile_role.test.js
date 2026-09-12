@@ -15,7 +15,7 @@
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(path.resolve(__dirname, '../scripts/auth/curatorProfile.js'), 'utf8');
@@ -52,6 +52,35 @@ describe('CuratorProfile — role derivado do servidor', () => {
     expect(curator).not.toBeNull();
     expect(curator.role).toBe(role);
     expect(profile.getCurrentCurator().role).toBe(role);
+  });
+
+  test('avatar com erro esconde a imagem e mostra o fallback (listener, não onerror inline)', async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '<div id="user-profile-header"></div>';
+    const profile = loadCuratorProfile({
+      ...authenticatedUser('curator'),
+      name: 'Ana Silva',
+      picture: 'https://pictures.test/ana.png'
+    });
+
+    await profile.initialize();
+    // O header é re-renderizado a cada update; os listeners são ligados num
+    // setTimeout(…, 100). Antes disso o fallback do avatar era um onerror=
+    // inline no markup — que exigiria script-src 'unsafe-inline'.
+    vi.advanceTimersByTime(200);
+
+    const img = document.querySelector('#user-profile-header [data-avatar-photo]');
+    const fallback = img && img.nextElementSibling;
+    expect(img).toBeTruthy();
+    expect(fallback && fallback.classList.contains('avatar-fallback')).toBe(true);
+    expect(fallback.style.display).toBe('none');
+
+    img.dispatchEvent(new Event('error'));
+
+    expect(img.style.display).toBe('none');
+    expect(fallback.style.display).toBe('flex');
+
+    vi.useRealTimers();
   });
 
   test('não inventa role quando o servidor não manda nenhum', async () => {

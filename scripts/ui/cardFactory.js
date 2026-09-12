@@ -232,7 +232,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                             </div>
                         ` : ''}
                         ${entityWebsiteHref ? `
-                            <a href="${entityWebsiteHref}" target="_blank" rel="noopener noreferrer"
+                            <a href="${this.escapeHtml(entityWebsiteHref)}" target="_blank" rel="noopener noreferrer"
                                 class="collection-card__website linked-contact-link"
                                 title="${this.escapeHtml(entityWebsiteRaw)}">
                                 <span class="material-icons" aria-hidden="true">language</span>

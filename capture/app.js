@@ -623,7 +623,9 @@ function escapeHTML(str) {
   // Coage com String(): um nome não-string (ex.: number, null) viraria
   // "null" renderizado ou lançaria em textContent.
   div.textContent = String(str ?? '');
-  return div.innerHTML;
+  // Aspas também: o serializer de innerHTML não as escapa em texto e o
+  // valor pode entrar em atributo num template futuro.
+  return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function formatDuration(seconds) {

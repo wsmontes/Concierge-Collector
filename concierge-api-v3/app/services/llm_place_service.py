@@ -815,7 +815,7 @@ class LLMPlaceService:
         # 4. Get curations
         curations = []
         if include_curations and entity:
-            curations_cursor = self.db.curations.find({"entity_id": entity.get("_id")})
+            curations_cursor = self.db.curations.find({"entity_id": entity.get("_id")}).limit(200)
             curations = list(curations_cursor)
             if curations:
                 sources_used.append("curations")

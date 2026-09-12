@@ -59,4 +59,28 @@ describe('AuthService refresh fallback', () => {
     expect(calls[1][1].credentials).toBe('omit');
     expect(JSON.parse(calls[1][1].body)).toEqual({ refresh_token: 'valid-local-refresh' });
   });
+
+  test('cookie-first não persiste o refresh token (o cookie HttpOnly é o portador)', async () => {
+    localStorage.setItem(KEYS.oauthRefreshToken, 'pre-rotation-refresh');
+    const Auth = loadAuthService();
+    const calls = [];
+    global.fetch = vi.fn(async (url, options) => {
+      calls.push([url, options]);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: 'new-access', refresh_token: 'rotated-refresh', expires_in: 3600 }),
+      };
+    });
+
+    await expect(Auth.refreshToken()).resolves.toBe(true);
+
+    // Uma única chamada (cookie respondeu) — o body legado nem é tentado
+    expect(calls).toHaveLength(1);
+    expect(localStorage.getItem(KEYS.oauthToken)).toBe('new-access');
+    // Nem o token rotacionado nem a cópia anterior ficam em storage JS:
+    // sobreviveriam a um XSS por 30 dias sem servir de fallback (a rotação
+    // revoga o jti anterior).
+    expect(localStorage.getItem(KEYS.oauthRefreshToken)).toBeNull();
+  });
 });

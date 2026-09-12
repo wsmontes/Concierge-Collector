@@ -160,14 +160,14 @@ const CuratorProfile = (function() {
                                 src="${safePicture}"
                                 alt="${safeName}"
                                 class="w-8 h-8 sm:w-10 sm:h-10 rounded-full ring-2 ring-blue-200 object-cover flex-shrink-0"
-                                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'"
+                                data-avatar-photo
                             >
                             <div class="avatar-fallback w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold flex-shrink-0" style="display:none">
-                                ${getInitials(_currentCurator.name)}
+                                ${escapeHtml(getInitials(_currentCurator.name))}
                             </div>
                         ` : `
                             <div class="avatar-fallback w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold flex-shrink-0">
-                                ${getInitials(_currentCurator.name)}
+                                ${escapeHtml(getInitials(_currentCurator.name))}
                             </div>
                         `}
                         <div class="hidden sm:flex flex-col items-start">
@@ -263,6 +263,17 @@ const CuratorProfile = (function() {
 
             // Add event listeners after creating the HTML
             setTimeout(() => {
+                // Fallback do avatar: antes era um onerror= inline no markup, que
+                // exigiria script-src 'unsafe-inline' numa CSP futura. Listener
+                // real: mesma troca de visibilidade, sem handler em atributo.
+                headerProfile.querySelectorAll('[data-avatar-photo]').forEach((img) => {
+                    img.addEventListener('error', () => {
+                        img.style.display = 'none';
+                        const fallback = img.nextElementSibling;
+                        if (fallback) fallback.style.display = 'flex';
+                    });
+                });
+
                 const button = document.getElementById('user-profile-button');
                 const dropdown = document.getElementById('user-profile-dropdown');
                 const logoutBtn = document.getElementById('user-logout-btn');
