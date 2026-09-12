@@ -46,7 +46,7 @@ test('Explorer exposes a safe target context and a way back to the Collection', 
   expect(await screen.findByText('Selecting Curations for a Collection draft.')).toBeVisible()
   expect(screen.getByRole('link', { name: 'Back to Collection' })).toHaveAttribute(
     'href',
-    `/admin/collections/${collectionId}`,
+    `/admin/collections/collections/${collectionId}`,
   )
 })
 

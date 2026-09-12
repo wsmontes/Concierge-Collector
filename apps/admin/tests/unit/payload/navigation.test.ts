@@ -8,8 +8,10 @@ describe('CMS navigation', () => {
       'Content',
       'Distribution',
       'Operations',
-      'Administration',
     ])
     expect(JSON.stringify(CMS_NAV_GROUPS)).not.toContain('Entities')
+    // A caixa "…will appear here when available." só existia nos grupos vazios.
+    // Nenhum grupo pode voltar a ser vazio.
+    expect(CMS_NAV_GROUPS.every((group) => group.items.length > 0)).toBe(true)
   })
 })

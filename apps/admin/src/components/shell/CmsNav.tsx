@@ -6,36 +6,33 @@ export interface CmsNavItem {
 }
 
 export interface CmsNavGroup {
-  emptyState: string
   items: CmsNavItem[]
-  label: 'Overview' | 'Content' | 'Distribution' | 'Operations' | 'Administration'
+  label: 'Overview' | 'Content' | 'Distribution' | 'Operations'
 }
 
 export const CMS_NAV_GROUPS: readonly CmsNavGroup[] = [
   {
     label: 'Overview',
     items: [{ href: '/admin', label: 'Dashboard' }],
-    emptyState: 'Overview is ready.',
   },
   {
     label: 'Content',
-    items: [{ href: '/admin/collections', label: 'Collections' }, { href: '/admin/explorer', label: 'Curation Explorer' }],
-    emptyState: 'Content tools will appear here when available.',
+    items: [
+      { href: '/admin/collections/collections', label: 'Collections' },
+      { href: '/admin/explorer', label: 'Curation Explorer' },
+    ],
   },
   {
     label: 'Distribution',
-    items: [{ href: '/admin/applications', label: 'Applications' }],
-    emptyState: 'Distribution tools will appear here when available.',
+    items: [
+      { href: '/admin/applications', label: 'Applications' },
+      { href: '/admin/collections/consumer-applications', label: 'Consumer Applications (records)' },
+      { href: '/admin/collections/consumer-credentials', label: 'Consumer Credentials (records)' },
+    ],
   },
   {
     label: 'Operations',
     items: [{ href: '/admin/operations', label: 'Operations' }],
-    emptyState: 'Operations tools will appear here when available.',
-  },
-  {
-    label: 'Administration',
-    items: [],
-    emptyState: 'Administration tools will appear here when available.',
   },
 ]
 
@@ -57,17 +54,13 @@ export function CmsNav() {
       {CMS_NAV_GROUPS.map((group) => (
         <section className="cms-nav-group" key={group.label} aria-labelledby={`cms-nav-${group.label}`}>
           <h2 id={`cms-nav-${group.label}`}>{group.label}</h2>
-          {group.items.length > 0 ? (
-            <ul>
-              {group.items.map((item) => (
-                <li key={item.href}>
-                  <a href={item.href}>{item.label}</a>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p role="status">{group.emptyState}</p>
-          )}
+          <ul>
+            {group.items.map((item) => (
+              <li key={item.href}>
+                <a href={item.href}>{item.label}</a>
+              </li>
+            ))}
+          </ul>
         </section>
       ))}
     </nav>

@@ -114,9 +114,9 @@ This is the primary integration gate. Do not weaken its test-database safety gua
 
 ### Collections Admin
 
-1. `/admin/collections` loads active + archived Collections.
+1. `/admin/collections/collections` loads active + archived Collections.
 2. Create a Collection through the UI.
-3. Open `/admin/collections/<id>`.
+3. Open `/admin/collections/collections/<id>`.
 4. Edit metadata with CAS.
 5. Paginate Members, Draft Changes, Versions and Activity independently.
 6. `Add Curations` navigates to Explorer with the target Collection as a hint.

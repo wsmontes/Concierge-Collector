@@ -173,7 +173,7 @@ export function OperationsWorkspace({
                   <p>{progressLabel(operation.progress)}</p>
                   <div className="operations-workspace__collections" aria-label="Affected Collections">
                     {operation.collections.map((collection) => (
-                      <a href={`/admin/collections/${encodeURIComponent(collection.id)}`} key={collection.id}>{collection.title}</a>
+                      <a href={`/admin/collections/collections/${encodeURIComponent(collection.id)}`} key={collection.id}>{collection.title}</a>
                     ))}
                   </div>
                   {operation.status === 'active' && operation.cancellable && (
@@ -202,7 +202,7 @@ export function OperationsWorkspace({
               <li className="operations-workspace__card" key={job.id}>
                 <div className="operations-workspace__card-header">
                   <div>
-                    <a href={`/admin/collections/${encodeURIComponent(job.collection.id)}`}>{job.collection.title}</a>
+                    <a href={`/admin/collections/collections/${encodeURIComponent(job.collection.id)}`}>{job.collection.title}</a>
                     <strong>Version {job.targetVersion}</strong>
                   </div>
                   <time dateTime={job.updatedAt}>{formatTime(job.updatedAt)}</time>

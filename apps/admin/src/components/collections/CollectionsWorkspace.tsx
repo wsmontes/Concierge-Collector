@@ -91,7 +91,7 @@ export function CollectionsWorkspace({
     const created = await client.create(input)
     setRows((current) => [...current, created].sort((left, right) => left.title.localeCompare(right.title)))
     setCreating(false)
-    navigate(`/admin/collections/${created.id}`)
+    navigate(`/admin/collections/collections/${created.id}`)
     return created
   }
 
@@ -159,7 +159,7 @@ export function CollectionsWorkspace({
               {visible.map((collection) => (
                 <tr key={collection.id}>
                   <td>
-                    <a href={`/admin/collections/${collection.id}`}>{collection.title}</a>
+                    <a href={`/admin/collections/collections/${collection.id}`}>{collection.title}</a>
                     <span className="collections-workspace__slug">/{collection.slug}</span>
                   </td>
                   <td><span>{collection.lifecycle}</span></td>

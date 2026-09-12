@@ -10,7 +10,25 @@ const adminAccess: Access = ({ req }) => isAuthorizedAdmin(req.user)
 export const Collections: CollectionConfig = {
   slug: 'collections',
   dbName: 'collections',
-  admin: { useAsTitle: 'title', group: 'Content' },
+  admin: {
+    useAsTitle: 'title',
+    group: 'Content',
+    components: {
+      // A list view nativa é somente-leitura (create/update/delete = false) e não
+      // expressa lifecycle/publish; o workspace é a lista canônica desta collection.
+      // `path: '/:id'` resolve para `/collections/collections/:id`
+      // (getCustomCollectionViewByRoute faz `baseRoute + view.path`); `exact: true`
+      // impede que a view engula `/admin/collections/collections/<id>/versions`.
+      views: {
+        list: { Component: '/src/components/shell/CmsAdminViews#CollectionsAdminView' },
+        workspace: {
+          Component: '/src/components/shell/CmsAdminViews#CollectionDetailAdminView',
+          path: '/:id',
+          exact: true,
+        },
+      },
+    },
+  },
   access: {
     // Lifecycle writes are allowed only through the guarded command endpoints.
     // Native Payload REST/Admin creation would bypass CAS, idempotency and audit.

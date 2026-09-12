@@ -19,7 +19,7 @@ async function completeAdminHandoff(page: Page, baseURL: string) {
     const url = new URL(response.url())
     return url.origin === new URL(baseURL).origin && url.pathname === '/auth/callback'
   })
-  await page.goto('/auth/start?return_to=/admin/collections')
+  await page.goto('/auth/start?return_to=/admin/collections/collections')
   const callback = await callbackResponse
   expect(callback.status()).toBeLessThan(400)
   await page.waitForURL(`${new URL(baseURL).origin}/admin/collections**`)
@@ -93,7 +93,7 @@ live('creates, edits, publishes, archives/restores and targets Explorer through 
   await page.getByRole('dialog', { name: 'New Collection' }).getByLabel('Description').fill('Created by the Collections Admin UI E2E.')
   await page.getByRole('button', { name: 'Create Collection' }).click()
 
-  await page.waitForURL(/\/admin\/collections\/[a-f0-9]{24}$/i)
+  await page.waitForURL(/\/admin\/collections\/collections\/[a-f0-9]{24}$/i)
   const collectionId = new URL(page.url()).pathname.split('/').pop()
   if (!collectionId) throw new Error('Collection id missing from detail URL')
   await expect(page.getByRole('heading', { name: title })).toBeVisible()
@@ -134,6 +134,6 @@ live('creates, edits, publishes, archives/restores and targets Explorer through 
   await expect(page.getByRole('heading', { name: 'Curation Explorer' })).toBeVisible()
   await expect(page.getByLabel('Target Collection')).toBeVisible()
   await page.getByRole('link', { name: 'Back to Collection' }).click()
-  await page.waitForURL(new RegExp(`/admin/collections/${collectionId}$`))
+  await page.waitForURL(new RegExp(`/admin/collections/collections/${collectionId}$`))
   await expect(page.getByRole('heading', { name: updatedTitle })).toBeVisible()
 })

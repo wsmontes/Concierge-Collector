@@ -53,7 +53,7 @@ test('renders navigable bulk operations and publication history', async () => {
   expect(screen.getByText('1 pending, 1 done, 0 failed')).toBeVisible()
   const collectionLinks = screen.getAllByRole('link', { name: 'Victoria' })
   expect(collectionLinks).toHaveLength(2)
-  collectionLinks.forEach((link) => expect(link).toHaveAttribute('href', `/admin/collections/${collection.id}`))
+  collectionLinks.forEach((link) => expect(link).toHaveAttribute('href', `/admin/collections/collections/${collection.id}`))
   expect(screen.getByRole('heading', { name: 'Publications' })).toBeVisible()
   expect(screen.getByText('Version 3')).toBeVisible()
   expect(screen.getByText('completed · promoted')).toBeVisible()

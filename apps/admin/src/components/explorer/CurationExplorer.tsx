@@ -216,13 +216,13 @@ export function CurationExplorer({
       {targetCollectionId && (
         <aside className="curation-explorer__target" aria-label="Target Collection">
           <p>Selecting Curations for a Collection draft.</p>
-          <a href={`/admin/collections/${encodeURIComponent(targetCollectionId)}`}>Back to Collection</a>
+          <a href={`/admin/collections/collections/${encodeURIComponent(targetCollectionId)}`}>Back to Collection</a>
         </aside>
       )}
       {lastPostedOperation && (
         <aside className="curation-explorer__posted" role="status">
           <p>Bulk operation queued.</p>
-          {targetCollectionId && <a href={`/admin/collections/${encodeURIComponent(targetCollectionId)}`}>Return to Collection</a>}
+          {targetCollectionId && <a href={`/admin/collections/collections/${encodeURIComponent(targetCollectionId)}`}>Return to Collection</a>}
           <Link href="/admin/operations">View Operations</Link>
         </aside>
       )}

@@ -58,7 +58,7 @@ test('lists published and archived Collections with management state', async () 
 
   expect(await screen.findByRole('link', { name: 'Victoria' })).toHaveAttribute(
     'href',
-    '/admin/collections/111111111111111111111111',
+    '/admin/collections/collections/111111111111111111111111',
   )
   expect(screen.getByRole('link', { name: 'Old' })).toBeVisible()
   expect(screen.getByText('dirty')).toBeVisible()
@@ -107,5 +107,5 @@ test('creates through the command API and navigates to the detail page', async (
     slug: 'new',
     description: null,
   }))
-  expect(navigate).toHaveBeenCalledWith('/admin/collections/333333333333333333333333')
+  expect(navigate).toHaveBeenCalledWith('/admin/collections/collections/333333333333333333333333')
 })

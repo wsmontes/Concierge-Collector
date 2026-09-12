@@ -130,6 +130,25 @@ export default buildConfig({
           exportName: 'CmsLogo',
         },
       },
+      views: {
+        // `exact: true` nas três: sem ele o `isCustomAdminView` do Payload casa por
+        // prefixo e deixa de aplicar o próprio redirect de auth nas rotas irmãs.
+        curationExplorer: {
+          Component: '/src/components/shell/CmsAdminViews#ExplorerAdminView',
+          path: '/explorer',
+          exact: true,
+        },
+        operationsWorkspace: {
+          Component: '/src/components/shell/CmsAdminViews#OperationsAdminView',
+          path: '/operations',
+          exact: true,
+        },
+        consumerApplications: {
+          Component: '/src/components/shell/CmsAdminViews#ApplicationsAdminView',
+          path: '/applications',
+          exact: true,
+        },
+      },
     },
   },
   collections: [
