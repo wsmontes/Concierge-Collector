@@ -1065,8 +1065,12 @@
     <!-- Places Automation (Sprint 2, Day 4 - Entity automation) -->
     <script src="scripts/services/PlacesAutomation.js"></script>
 
-    <!-- Google Places Module (refactored to use services) -->
-    <script src="scripts/modules/placesModule.js?v=20260817-1"></script>
+    <!-- PlacesModule REMOVIDO (2026-09-12): 3164 linhas mortas. O botão
+         "Places" (#places-lookup-btn → restaurantModule.handlePlacesLookup)
+         abre o findEntityModal, que cobre busca, resultados e import de
+         entity pelo backend (Places API New). O antigo módulo tinha entry
+         point sem chamador (openEnhancedModal) e o import escrito contra o SDK
+         google.maps.places removido — nenhum dado fluía por ele. -->
     <script src="scripts/modules/audioUtils.js"></script>
 
     <!-- Authentication Module (must load before accessControl.js) -->

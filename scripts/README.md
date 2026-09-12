@@ -65,7 +65,6 @@ Esta pasta contém todos os scripts JavaScript do frontend, organizados por resp
 - `entityModule.js` - Gerenciamento de entidades
 - `curatorModule.js` - Features do curador
 - `syncStatusModule.js` - Status de sincronização
-- `placesModule.js` - Google Places integration
 
 ### `/ui` - Componentes UI Específicos
 **Componentes de interface especializados**
