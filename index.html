@@ -11,17 +11,27 @@
     <!-- Add meta viewport tag for proper mobile rendering -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- CSP: subconjunto que NÃO depende de allowlist de execução.
-         object-src/base-uri/form-action são honrados em <meta> (frame-ancestors,
-         report-uri e sandbox são ignorados em meta por spec — por isso não
-         estão aqui). base-uri 'none' fecha o sequestro de <base>, que
-         redirecionaria todo script relativo — o bypass clássico de CSP.
-         Um script-src estrito ainda NÃO é possível: os dois <script> inline
-         do shell e o bootstrap do SDK do Google Maps (carregado em
-         testApiKey) exigiriam 'unsafe-inline'/'unsafe-eval', o que anularia a
-         proteção. Enquanto isso, o escape de saída é a defesa efetiva. -->
+    <!-- CSP com script-src ESTRITO (2026-09-12).
+         Agora é possível: os dois <script> inline do shell viraram arquivos
+         (oauthCallbackGuard.js, platformDetection.js) e o SDK do Google Maps
+         saiu junto com o PlacesService morto — era o único ponto que exigiria
+         'unsafe-eval'. Sem script-src restrito, um XSS injetado só precisaria
+         de uma tag <script> para rodar; com ele, execução exige script servido
+         do próprio origin ou do jsDelivr.
+
+         Notas de escopo:
+         - object-src/base-uri/form-action são honrados em <meta>.
+           frame-ancestors, report-uri e sandbox são IGNORADOS em meta por spec
+           — para esses é preciso header HTTP (Render static site: headers
+           customizados no dashboard).
+         - style-src mantém 'unsafe-inline': o markup tem atributos style=""
+           estáticos (display:none de fallbacks de avatar/mídia). style-src não
+           governa execução, então o risco residual é de exfiltração via CSS,
+           não de script.
+         - connect-src cobre a API (prod onrender + domínio próprio, local em
+           dev) e o websocket do Live Server para não quebrar o fluxo local. -->
     <meta http-equiv="Content-Security-Policy"
-        content="object-src 'none'; base-uri 'none'; form-action 'self'">
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: data:; connect-src 'self' https://concierge-collector.onrender.com https://api.concierge-collector.com http://localhost:8000 http://127.0.0.1:8000 ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'none'; form-action 'self'">
     <title>Concierge Collector</title>
     <!-- Favicon (ícone novo 2026; .ico antigo removido — PNG cobre browsers modernos) -->
     <link rel="icon" type="image/png" sizes="16x16" href="images/icon16-2026.png">
@@ -93,59 +103,16 @@
     <!-- Centralized Logging (loads after config) -->
     <script src="scripts/core/logger.js"></script>
 
-    <!-- OAuth Callback Protection (prevents page reload during OAuth callback) -->
-    <script>
-        (function () {
-            // Check if OAuth redirect is in progress
-            const oauthRedirectInProgress = sessionStorage.getItem('oauth_redirect_in_progress');
-            const oauthCallbackInProgress = sessionStorage.getItem('oauth_callback_in_progress');
-
-            if (oauthRedirectInProgress === 'true') {
-                console.log('[OAuth Protection] 🔒 Redirect in progress - allowing navigation');
-                // Don't clear - let the redirect happen
-                return;
-            }
-
-            if (oauthCallbackInProgress === 'true') {
-                console.log('[OAuth Protection] Callback in progress - preventing hot reload');
-
-                // Disable Live Server hot reload temporarily
-                if (window.stop) {
-                    window.stop(); // Modern browsers
-                }
-
-                // Mark as complete after 3 seconds (safety timeout)
-                setTimeout(function () {
-                    if (sessionStorage.getItem('oauth_callback_in_progress') === 'true') {
-                        console.log('[OAuth Protection] Timeout reached - clearing protection');
-                        sessionStorage.removeItem('oauth_callback_in_progress');
-                    }
-                }, 3000);
-            }
-
-            // Clear redirect flag if we're back from OAuth
-            if (oauthRedirectInProgress) {
-                sessionStorage.removeItem('oauth_redirect_in_progress');
-            }
-        })();
-    </script>
+    <!-- OAuth Callback Protection (arquivo externo: script-src estrito) -->
+    <script src="scripts/core/oauthCallbackGuard.js"></script>
 
     <!-- Restaurant validator utility: REMOVIDO (2026-09-12). Nada referenciou
          RestaurantValidator/window.restaurantValidator — o defer ainda o
          executava DEPOIS de main.js, que rodava initializeApp() no fim do
          parse. Sem consumidor, era só peso morto. -->
 
-    <!-- Add iOS detection script -->
-    <script>
-        // Detect iOS for special handling
-        document.addEventListener('DOMContentLoaded', function () {
-            const userAgent = navigator.userAgent;
-            const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
-            if (isIOS) {
-                document.documentElement.classList.add('is-ios');
-            }
-        });
-    </script>
+    <!-- Platform detection (arquivo externo: script-src estrito) -->
+    <script src="scripts/core/platformDetection.js"></script>
 </head>
 
 <body>
@@ -1054,16 +1021,14 @@
     <!-- V3 Data Services (Sprint 1, Day 3 - MongoDB ↔ IndexedDB compatibility) -->
     <script src="scripts/services/V3DataTransformer.js"></script>
 
-    <!-- Google Places Services (Sprint 1, Day 2 - Service-based architecture) -->
-    <script src="scripts/services/googlePlaces/PlacesCache.js"></script>
-    <script src="scripts/services/googlePlaces/PlacesFormatter.js"></script>
-    <script src="scripts/services/googlePlaces/PlacesService.js"></script>
-
-    <!-- Places Orchestration Service (Unified API endpoint) -->
+    <!-- Google Places: o único serviço vivo é o PlacesOrchestrationService
+         (usado pelo findEntityModal). PlacesCache/PlacesFormatter/
+         PlacesService (SDK google.maps) e PlacesAutomation foram REMOVIDOS em
+         2026-09-12 — nenhum deles tinha consumidor em scripts/, e o
+         PlacesService era o único ponto que carregava o SDK do Google Maps,
+         cujo eval interno exigiria 'unsafe-eval' na CSP. -->
     <script src="scripts/services/PlacesOrchestrationService.js"></script>
 
-    <!-- Places Automation (Sprint 2, Day 4 - Entity automation) -->
-    <script src="scripts/services/PlacesAutomation.js"></script>
 
     <!-- PlacesModule REMOVIDO (2026-09-12): 3164 linhas mortas. O botão
          "Places" (#places-lookup-btn → restaurantModule.handlePlacesLookup)
