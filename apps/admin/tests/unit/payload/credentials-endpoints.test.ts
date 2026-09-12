@@ -7,10 +7,24 @@ const actor = {
 
 const rotateCredential = vi.fn()
 
-vi.mock('../../../src/http/with-admin', () => ({
-  withAdmin: (handler: (request: Request, currentActor: typeof actor) => Promise<Response>) =>
-    (request: Request) => handler(request, actor),
-}))
+vi.mock('../../../src/http/with-admin', async () => {
+  // A factory do vi.mock é hoisted acima dos imports, então o formatter real
+  // precisa ser resolvido aqui dentro (importActual mantém a implementação de
+  // adminErrorResponse — é ELA que define o contrato HTTP 409 + code).
+  // Sem isso o mock deixava o AdminHttpError escapar como rejeição e o teste
+  // não conseguia observar o status que o withAdmin real produz.
+  const { adminErrorResponse } = await vi.importActual<typeof import('../../../src/http/errors')>('../../../src/http/errors')
+  return {
+    withAdmin: (handler: (request: Request, currentActor: typeof actor) => Promise<Response>) =>
+      async (request: Request) => {
+        try {
+          return await handler(request, actor)
+        } catch (error) {
+          return adminErrorResponse(error)
+        }
+      },
+  }
+})
 
 vi.mock('../../../src/applications/credentials', () => ({
   issueCredential: vi.fn(),
@@ -37,6 +51,26 @@ function requestFor(model: Record<string, unknown>) {
   })
 }
 
+/**
+ * Dublê da collection que responde por QUERY, não por posição.
+ *
+ * O handler real faz duas buscas distintas: uma pelo `_id` (para descobrir a
+ * Application dona) e outra por `{applicationId, issueIdempotencyKey}` (para
+ * detectar replay da idempotência). Um dublê que devolvesse o mesmo valor para
+ * as duas não representaria o contrato; por isso `byId` e `byIdempotencyKey`
+ * são explícitos.
+ */
+function credentialModel({ byId, byIdempotencyKey }: { byId: unknown; byIdempotencyKey: unknown }) {
+  return {
+    findOne(query: Record<string, unknown>) {
+      const value = '_id' in query ? byId : byIdempotencyKey
+      return { lean: async () => value }
+    },
+  }
+}
+
+const SOURCE_CREDENTIAL = { _id: '65f000000000000000000001', applicationId: 'app-a' }
+
 describe('credential endpoints', () => {
   beforeEach(() => {
     rotateCredential.mockReset().mockResolvedValue({
@@ -50,9 +84,9 @@ describe('credential endpoints', () => {
     const model = {
       findOne(query: Record<string, unknown>) {
         queries.push(query)
-        const value = '_id' in query
-          ? { _id: '65f000000000000000000001', applicationId: 'app-a' }
-          : null
+        // Fonte encontrada pelo _id; nenhuma Application tem o par
+        // (applicationId, issueIdempotencyKey) desta rotação.
+        const value = '_id' in query ? SOURCE_CREDENTIAL : null
         return { lean: async () => value }
       },
     }
@@ -70,14 +104,10 @@ describe('credential endpoints', () => {
   })
 
   test('rotate still blocks a consumed idempotency key inside the same Application', async () => {
-    const model = {
-      findOne(query: Record<string, unknown>) {
-        const value = '_id' in query
-          ? { _id: '65f000000000000000000001', applicationId: 'app-a' }
-          : { _id: 'already-issued', applicationId: 'app-a', issueIdempotencyKey: 'shared-key' }
-        return { lean: async () => value }
-      },
-    }
+    const model = credentialModel({
+      byId: SOURCE_CREDENTIAL,
+      byIdempotencyKey: { _id: 'already-issued', applicationId: 'app-a', issueIdempotencyKey: 'shared-key' },
+    })
     const { credentialEndpoints } = await import('../../../src/payload/endpoints/credentials')
     const endpoint = credentialEndpoints().find(({ method, path }) => method === 'post' && path === '/admin/v1/credentials/:id/rotate')!
 

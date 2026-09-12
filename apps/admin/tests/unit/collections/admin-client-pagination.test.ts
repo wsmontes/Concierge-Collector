@@ -40,7 +40,11 @@ describe('CollectionsAdminClient list pagination', () => {
   })
 
   test('rejects a repeated server cursor instead of looping forever', async () => {
-    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    // Um Response só pode ter o corpo lido uma vez: o mock precisa devolver um
+    // Response NOVO por chamada (mockResolvedValue reusaria a mesma instância e
+    // o cliente estouraria "Body is unusable" antes de detectar o cursor
+    // repetido — o teste falhava por defeito do mock, não do cliente).
+    const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify({
       items: [],
       nextCursor: 'same-cursor',
     }), { status: 200, headers: { 'content-type': 'application/json' } }))

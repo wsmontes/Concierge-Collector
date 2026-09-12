@@ -25,11 +25,39 @@ vi.mock('../../../src/applications/repository', () => ({
   PayloadCredentialRepository: class { constructor(..._args: unknown[]) {} },
 }))
 
-function requestFor(url: string, init: RequestInit & { routeParams?: Record<string, string> } = {}) {
+const ROTATE_SOURCE = { _id: '0123456789abcdef01234567', applicationId: '0123456789abcdef01234567' }
+
+/**
+ * Modelo da collection `consumer-credentials` que responde por QUERY.
+ *
+ * A rota de rotate faz duas buscas: uma pelo `_id` (descobrir a Application
+ * dona) e outra por `{applicationId, issueIdempotencyKey}` (replay). O default
+ * de `requestFor` devolve null (rota de issue: nenhuma credencial repetida);
+ * testes de rotate passam `credentialModel(ROTATE_SOURCE, null)`.
+ */
+function credentialModel(byId: unknown, byIdempotencyKey: unknown) {
+  return {
+    findOne(query: Record<string, unknown>) {
+      return { lean: async () => ('_id' in query ? byId : byIdempotencyKey) }
+    },
+  }
+}
+
+function requestFor(
+  url: string,
+  init: RequestInit & { routeParams?: Record<string, string>; credentialsModel?: Record<string, unknown> } = {},
+) {
   const request = new Request(url, init)
   return Object.assign(request, {
     routeParams: init.routeParams,
-    payload: { db: { collections: { 'consumer-credentials': { findOne: () => ({ lean: async () => null }) } } } },
+    payload: {
+      db: {
+        collections: {
+          'consumer-credentials': init.credentialsModel
+            ?? { findOne: () => ({ lean: async () => null }) },
+        },
+      },
+    },
   })
 }
 
@@ -88,6 +116,7 @@ describe('consumer credential endpoints', () => {
     const endpoint = credentialEndpoints().find(({ method, path }) => method === 'post' && path === '/admin/v1/credentials/:id/rotate')
     const response = await endpoint!.handler(requestFor('https://admin.example.test/api/admin/v1/credentials/0123456789abcdef01234567/rotate', {
       method: 'POST', routeParams: { id: '0123456789abcdef01234567' },
+      credentialsModel: credentialModel(ROTATE_SOURCE, null),
       headers: { 'content-type': 'application/json', 'idempotency-key': 'rotate-1', 'x-request-id': 'request-3' },
       body: JSON.stringify({ overlapUntil: '2026-08-21T00:00:00.000Z' }),
     }) as never)
@@ -107,6 +136,7 @@ describe('consumer credential endpoints', () => {
     const endpoint = credentialEndpoints().find(({ method, path }) => method === 'post' && path === '/admin/v1/credentials/:id/rotate')
     const response = await endpoint!.handler(requestFor('https://admin.example.test/api/admin/v1/credentials/0123456789abcdef01234567/rotate', {
       method: 'POST', routeParams: { id: '0123456789abcdef01234567' },
+      credentialsModel: credentialModel(ROTATE_SOURCE, null),
       headers: { 'content-type': 'application/json', 'idempotency-key': 'rotate-2', 'x-request-id': 'request-4' },
       body: JSON.stringify({ name: 'Production' }),
     }) as never)
