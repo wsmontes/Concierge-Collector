@@ -31,6 +31,15 @@ RUN npm run build --workspace=@concierge/admin
 
 FROM node:22.18.0-bookworm-slim AS runtime
 ENV NODE_ENV=production
+# `next start` lê PORT do ambiente — não repassar a porta como argumento.
+# `npm run start:admin -- --port N` NÃO chega ao next: sem o separador `--` na
+# camada interna (o script é `npm run start --workspace=…`), o npm consome a
+# flag e o valor vira argumento posicional, gerando
+# `next start --hostname 0.0.0.0 10000` → "Invalid project directory provided,
+# no such directory: /app/apps/admin/10000". Esse foi o boot que falhou no
+# Render. Render injeta PORT; 10000 é o default para uso local.
+ENV PORT=10000
+
 WORKDIR /app
 COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/node_modules ./node_modules
@@ -38,4 +47,4 @@ COPY --from=build /app/apps/admin ./apps/admin
 COPY --from=build /app/packages ./packages
 
 EXPOSE 10000
-CMD ["sh", "-c", "npm run start:admin -- --port ${PORT:-10000}"]
+CMD ["npm", "run", "start:admin"]
