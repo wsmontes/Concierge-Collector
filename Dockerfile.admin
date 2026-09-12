@@ -16,6 +16,17 @@ ENV CMS_MONGODB_URL=mongodb://placeholder.invalid:27017 \
     FASTAPI_BASE_URL=https://api.concierge-collector.com \
     METRICS_KEY=build-only-metrics-key \
     PAYLOAD_SECRET=build-only-payload-secret-at-least-32-chars
+
+# Cliente de contratos: apps/admin (catalog-client, curation-adapter) importa
+# '@concierge/fastapi-client', cujo `exports` aponta para ./dist/index.js. Esse
+# dist é GERADO (não versionado) e o .dockerignore exclui `dist`, então ele
+# precisa ser produzido aqui — sem este passo o build do Render falhava com
+# "Module not found: Can't resolve '@concierge/fastapi-client'".
+# O gerador lê o snapshot versionado contracts/openapi/fastapi-admin-internal.v1.json,
+# então não depende de Python nem do FastAPI durante o build.
+RUN npm run generate --workspace=@concierge/fastapi-client \
+ && npm run build --workspace=@concierge/fastapi-client
+
 RUN npm run build --workspace=@concierge/admin
 
 FROM node:22.18.0-bookworm-slim AS runtime
