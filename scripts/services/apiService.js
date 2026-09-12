@@ -242,6 +242,14 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         // em vez de grepar mensagens reescritas (três sites divergiam)
         const err = new Error(errorMessage);
         err.status = response.status;
+        // O detalhe do servidor também é preservado: `errorMessage` é reescrito
+        // por status ('Resource not found' para TODO 404), então sem isto o
+        // chamador perde a diferença entre "a entity não existe" e "a entity
+        // existe mas não tem imagem" — distinção que decide se vale a pena
+        // tentar outra fonte (ver ogImageModule._resolveEntityImage).
+        if (errorDetails && errorDetails.detail) {
+            err.detail = errorDetails.detail;
+        }
         throw err;
     }
 
