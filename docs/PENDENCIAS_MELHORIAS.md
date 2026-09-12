@@ -48,57 +48,55 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 ### Dados
 - [ ] Junk de teste no banco: `entity_curation_test_*` (entities + curations) — limpar via `scripts/python-tools/data_cleanup.py` (destrutivo: confirmar antes)
 
-### ⚠️ ABERTO (investigar): wrappers de durabilidade não instalados
+### ✅ RESOLVIDO: wrappers de durabilidade não instalavam (5 avisos em todo boot)
 
-O boot de produção (12/09, log do usuário) emite, em sequência:
+O boot emitia cinco avisos em cadeia — `durability wrappers not installed`,
+`Ownership guard could not attach`, `Authoring controller could not attach`,
+`Source identity bridge could not attach`, `Save coordinator could not attach`.
+Eram **uma única causa**: uma corrida que se perde sempre, não um timeout.
 
-```
-[OfflineDurability]       Authoring runtime did not become ready; durability wrappers not installed
-[OfflineOwnership]        Ownership guard could not attach to the editor
-[CurationAuthoringController] Authoring controller could not attach to the editor
-[OfflineSourceIdentityBridge] Stable source identity bridge could not attach to Save
-[OfflineSaveCoordinator]  Save coordinator could not attach after all compatibility wrappers
-```
+**Mecanismo** (rastreado até a linha): `window.uiManager` é atribuído no *parse
+do script* (uiManager.js:3680), mas `uiManager.conceptModule` só existe depois
+de `uiManager.init()`, que roda após o `await` de autenticação.
+`CurationWorkspaceModule.bootstrap()` dispara no `DOMContentLoaded`, encontra o
+`uiManager` já presente e chama `install()` → `installSaveCompatibility()` — que
+precisa de `conceptModule.saveRestaurant`, não acha e **retornava sem
+re-tentar**. Logo `__curationWorkspaceSaveCompatibilityInstalled` nunca era
+setado; `OfflineDurabilityModule` depende exatamente desse flag
+(`workspaceReady`) e desistia após 30s, e os outros quatro módulos, que dependem
+de `__offlineDurabilityEditRestoreInstalled`, nunca podiam prosseguir.
 
-São cinco fronteiras de durabilidade/ownership que NÃO foram instaladas naquela sessão.
-Isso é a superfície de "não perder informação" do autoramento, então precisa ser resolvido.
+**Consequência**: os cinco boundaries de durabilidade/ownership do autoramento
+nunca foram instalados em produção.
 
-Mecânica: `OfflineDurabilityModule.start()` (auto-start no load do script) chama
-`_pollForAuthoringRuntime()`, que tenta a cada 100ms e **desiste após 300 tentativas (30s)** —
-`_pollForAuthoringRuntime` só é chamado por `start()`, então **não há re-tentativa**. A condição
-exigida é `uiManager.conceptModule.saveRestaurant && workspaceReady`, onde
-`workspaceReady = !global.curationWorkspace || conceptModule.__curationWorkspaceSaveCompatibilityInstalled`
-(flag setado por `CurationWorkspaceModule.installSaveCompatibility()`).
+**Correção**: `installSaveCompatibility` re-tenta (300 × 100ms, mesma janela dos
+módulos de durabilidade). O install é idempotente — re-checa o flag e retorna se
+já instalado — então um attach tardio não embrulha o save duas vezes.
 
-O problema de fundo, independente de qual pré-condição falhou: a janela de prontidão é **one-shot de
-30s**, enquanto o runtime de autoramento fica pronto **quando o editor monta** — ou seja, legitimamente
-depois. Numa sessão em que o usuário começa na lista (como a do log) e só depois abre o editor, os
-wrappers podem não existir justamente quando passam a importar, e o único sinal é uma linha de WARN.
+**Verificação em produção, sem sessão** (a corrida é observável pré-login, porque
+o `uiManager` existe e o `conceptModule` não):
 
-**Não corrigido de propósito**: é a fronteira de durabilidade de dados; mudar isso sem conseguir
-verificar o ciclo completo (abrir editor → autorar → interromper) seria trocar um aviso por uma
-regressão silenciosa. Falta: (a) instrumentar qual pré-condição falha (b) re-armar o poll quando o
-editor/workspace ficar pronto (ou escutar o evento de abertura do editor) (c) teste que prove que os
-wrappers instalam numa sessão que começa na lista.
+| | antes | depois |
+|---|---|---|
+| `uiManager` / `conceptModule` pré-login | `object` / `undefined` | `object` / `undefined` |
+| workspace instalado | `true` | `true` |
+| **compatibilidade instalada** (após o `conceptModule` chegar) | **`false`** | **`true`** |
+| save original preservado | `undefined` | `function` |
 
-### ⚠️ RESIDUAL no static site: publish antigo misturado com o novo
+Teste determinístico em `tests/test_curationWorkspace_saveCompatibilityRace.test.js`
+(fake timers, sem rede): falha no código anterior com "deveria ter sido instalado
+quando o conceptModule ficou pronto: expected undefined to be true".
 
-Medido em 2026-09-12 depois de o static site passar a publicar `dist/collector`:
-
-| | |
-|---|---|
-| Servido novo (correto) | `/.manifest.json` com **112 entradas**, `0` arquivos `.py`; SW carimbado (`48d4dddedf13`) |
-| Servido ANTIGO (residual) | `/scripts/python-tools/mongo_tools.py`, `/data_cleanup.py`, `/scripts/release/release-gate.mjs`, `/scripts/build-collector.mjs` — todos **200 com o conteúdo antigo** (não são 404) |
-| Correto | `/scripts/e2e` → **404** |
-
-Ou seja: o publish novo escreve por cima, mas **não remove** o que a árvore antiga tinha. Não é cache de CDN — `POST /services/{id}/cache/purge` retorna 200 e não muda nada; `/.manifest.json` traz a versão nova com o mesmo cache-buster.
-
-**Impacto real hoje**: `mongo_tools.py` (lê o `.env` com credenciais do Atlas) e `data_cleanup.py` (destrutivo) continuam baixáveis por GET anônimo, mesmo já fora do artefato — são arquivos do publish anterior que ficaram para trás. O pruning impede a **reincidência** do problema, não limpa a cópia já publicada.
-
-**Como fechar** (nenhuma executada — são ações na infra da conta):
-1. **Recriar o static site** apontando para `dist/collector` — origin limpo, resolve de vez, mas troca o service ID (o domínio precisa ser reanexado).
-2. Pedir remoção ao suporte do Render citando os caminhos.
-3. Aceitar, já que os arquivos são inofensivos por conteúdo (nenhuma credencial embutida — `mongo_tools.py` LÊ o `.env`, que não é servido).
+- [ ] ⚠️ **NÃO verificado ponta a ponta**: o fluxo de autoração em si (abrir
+  editor → editar → salvar → interromper). Este commit **ativa cinco boundaries
+  que estavam dormentes**, então o fluxo do curador merece uma sessão real antes
+  de ser considerado fechado — em especial o restore de draft, que passa a poder
+  reescrever o conteúdo do editor.
+- [ ] As janelas de retry são de 30s (300 × 100ms) nos módulos de durabilidade.
+  O auth leva ~9s hoje, então há folga; se um cold start passar de 30s, os
+  boundaries voltam a não instalar. A correção robusta seria trocar o "desiste"
+  por um retry lento e perpétuo nos 5 módulos — **não feito** para não ampliar o
+  raio de mudança sem verificação.
 
 ### Memória do serviço único — número a vigiar
 Plano `starter` = **512 MB / 0.5 CPU** ($7/mês). Medido no serviço fundido:
