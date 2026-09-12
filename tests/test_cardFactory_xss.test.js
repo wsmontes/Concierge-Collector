@@ -71,6 +71,32 @@ describe('CardFactory — XSS via dados de entity/curation', () => {
     expect(window.__pwned).toBeUndefined();
   });
 
+  test('não deixa o website da entity quebrar o href do card (injeção de atributo)', () => {
+    const factory = loadCardFactory();
+
+    // Valor aceito por normalizeWebsiteUrl (começa com https://) mas com aspas
+    // que fechariam o atributo — a injeção clássica de atributo (o href saía
+    // sem escape enquanto o title ao lado era escapado).
+    const hostile = 'https://ok.example.com" onmouseover="window.__pwned=1';
+    const entity = {
+      entity_id: 'ent_site',
+      name: 'Ok Name',
+      type: 'restaurant',
+      status: 'active',
+      data: { contact: { website: hostile } }
+    };
+
+    const card = factory.createEntityCard(entity, { showEntityActions: false });
+    document.body.appendChild(card);
+
+    const link = card.querySelector('.collection-card__website');
+    expect(link).toBeTruthy();
+    expect(link.hasAttribute('onmouseover')).toBe(false);
+    // O href preserva o valor como URL, sem virar atributo novo
+    expect(link.getAttribute('href')).toBe(hostile);
+    expect(window.__pwned).toBeUndefined();
+  });
+
   test('escapa status/label e não interpola curation_id em onclick no card de curation', () => {
     const factory = loadCardFactory();
     window.SourceUtils = {
