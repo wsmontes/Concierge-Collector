@@ -953,6 +953,11 @@
     <script src="scripts/ui-core/uiUtils.js?v=20260813-1"></script>
     <script src="scripts/core/moduleWrapper.js"></script>
 
+    <!-- Chunking de requisições com ?ids= (contagem + tamanho de URL). Carregado
+         logo após o ModuleWrapper para estar disponível a QUALQUER módulo que
+         monte listas de ids (syncManagerV3, uiManager). -->
+    <script src="scripts/utils/requestChunking.js"></script>
+
     <!-- Database Management - Robust IndexedDB with migrations -->
     <script src="scripts/storage/databaseManager.js"></script>
 

@@ -1808,31 +1808,37 @@ if (typeof window.UIManager === 'undefined') {
             //    local no mesmo shape do sync (processServerEntity)
             var missing = uniqueIds.filter(function (id) { return !map.has(id); });
             if (missing.length && window.ApiService) {
-                try {
-                    var response = await window.ApiService.listEntities({
-                        limit: 500,
-                        ids: missing.slice(0, 500).join(',')
-                    });
-                    var items = (response && response.items) || [];
-                    for (var item of items) {
-                        var eid = item.entity_id || String(item._id || '');
-                        map.set(eid, item);
-                        try {
-                            await window.DataStore.db.entities.put({
-                                ...item,
-                                sync: {
-                                    serverId: item._id || null,
-                                    status: 'synced',
-                                    lastSyncedAt: new Date().toISOString()
-                                }
-                            });
-                        } catch (putError) {
-                            // conflito de id local — o render usa o doc da API mesmo assim
-                            console.debug('Persistência local da entity falhou:', putError);
+                // Lotes por contagem E tamanho de URL (RequestChunking), e TODOS
+                // os lotes são buscados: o `slice(0, 500)` anterior descartava as
+                // entidades além da 500ª (ficavam sem resolver para sempre) e
+                // ainda podia estourar a URL com ids longos (414 no edge, que o
+                // browser reporta como erro de CORS).
+                var chunks = window.RequestChunking.chunkIds(missing);
+                for (var c = 0; c < chunks.length; c++) {
+                    try {
+                        var response = await window.ApiService.listEntities({
+                            limit: chunks[c].length,
+                            ids: chunks[c].join(',')
+                        });
+                        for (var item of (response && response.items) || []) {
+                            var eid = item.entity_id || String(item._id || '');
+                            map.set(eid, item);
+                            try {
+                                await window.DataStore.db.entities.put({
+                                    ...item,
+                                    sync: {
+                                        serverId: item._id || null,
+                                        status: 'synced',
+                                        lastSyncedAt: new Date().toISOString()
+                                    }
+                                });
+                            } catch (putError) {
+                                // conflito de id local — o render usa o doc da API mesmo assim
+                            }
                         }
+                    } catch (chunkError) {
+                        console.warn('Resolução remota de entities falhou (lote ' + (c + 1) + '/' + chunks.length + '):', chunkError);
                     }
-                } catch (error) {
-                    console.warn('Resolução de entities do servidor falhou:', error);
                 }
             }
 

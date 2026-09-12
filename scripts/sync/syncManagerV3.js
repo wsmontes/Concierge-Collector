@@ -927,13 +927,17 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             // e o watermark nunca salvava se o usuário fechasse antes do fim)
             const idList = Array.from(linkedEntityIds);
             if (idList.length) {
-                // Chunks de 500: o servidor limita ?ids a 500 (cap defensivo)
-                // — antes o slice(0,500) descartava TODAS as vinculadas além
-                // da 500ª (ficavam stale para sempre). Falha de um chunk não
-                // derruba o pull: loga e segue (retry no próximo ciclo).
-                const CHUNK = 500;
-                for (let i = 0; i < idList.length; i += CHUNK) {
-                    const params = { limit: CHUNK, ids: idList.slice(i, i + CHUNK).join(',') };
+                // Lotes por CONTAGEM **e TAMANHO DE URL** (RequestChunking): o
+                // cap do servidor é 500 ids, mas 500 ids longos (overture_… tem
+                // 38 chars) produzem ~21KB de URL e o edge responde `414 URI Too
+                // Long`. Como a resposta de erro não traz CORS, o browser
+                // reportava "bloqueado por CORS" e o pull falhava inteiro nos
+                // dois chunks. Falha de um chunk não derruba o pull: loga e
+                // segue (retry no próximo ciclo).
+                const chunks = window.RequestChunking.chunkIds(idList);
+                for (let i = 0; i < chunks.length; i++) {
+                    const chunk = chunks[i];
+                    const params = { limit: chunk.length, ids: chunk.join(',') };
                     if (since) {
                         params.since = since;  // incremental: só vinculadas MUDADAS desde o último pull
                     }
@@ -947,7 +951,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     } catch (chunkError) {
                         this.stats.failed++;
                         this.log.warn(
-                            `Chunk ${i / CHUNK + 1} do pull de entities falhou (${chunkError?.message}) — será re-tentado no próximo sync`
+                            `Chunk ${i + 1}/${chunks.length} do pull de entities falhou (${chunkError?.message}) — será re-tentado no próximo sync`
                         );
                     }
                 }

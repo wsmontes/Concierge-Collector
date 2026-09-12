@@ -76,6 +76,14 @@ const AppConfig = {
             bulkChunkSize: 200,    // Items per bulk API call (max 500 per server limit)
             syncBatchSize: 50,     // Items per incremental sync pull (increased from 10)
             syncBatchDelayMs: 200, // Pacing entre páginas de cursor (rate limit 300/min do servidor)
+            // Limites das requisições com `?ids=` (listas de entidades).
+            // entitiesIdsMaxPerRequest = cap do servidor (app/api/entities.py).
+            // entitiesIdsMaxChars = orçamento da URL CODIFICADA: o edge responde
+            // 414 acima de ~16KB, e a resposta de erro não traz CORS (o browser
+            // reporta "bloqueado por CORS" em vez de URL longa). 6000 mantém a
+            // linha de requisição com folga mesmo com ids de 38 chars.
+            entitiesIdsMaxPerRequest: 500,
+            entitiesIdsMaxChars: 6000,
             features: {
                 optimisticLocking: true,     // version field (int) + If-Match header
                 partialUpdates: true,        // PATCH for partial updates

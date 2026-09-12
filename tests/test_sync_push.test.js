@@ -13,7 +13,20 @@ const src = readFileSync(
   'utf8'
 );
 
+// O corte de `?ids=` agora vem do RequestChunking (contagem + tamanho de URL),
+// então o harness precisa carregá-lo como o index.html faz.
+function loadRequestChunking() {
+  delete globalThis.RequestChunking;
+  const chunkingSrc = readFileSync(
+    path.resolve(__dirname, '../scripts/utils/requestChunking.js'),
+    'utf8'
+  );
+  // eslint-disable-next-line no-new-func
+  new Function('window', chunkingSrc)(window);
+}
+
 function makeSyncManager() {
+  loadRequestChunking();
   window.AuthService = { getCurrentUser: () => null };
   window.SourceUtils = {
     buildSourcesPayloadFromContext: () => ({ manual: [{ legacy: true }] }),
@@ -25,6 +38,7 @@ function makeSyncManager() {
 }
 
 afterEach(() => {
+  delete window.RequestChunking;
   delete window.AuthService;
   delete window.SourceUtils;
   delete window.SyncManagerV3;
@@ -202,7 +216,7 @@ describe('pushEntities — delete ops (admin-only + 409)', () => {
   });
 });
 
-describe('pullLinkedEntities — chunks de 500 ids', () => {
+describe('pullLinkedEntities — lotes de ids (contagem + tamanho de URL)', () => {
   test('1.200 ids → 3 chamadas com slices de 500; falha de chunk não derruba o pull', async () => {
     const sm = makeSyncManager();
     sm.collectLinkedEntityIdsFromCurations = vi.fn(
