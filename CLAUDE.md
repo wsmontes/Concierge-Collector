@@ -37,7 +37,9 @@ Produção tem **2 serviços no Render** (1 web service + 1 static site), config
 | Serviço | Detalhe |
 |---|---|
 | **App** — web service "Concierge-Collector" (`srv-d4fngpjuibrs73bo70vg`) | runtime **Docker**, `Dockerfile` na raiz (contexto = repo inteiro, `rootDir` vazio), URL `https://api.concierge-collector.com`, health check `GET /api/v3/health` |
-| **Web** — static site "Concierge-Collector-Web" (`srv-d4fnrlje5dus7397lii0`) | root `/`, sem build, publish `.`, URL `https://concierge-collector-web.onrender.com` |
+| **Web** — static site "Concierge-Collector-Web" (`srv-d4fnrlje5dus7397lii0`) | **build** `node scripts/build-collector.mjs`, publish `dist/collector`, URL `https://concierge-collector-web.onrender.com` |
+
+⚠️ **O static site serve o ARTEFATO de build, não a raiz do repo** (mudança de 2026-09-12). Isto não é cosmético: o service worker busca `./.manifest.json` no install e **recusa instalar o shell offline** se ele faltar; o manifest é saída do build (que também carimba o SW com hash de conteúdo e lista cada arquivo com sha256). Servindo a raiz crua, `/.manifest.json` dava 404 e o shell offline nunca instalava — e pior, o SW publicado era a fonte com o placeholder literal `__COLLECTOR_SHELL_VERSION__`, ou seja, o nome do cache nunca mudava: se tivesse instalado, serviria o primeiro shell para sempre, mascarando todo deploy seguinte. O build só usa stdlib do Node (roda sem `node_modules`). Consequência boa: o repo deixa de ser servido inteiro (`/CLAUDE.md`, `/package.json`, `/scripts/python-tools/*` eram publicamente baixáveis).
 
 ### O web service roda TRÊS processos no mesmo container (nginx roteia uma porta só)
 
