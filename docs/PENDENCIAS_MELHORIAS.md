@@ -81,11 +81,24 @@ regressão silenciosa. Falta: (a) instrumentar qual pré-condição falha (b) re
 editor/workspace ficar pronto (ou escutar o evento de abertura do editor) (c) teste que prove que os
 wrappers instalam numa sessão que começa na lista.
 
-### ⚠️ RESIDUAL no static site: arquivos ANTIGOS ainda servidos
-Depois de trocar o static site para publicar `dist/collector` (build) em vez da raiz do repo, o **origin antigo não foi limpo**: caminhos que existiam no publish anterior e não existem no novo continuam respondendo 200 com o CONTEÚDO ANTIGO (congelado — não acompanha novos commits).
-- Verificado: `/CLAUDE.md` servido NÃO contém o texto publicado depois da troca (logo é cópia velha, não o repo ao vivo), enquanto `/.manifest.json` e `index.html?p=…` são claramente o artefato carimbado. `POST /services/{id}/cache/purge` (200) **não** resolveu — não é cache de CDN, é o conteúdo do publish antigo.
-- Exposição (stale, mas ainda pública): `/CLAUDE.md`, `/package.json`, `/package-lock.json`, `/Dockerfile`, `/concierge-api-v3/main.py`, `/scripts/python-tools/*`, `/tests/*`, `/docs/*`.
-- Ações possíveis: (a) remover esses arquivos do repo não adianta (o conteúdo já está lá); (b) **recriar o static site** apontando para `dist/collector` (origin limpo); (c) ou pedir remoção ao suporte do Render. Não executado por ser ação destrutiva na infra da conta — documento para decisão.
+### ⚠️ RESIDUAL no static site: publish antigo misturado com o novo
+
+Medido em 2026-09-12 depois de o static site passar a publicar `dist/collector`:
+
+| | |
+|---|---|
+| Servido novo (correto) | `/.manifest.json` com **112 entradas**, `0` arquivos `.py`; SW carimbado (`48d4dddedf13`) |
+| Servido ANTIGO (residual) | `/scripts/python-tools/mongo_tools.py`, `/data_cleanup.py`, `/scripts/release/release-gate.mjs`, `/scripts/build-collector.mjs` — todos **200 com o conteúdo antigo** (não são 404) |
+| Correto | `/scripts/e2e` → **404** |
+
+Ou seja: o publish novo escreve por cima, mas **não remove** o que a árvore antiga tinha. Não é cache de CDN — `POST /services/{id}/cache/purge` retorna 200 e não muda nada; `/.manifest.json` traz a versão nova com o mesmo cache-buster.
+
+**Impacto real hoje**: `mongo_tools.py` (lê o `.env` com credenciais do Atlas) e `data_cleanup.py` (destrutivo) continuam baixáveis por GET anônimo, mesmo já fora do artefato — são arquivos do publish anterior que ficaram para trás. O pruning impede a **reincidência** do problema, não limpa a cópia já publicada.
+
+**Como fechar** (nenhuma executada — são ações na infra da conta):
+1. **Recriar o static site** apontando para `dist/collector` — origin limpo, resolve de vez, mas troca o service ID (o domínio precisa ser reanexado).
+2. Pedir remoção ao suporte do Render citando os caminhos.
+3. Aceitar, já que os arquivos são inofensivos por conteúdo (nenhuma credencial embutida — `mongo_tools.py` LÊ o `.env`, que não é servido).
 
 ### Memória do serviço único — número a vigiar
 Plano `starter` = **512 MB / 0.5 CPU** ($7/mês). Medido no serviço fundido:
