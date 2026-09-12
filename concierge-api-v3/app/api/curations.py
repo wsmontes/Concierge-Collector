@@ -635,6 +635,12 @@ def semantic_search_curations(
 
     results = []
     allowed_categories = set(body.categories) if body.categories else None
+    # Candidatos pontuados ficam como tuplas leves; o payload de resposta
+    # (build_curation_response_payload, o objeto caro) só é montado para os
+    # `body.limit` sobreviventes. Antes ele era construído para TODO candidato
+    # com match e descartado no slice final — memória O(candidatos) para
+    # devolver O(limit).
+    scored = []
     for curation in curations:
         embeddings = curation.get("embeddings", [])
         if not embeddings:
@@ -675,6 +681,12 @@ def semantic_search_curations(
         entity_id = curation.get("entity_id")
         if entity_id is None:
             continue
+        scored.append((max_similarity, entity_id, curation, matches, similarity_sum, match_count))
+
+    # Ordenação estável pela mesma chave do código anterior: empates preservam
+    # a ordem do cursor, então o top-k é idêntico.
+    scored.sort(key=lambda item: item[0], reverse=True)
+    for max_similarity, entity_id, curation, matches, similarity_sum, match_count in scored[: body.limit]:
         results.append(
             {
                 "entity_id": entity_id,
@@ -685,9 +697,6 @@ def semantic_search_curations(
                 "match_count": match_count,
             }
         )
-
-    results.sort(key=lambda x: x["max_similarity"], reverse=True)
-    results = results[: body.limit]
     if body.include_entity and results:
         entity_ids = [result["entity_id"] for result in results]
         entity_projection = {"name": 1, "entity_type": 1, "location": 1, "contact": 1}

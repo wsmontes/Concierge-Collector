@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
   createCollectionDistributionClient,
   type CollectionConsumerApplication,
@@ -58,7 +59,7 @@ export function CollectionDistributionView({
 
     <div className="collection-distribution__heading">
       <h3>Consumer applications</h3>
-      <a href="/admin/applications">Manage consumer applications</a>
+      <Link href="/admin/applications">Manage consumer applications</Link>
     </div>
 
     {loading && <p role="status">Loading consumer access…</p>}

@@ -70,9 +70,30 @@ export function OperationsWorkspace({
     }
   }, [client])
 
+  // Carga inicial (e recarga quando o client muda): setState só dentro do bloco
+  // assíncrono — o corpo síncrono do efeito não pode disparar render.
   useEffect(() => {
-    void reload()
-  }, [reload])
+    let active = true
+    void (async () => {
+      try {
+        const [bulkPage, publishPage] = await Promise.all([
+          client.bulkOperations(),
+          client.publishJobs(),
+        ])
+        if (!active) return
+        setBulk(bulkPage.items)
+        setBulkCursor(bulkPage.nextCursor)
+        setPublishes(publishPage.items)
+        setPublishCursor(publishPage.nextCursor)
+        setError(null)
+      } catch (cause) {
+        if (active) setError(cause instanceof Error ? cause.message : 'operations_unavailable')
+      } finally {
+        if (active) setLoading(false)
+      }
+    })()
+    return () => { active = false }
+  }, [client])
 
   useEffect(() => {
     const hasLiveWork = bulk.some((operation) => operation.status === 'active') ||

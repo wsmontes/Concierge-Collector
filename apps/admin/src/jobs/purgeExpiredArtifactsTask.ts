@@ -1,4 +1,14 @@
-'use server'
+/**
+ * Job de retenção do Payload: purga linhas de staging órfãs.
+ *
+ * SEM `'use server'`: a diretiva transforma o módulo em Server Actions, onde
+ * TODO export precisa ser função assíncrona — e este arquivo exporta
+ * `purgeExpiredArtifactsTask`, um objeto TaskConfig. Isso quebrava o
+ * `next build` ("A 'use server' file can only export async functions, found
+ * object") em toda rota que alcançasse o config do Payload. O arquivo é
+ * server-only por construção: só é importado por payload.config.ts e pelos
+ * testes de unidade, nunca por componente cliente.
+ */
 
 import type { Model } from 'mongoose'
 import type { Payload, TaskConfig } from 'payload'

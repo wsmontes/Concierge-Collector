@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { normalizeCurationFilters } from '../../explorer/normalize-filters'
 import type { SavedCurationViewsClient } from '../../explorer/saved-views-client'
 import type { CurationFilters, CurationSearchPage, NormalizedCurationFilters, SelectionState } from '../../explorer/types'
@@ -222,7 +223,7 @@ export function CurationExplorer({
         <aside className="curation-explorer__posted" role="status">
           <p>Bulk operation queued.</p>
           {targetCollectionId && <a href={`/admin/collections/${encodeURIComponent(targetCollectionId)}`}>Return to Collection</a>}
-          <a href="/admin/operations">View Operations</a>
+          <Link href="/admin/operations">View Operations</Link>
         </aside>
       )}
       <ExplorerFilterForm

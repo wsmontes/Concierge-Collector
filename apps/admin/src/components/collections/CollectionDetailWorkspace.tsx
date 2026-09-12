@@ -471,6 +471,12 @@ export function CollectionDetailWorkspace({
       onConfirm={() => void runLifecycle(lifecycleConfirmation)}
     />}
     {publishPreview && <PublishCollectionDialog
+      // A confirmação de "publicar com N indisponíveis" precisa ser descartada
+      // quando o preview muda (o servidor devolve um preview novo após 409 de
+      // disponibilidade). Ancorar a identidade no `key` faz o React remontar o
+      // diálogo, então o estado inicial já nasce do preview atual — em vez de
+      // um efeito que ressincronizava o estado a cada mudança de prop.
+      key={`${publishPreview.draftRevision}-${publishPreview.revision}-${publishPreview.unavailableCount}`}
       preview={publishPreview}
       pending={publishPending}
       error={publishError}

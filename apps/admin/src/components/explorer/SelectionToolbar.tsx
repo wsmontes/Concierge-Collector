@@ -2,6 +2,16 @@
 
 import type { SelectionState } from '../../explorer/types'
 
+/**
+ * "1 Curation" / "0 Curations" — o rótulo era plural fixo, então uma seleção
+ * de um único item anunciava "1 Curations selected" (a leitura em voz alta
+ * errava o singular). O padrão já estava especificado nos testes de unidade
+ * do Explorer; a implementação é que tinha divergido.
+ */
+function curationCountLabel(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? 'Curation' : 'Curations'}`
+}
+
 export function SelectionToolbar({ onSelectAllMatching, onApplyToCollections, selection, total, applying }: {
   onSelectAllMatching: () => void
   onApplyToCollections: () => void
@@ -10,8 +20,11 @@ export function SelectionToolbar({ onSelectAllMatching, onApplyToCollections, se
   applying: boolean
 }) {
   const message = selection.mode === 'all_matching'
+    // Wording do modo all-matching mantido: "<n> matching Curations selected"
+    // (com "All" quando o preview ainda não chegou). Só o ramo de seleção
+    // explícita precisava de singular/plural.
     ? `${selection.previewCount?.toLocaleString() ?? 'All'} matching Curations selected`
-    : `${selection.selected.size.toLocaleString()} Curations selected`
+    : `${curationCountLabel(selection.selected.size)} selected`
   const hasSelection = selection.mode === 'all_matching' || selection.selected.size > 0
   return (
     <div className="selection-toolbar">
