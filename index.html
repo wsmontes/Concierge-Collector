@@ -11,6 +11,17 @@
     <!-- Add meta viewport tag for proper mobile rendering -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- CSP: subconjunto que NÃO depende de allowlist de execução.
+         object-src/base-uri/form-action são honrados em <meta> (frame-ancestors,
+         report-uri e sandbox são ignorados em meta por spec — por isso não
+         estão aqui). base-uri 'none' fecha o sequestro de <base>, que
+         redirecionaria todo script relativo — o bypass clássico de CSP.
+         Um script-src estrito ainda NÃO é possível: os dois <script> inline
+         do shell e o bootstrap do SDK do Google Maps (carregado em
+         testApiKey) exigiriam 'unsafe-inline'/'unsafe-eval', o que anularia a
+         proteção. Enquanto isso, o escape de saída é a defesa efetiva. -->
+    <meta http-equiv="Content-Security-Policy"
+        content="object-src 'none'; base-uri 'none'; form-action 'self'">
     <title>Concierge Collector</title>
     <!-- Favicon (ícone novo 2026; .ico antigo removido — PNG cobre browsers modernos) -->
     <link rel="icon" type="image/png" sizes="16x16" href="images/icon16-2026.png">
@@ -42,9 +53,13 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
-    <!-- CSS Libraries -->
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css" rel="stylesheet">
+    <!-- CSS Libraries (SRI: os CDNs são superfície de supply-chain; o hash
+         fixa exatamente o byte servido. crossorigin é obrigatório para o
+         browser validar integrity de recurso cross-origin) -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"
+        integrity="sha384-HtMZLkYo+pR5/u7zCzXxMJP6QoNnQJt1qkHM0EaOPvGDIzaVZbmYr/TlvUZ/sKAg" crossorigin="anonymous">
+    <link href="https://cdn.jsdelivr.net/npm/toastify-js@1.12.0/src/toastify.min.css" rel="stylesheet"
+        integrity="sha384-GSJP6bR4yv1SbLGhL+ntxb4LDi6RC5j8eM8OAh5lwPYdvj9cflIWJiFZdAFr2gyP" crossorigin="anonymous">
     <!-- Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
@@ -114,9 +129,6 @@
             }
         })();
     </script>
-
-    <!-- Restaurant validator utility -->
-    <script src="scripts/utils/restaurantValidator.js" defer></script>
 
     <!-- Add iOS detection script -->
     <script>
@@ -953,11 +965,17 @@
          automaticamente). O botão #open-sync-settings ficou órfão no DOM
          e foi removido junto com o cache dele no uiManager. -->
 
-    <!-- Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <!-- Libraries (SRI + versão fixada: `toastify-js` sem versão resolvia
+         "latest" a cada request — o SRI só é significativo com a versão
+         pinada, e o entrypoint default do jsDelivr é o mesmo arquivo) -->
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js"
+        integrity="sha384-D1EPhGu60LkLW0g2DV66ckzE+nwjJTtghbG+iytCZ2T4sCFmngEqBJ/9GcZ+iiM8" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"
+        integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"
+        integrity="sha384-xuasJXVcyv3hZq0eYpelEkBC8l4yufatZXDsKuyCU2rqfhDCb+ftuE/mSfZAteiK" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js@1.12.0/src/toastify.min.js"
+        integrity="sha384-HV48j9xMNfX80v1dhiML90VeD4a38xrehnBK+dNSSe8P4fija/zP36u52q7TpB6O" crossorigin="anonymous"></script>
 
     <!-- Core utilities - load before any other scripts -->
     <script src="scripts/ui-core/uiUtils.js?v=20260813-1"></script>
