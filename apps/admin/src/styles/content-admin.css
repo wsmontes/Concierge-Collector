@@ -1,0 +1,188 @@
+/**
+ * Fase 0 "universal content access": record header + field inspector.
+ * Plain CSS on the shared tokens, one BEM-ish block per component.
+ */
+
+.content-record-header {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.content-record-header__main {
+  /* Long titles wrap instead of pushing the actions out of the viewport. */
+  min-width: 0;
+}
+
+.content-record-header__title {
+  margin: 0;
+}
+
+.content-record-header__subtitle {
+  color: var(--cms-olive-600);
+  margin: 0.25rem 0 0;
+}
+
+.content-record-header__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.content-record-header__badge {
+  background: var(--cms-limestone-100);
+  border: 1px solid var(--theme-border-color);
+  color: var(--cms-olive-800);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.5rem;
+  text-transform: uppercase;
+}
+
+.content-record-header__badge[data-tone='danger'] {
+  background: var(--cms-limestone-200);
+  border-color: var(--cms-olive-700);
+}
+
+.content-record-header__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.content-field-inspector {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.content-field-inspector__title {
+  margin: 0;
+}
+
+.content-field-inspector__controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.content-field-inspector__controls label {
+  font-weight: 600;
+}
+
+.content-field-inspector__controls input {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  color: var(--theme-text);
+  min-width: 16rem;
+  padding: 0.55rem;
+}
+
+.content-field-inspector__count,
+.content-field-inspector__empty {
+  color: var(--cms-olive-600);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.content-field-inspector__tree,
+.content-field__children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.content-field-inspector__tree {
+  border: 1px solid var(--theme-border-color);
+}
+
+/* Indentation carries the nesting: depth is structure, not decoration. */
+.content-field__children {
+  border-left: 1px solid var(--cms-limestone-200);
+  margin-left: 0.75rem;
+  padding-left: 0.75rem;
+}
+
+.content-field + .content-field {
+  border-top: 1px solid var(--cms-limestone-200);
+}
+
+.content-field__header {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+}
+
+.content-field__disclosure {
+  background: transparent;
+  border: 1px solid var(--theme-border-color);
+  color: var(--theme-text);
+  font-family: inherit;
+  line-height: 1;
+  min-height: 1.5rem;
+  min-width: 1.5rem;
+  padding: 0;
+}
+
+/* Rows without a disclosure keep the column width so labels stay aligned. */
+.content-field__disclosure[data-static] {
+  border-color: transparent;
+}
+
+.content-field__label {
+  font-weight: 600;
+}
+
+.content-field__path {
+  color: var(--cms-olive-600);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+}
+
+.content-field__badge {
+  border: 1px solid var(--theme-border-color);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.4rem;
+  text-transform: uppercase;
+}
+
+.content-field__badge[data-tone='readonly'] {
+  background: var(--cms-limestone-100);
+  color: var(--cms-olive-700);
+}
+
+.content-field__badge[data-tone='system'] {
+  background: var(--cms-olive-900);
+  color: var(--cms-limestone-50);
+}
+
+.content-field__badge[data-tone='derived'] {
+  background: var(--cms-limestone-100);
+  border-style: dashed;
+  color: var(--cms-olive-800);
+}
+
+.content-field__value {
+  color: var(--cms-olive-800);
+  flex: 1 1 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* Clamp, never truncate: the full text stays in the DOM and the expanded row
+   releases it. */
+.content-field[data-expanded='false'] > .content-field__header > .content-field__value {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  display: -webkit-box;
+  overflow: hidden;
+}
