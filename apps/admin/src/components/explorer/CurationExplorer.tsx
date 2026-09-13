@@ -1,12 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button } from '@payloadcms/ui'
 import Link from 'next/link'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { normalizeCurationFilters } from '../../explorer/normalize-filters'
 import type { SavedCurationViewsClient } from '../../explorer/saved-views-client'
 import type { CurationFilters, CurationSearchPage, NormalizedCurationFilters, SelectionState } from '../../explorer/types'
 import { BulkActionDialog } from '../operations/BulkActionDialog'
 import { JobDrawer } from '../operations/JobDrawer'
+import { AdminPage } from '../ui/AdminPage'
+import { InlineNotice } from '../ui/InlineNotice'
 import { ExplorerFilterForm } from './ExplorerFilterForm'
 import { ExplorerSavedViews } from './ExplorerSavedViews'
 import { SelectionToolbar } from './SelectionToolbar'
@@ -27,9 +30,6 @@ async function browserLoadPage({ cursor, filters }: { cursor: string | null; fil
 }
 
 const SELECTION_READY_POLL_MS = 1_000
-// The materialization worker runs on a 1-minute cron cadence, so a selection
-// can legitimately take up to ~61s to reach ready. A 30s deadline lost the
-// race by seconds (client gave up right before the worker's next tick).
 const SELECTION_READY_TIMEOUT_MS = 90_000
 
 function newId(): string {
@@ -147,7 +147,6 @@ export function CurationExplorer({
     })
   }
 
-  /** Shortcuts must never fire while the user is typing in an editable target. */
   function isEditableTarget(target: EventTarget | null): boolean {
     return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
   }
@@ -160,7 +159,6 @@ export function CurationExplorer({
     }
   }
 
-  /** Creates the server-side selection and polls until the manifest is ready. */
   const handleApplyToCollections = useCallback(async () => {
     if (applying) return
     setApplying(true)
@@ -207,64 +205,80 @@ export function CurationExplorer({
   const selected = (id: string) => selection.mode === 'all_matching' ? !selection.excluded.has(id) : selection.selected.has(id)
 
   return (
-    <section className="curation-explorer" aria-labelledby="curation-explorer-title" onKeyDown={handleKeyDown}>
-      <header>
-        <p className="collection-views__eyebrow">Content</p>
-        <h1 id="curation-explorer-title">Curation Explorer</h1>
-        <p>Search and filter Curations, then build a server-side selection for one or more Collection drafts.</p>
-      </header>
-      {targetCollectionId && (
-        <aside className="curation-explorer__target" aria-label="Target Collection">
-          <p>Selecting Curations for a Collection draft.</p>
-          <Link href={`/admin/collections/collections/${encodeURIComponent(targetCollectionId)}`}>Back to Collection</Link>
-        </aside>
-      )}
-      {lastPostedOperation && (
-        <aside className="curation-explorer__posted" role="status">
-          <p>Bulk operation queued.</p>
-          {targetCollectionId && <Link href={`/admin/collections/collections/${encodeURIComponent(targetCollectionId)}`}>Return to Collection</Link>}
-          <Link href="/admin/operations">View Operations</Link>
-        </aside>
-      )}
-      <ExplorerFilterForm
-        value={filterDraft}
-        onChange={setFilterDraft}
-        onApply={() => applyFilters()}
-        onClear={clearFilters}
-      />
-      <ExplorerSavedViews currentFilters={filters} onApply={applySavedView} client={savedViewsClient} />
-      <SelectionToolbar
-        applying={applying}
-        onApplyToCollections={() => void handleApplyToCollections()}
-        onSelectAllMatching={() => setSelection({ mode: 'all_matching', filters, excluded: new Set(), previewCount: page.total })}
-        selection={selection}
-        total={page.total}
-      />
-      {applyError && <p role="alert">{applyError}</p>}
-      {error && <p role="alert">{error}</p>}
-      <VirtualCurationTable
-        height={600}
-        isSelected={(row) => selected(row.curation_id)}
-        onToggle={(row, index, shiftKey) => toggle(row.curation_id, index, shiftKey)}
-        onToggleAllLoaded={toggleAllLoaded}
-        rowHeight={44}
-        rows={page.items}
-        selectAllDisabled={selection.mode === 'all_matching'}
-      />
-      {page.next_cursor && <button onClick={() => void load(filters, page.next_cursor)} type="button">Next page</button>}
-      {applySelection && (
-        <BulkActionDialog
-          initialCollectionId={targetCollectionId}
-          onClose={() => setApplySelection(null)}
-          onPosted={(operationId) => {
-            setApplySelection(null)
-            setLastPostedOperation(operationId)
-            setShowJobs(true)
-          }}
-          selectionId={applySelection}
+    <AdminPage
+      className="curation-explorer"
+      eyebrow="Content"
+      title="Curation Explorer"
+      description="Search and filter Curations, then build a server-side selection for one or more Collection drafts."
+    >
+      <div className="curation-explorer__workspace" onKeyDown={handleKeyDown}>
+        {targetCollectionId && (
+          <InlineNotice
+            tone="info"
+            action={<Link href={`/admin/collections/collections/${encodeURIComponent(targetCollectionId)}`}>Back to Collection</Link>}
+          >
+            <p>Selecting Curations for a Collection draft.</p>
+          </InlineNotice>
+        )}
+        {lastPostedOperation && (
+          <InlineNotice
+            tone="success"
+            action={(
+              <div className="curation-explorer__notice-actions">
+                {targetCollectionId && <Link href={`/admin/collections/collections/${encodeURIComponent(targetCollectionId)}`}>Return to Collection</Link>}
+                <Link href="/admin/operations">View Operations</Link>
+              </div>
+            )}
+          >
+            <p>Bulk operation queued.</p>
+          </InlineNotice>
+        )}
+        <ExplorerFilterForm
+          value={filterDraft}
+          onChange={setFilterDraft}
+          onApply={() => applyFilters()}
+          onClear={clearFilters}
         />
-      )}
-      {showJobs && <JobDrawer onClose={() => setShowJobs(false)} />}
-    </section>
+        <ExplorerSavedViews currentFilters={filters} onApply={applySavedView} client={savedViewsClient} />
+        <SelectionToolbar
+          applying={applying}
+          onApplyToCollections={() => void handleApplyToCollections()}
+          onSelectAllMatching={() => setSelection({ mode: 'all_matching', filters, excluded: new Set(), previewCount: page.total })}
+          selection={selection}
+          total={page.total}
+        />
+        {applyError && <InlineNotice tone="error"><p>{applyError}</p></InlineNotice>}
+        {error && <InlineNotice tone="error"><p>{error}</p></InlineNotice>}
+        <VirtualCurationTable
+          height={600}
+          isSelected={(row) => selected(row.curation_id)}
+          onToggle={(row, index, shiftKey) => toggle(row.curation_id, index, shiftKey)}
+          onToggleAllLoaded={toggleAllLoaded}
+          rowHeight={44}
+          rows={page.items}
+          selectAllDisabled={selection.mode === 'all_matching'}
+        />
+        {page.next_cursor && (
+          <div className="curation-explorer__pagination">
+            <Button buttonStyle="secondary" margin={false} onClick={() => void load(filters, page.next_cursor)} type="button">
+              Next page
+            </Button>
+          </div>
+        )}
+        {applySelection && (
+          <BulkActionDialog
+            initialCollectionId={targetCollectionId}
+            onClose={() => setApplySelection(null)}
+            onPosted={(operationId) => {
+              setApplySelection(null)
+              setLastPostedOperation(operationId)
+              setShowJobs(true)
+            }}
+            selectionId={applySelection}
+          />
+        )}
+        {showJobs && <JobDrawer onClose={() => setShowJobs(false)} />}
+      </div>
+    </AdminPage>
   )
 }
