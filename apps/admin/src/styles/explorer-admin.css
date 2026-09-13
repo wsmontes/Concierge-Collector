@@ -31,6 +31,14 @@
   justify-content: flex-end;
 }
 
+/* Higher specificity is intentional: admin.css still contains the legacy
+   `.curation-explorer form { display:flex }` rule used by older surfaces. */
+.curation-explorer form.explorer-filter-form {
+  align-items: stretch;
+  display: grid;
+  gap: 0.9rem;
+}
+
 .explorer-filter-form,
 .explorer-saved-views {
   background: var(--theme-elevation-0, #fff);
@@ -38,11 +46,6 @@
   border-radius: 8px;
   margin: 0;
   padding: 1rem;
-}
-
-.explorer-filter-form {
-  display: grid;
-  gap: 0.9rem;
 }
 
 .explorer-filter-form__header h2,
