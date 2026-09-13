@@ -72,6 +72,8 @@ npm run verify
 
 Keep PR #11 in draft until those commands complete successfully.
 
+See also: `docs/reviews/2026-09-12-github-actions-root-cause.md`.
+
 ## Dependency note
 
 The new custom Admin components import `Button`, `Pill`, and `Banner` from `@payloadcms/ui`, which is the supported Payload Admin import path. The current root lockfile already contains `@payloadcms/ui@3.86.0` transitively through the Payload stack, but `apps/admin/package.json` does not declare it directly.
