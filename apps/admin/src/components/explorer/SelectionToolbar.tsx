@@ -30,16 +30,17 @@ export function SelectionToolbar({ onSelectAllMatching, onApplyToCollections, se
         </Button>
       )}
       {hasSelection && (
-        <Button
-          className="selection-toolbar__apply"
-          disabled={applying}
-          margin={false}
-          onClick={onApplyToCollections}
-          size="small"
-          type="button"
-        >
-          {applying ? 'Materializing selection…' : 'Apply to Collections…'}
-        </Button>
+        <span className="selection-toolbar__apply">
+          <Button
+            disabled={applying}
+            margin={false}
+            onClick={onApplyToCollections}
+            size="small"
+            type="button"
+          >
+            {applying ? 'Materializing selection…' : 'Apply to Collections…'}
+          </Button>
+        </span>
       )}
       <p className="selection-toolbar__hint">
         {total === null ? 'Selection is kept as a server-side intent.' : `${total.toLocaleString()} results match these filters.`}
