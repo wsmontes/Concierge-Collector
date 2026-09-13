@@ -23,6 +23,11 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         "/api/v3/catalog/curations/resolve",
         "/api/v3/catalog/curations/scan/start",
         "/api/v3/catalog/curations/scan/page",
+        # Whole-record reads and the versioned field write for the CMS content
+        # inspector. Both are service-credentialed: the actor travels in
+        # `X-CMS-Actor-Id` and is re-authorized server-side.
+        "/api/v3/catalog/curations/{curation_id}",
+        "/api/v3/catalog/entities/{entity_id}",
         "/api/v3/curations/{curation_id}/collections",
         "/api/v3/internal/curations/hydrate",
     }
@@ -48,6 +53,8 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         "CatalogScanPageRequest",
         "CatalogScanPage",
         "AdminCurationRow",
+        "ContentRecordResponse",
+        "CurationFieldPatch",
     }
     assert document["components"]["securitySchemes"] == {
         "CmsServiceKey": {"in": "header", "name": "X-CMS-Service-Key", "type": "apiKey"},
@@ -80,6 +87,15 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         {"HTTPBearer": []},
         {"FastApiAccessCookie": []},
     ]
+    for path in ("/api/v3/catalog/curations/{curation_id}", "/api/v3/catalog/entities/{entity_id}"):
+        operation = document["paths"][path]["get"]
+        assert operation["security"] == [{"CmsServiceKey": []}]
+        assert all(parameter["name"] != "X-CMS-Service-Key" for parameter in operation.get("parameters", []))
+    # The write is fenced: an unfenced patch would silently overwrite whichever
+    # version the editor last saw, so `If-Match` is part of the contract.
+    patch = document["paths"]["/api/v3/catalog/curations/{curation_id}"]["patch"]
+    assert patch["security"] == [{"CmsServiceKey": []}]
+    assert {parameter["name"] for parameter in patch["parameters"]} == {"curation_id", "If-Match", "X-CMS-Actor-Id"}
 
 
 def test_reachable_schemas_follows_nested_references():

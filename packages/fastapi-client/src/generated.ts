@@ -153,6 +153,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/catalog/curations/{curation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Curation Record
+         * @description Return the whole curation document for the Admin record inspector.
+         *
+         *     Declared after the literal ``/curations`` search route so the parameterized
+         *     path never shadows the search page.
+         */
+        get: operations["get_curation_record_api_v3_catalog_curations__curation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Curation Record
+         * @description Apply a dotted-field patch under a mandatory version fence.
+         *
+         *     The CMS holds a Payload session, not a FastAPI JWT, so this is the
+         *     service-credentialed writer: authorization is the live CMS-admin reload
+         *     (401/403 propagate), and ``If-Match`` is required because an unfenced write
+         *     would silently overwrite whichever version the editor last saw.
+         */
+        patch: operations["patch_curation_record_api_v3_catalog_curations__curation_id__patch"];
+        trace?: never;
+    };
+    "/api/v3/catalog/entities/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Entity Record
+         * @description Return the whole entity document for the Admin record inspector.
+         */
+        get: operations["get_entity_record_api_v3_catalog_entities__entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v3/curations/{curation_id}/collections": {
         parameters: {
             query?: never;
@@ -317,6 +369,35 @@ export interface components {
         CmsIntrospectionRequest: {
             /** Subject */
             subject: string;
+        };
+        /**
+         * ContentRecordResponse
+         * @description A whole stored document, serialized to JSON-safe values.
+         *
+         *     ``record`` carries every field of the source document (unknown/legacy
+         *     fields included) so the Admin can render raw content it does not yet model.
+         */
+        ContentRecordResponse: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "curation" | "entity";
+            /** Record */
+            record: Record<string, never>;
+        };
+        /**
+         * CurationFieldPatch
+         * @description A dotted-field patch authored by the CMS editorial writer.
+         *
+         *     At least one field is mandatory: an empty patch would still bump
+         *     ``version`` and mislead the editor's optimistic-lock state.
+         */
+        CurationFieldPatch: {
+            /** Fields */
+            fields: Record<string, never>;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -681,6 +762,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogScanStart"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_curation_record_api_v3_catalog_curations__curation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                curation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_curation_record_api_v3_catalog_curations__curation_id__patch: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CMS-Actor-Id": string;
+                "If-Match"?: string | null;
+            };
+            path: {
+                curation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CurationFieldPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_entity_record_api_v3_catalog_entities__entity_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentRecordResponse"];
                 };
             };
             /** @description Validation Error */

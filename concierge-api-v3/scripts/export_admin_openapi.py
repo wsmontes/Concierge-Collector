@@ -128,22 +128,31 @@ def normalize_selected_operations(paths: dict[str, Any]) -> dict[str, Any]:
         "/api/v3/catalog/curations/resolve",
         "/api/v3/catalog/curations/scan/start",
         "/api/v3/catalog/curations/scan/page",
+        "/api/v3/catalog/curations/{curation_id}",
+        "/api/v3/catalog/entities/{entity_id}",
         "/api/v3/internal/curations/hydrate",
     ):
-        operation = normalized.get(path, {}).get("post")
-        if operation is None:
-            continue
-        operation["security"] = CMS_SERVICE_SECURITY
-        # The generated optional Header parameter reflects FastAPI's typing,
-        # while the dependency rejects a missing header. The OpenAPI security
-        # scheme is the authoritative representation for this boundary.
-        operation["parameters"] = [
-            parameter for parameter in operation.get("parameters", []) if parameter.get("name") != "X-CMS-Service-Key"
-        ]
-        for parameter in operation["parameters"]:
-            if parameter.get("name") == "X-CMS-Actor-Id":
-                parameter["required"] = True
-                parameter["schema"] = {"type": "string"}
+        endpoint = normalized.get(path, {})
+        # A path can carry several operations (the curation record is both a
+        # reader GET and a writer PATCH); every one of them crosses the same
+        # service-credential boundary.
+        for method in ("post", "get", "patch"):
+            operation = endpoint.get(method)
+            if operation is None:
+                continue
+            operation["security"] = CMS_SERVICE_SECURITY
+            # The generated optional Header parameter reflects FastAPI's typing,
+            # while the dependency rejects a missing header. The OpenAPI security
+            # scheme is the authoritative representation for this boundary.
+            operation["parameters"] = [
+                parameter
+                for parameter in operation.get("parameters", [])
+                if parameter.get("name") != "X-CMS-Service-Key"
+            ]
+            for parameter in operation["parameters"]:
+                if parameter.get("name") == "X-CMS-Actor-Id":
+                    parameter["required"] = True
+                    parameter["schema"] = {"type": "string"}
     collector_bearer = normalized.get("/api/v3/auth/cms/introspect-bearer", {}).get("post")
     if collector_bearer is not None:
         collector_bearer["security"] = COLLECTOR_BEARER_SECURITY

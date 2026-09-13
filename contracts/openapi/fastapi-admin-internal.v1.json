@@ -393,6 +393,49 @@
         "title": "CmsIntrospectionRequest",
         "type": "object"
       },
+      "ContentRecordResponse": {
+        "description": "A whole stored document, serialized to JSON-safe values.\n\n``record`` carries every field of the source document (unknown/legacy\nfields included) so the Admin can render raw content it does not yet model.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "curation",
+              "entity"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "record": {
+            "title": "Record",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "record"
+        ],
+        "title": "ContentRecordResponse",
+        "type": "object"
+      },
+      "CurationFieldPatch": {
+        "description": "A dotted-field patch authored by the CMS editorial writer.\n\nAt least one field is mandatory: an empty patch would still bump\n``version`` and mislead the editor's optimistic-lock state.",
+        "properties": {
+          "fields": {
+            "minProperties": 1,
+            "title": "Fields",
+            "type": "object"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "title": "CurationFieldPatch",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1207,6 +1250,182 @@
           }
         ],
         "summary": "Start Scan",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/curations/{curation_id}": {
+      "get": {
+        "description": "Return the whole curation document for the Admin record inspector.\n\nDeclared after the literal ``/curations`` search route so the parameterized\npath never shadows the search page.",
+        "operationId": "get_curation_record_api_v3_catalog_curations__curation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "curation_id",
+            "required": true,
+            "schema": {
+              "title": "Curation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Get Curation Record",
+        "tags": [
+          "cms-catalog"
+        ]
+      },
+      "patch": {
+        "description": "Apply a dotted-field patch under a mandatory version fence.\n\nThe CMS holds a Payload session, not a FastAPI JWT, so this is the\nservice-credentialed writer: authorization is the live CMS-admin reload\n(401/403 propagate), and ``If-Match`` is required because an unfenced write\nwould silently overwrite whichever version the editor last saw.",
+        "operationId": "patch_curation_record_api_v3_catalog_curations__curation_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "curation_id",
+            "required": true,
+            "schema": {
+              "title": "Curation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CurationFieldPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Patch Curation Record",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/entities/{entity_id}": {
+      "get": {
+        "description": "Return the whole entity document for the Admin record inspector.",
+        "operationId": "get_entity_record_api_v3_catalog_entities__entity_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Get Entity Record",
         "tags": [
           "cms-catalog"
         ]

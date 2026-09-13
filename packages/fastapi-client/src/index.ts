@@ -48,6 +48,19 @@ type CatalogScanPageResponse = paths["/api/v3/catalog/curations/scan/page"]["pos
   ? Response
   : never;
 
+/**
+ * One whole Curation/Entity document as stored, for the Admin record surfaces.
+ * `record` is intentionally untyped: the point of the surface is that fields the
+ * Admin does not model yet still arrive instead of being dropped by a projection.
+ */
+export interface ContentRecordResponse {
+  kind: ContentRecordKind;
+  id: string;
+  record: Record<string, unknown>;
+}
+
+export type ContentRecordKind = "curation" | "entity";
+
 export interface FastApiAdminClientOptions {
   baseUrl: string;
   serviceKey: string;
@@ -110,6 +123,27 @@ export class FastApiAdminClient {
     return this.post("/api/v3/catalog/curations/scan/page", payload, { "x-cms-actor-id": actorId });
   }
 
+  curationRecord(curationId: string): Promise<ContentRecordResponse> {
+    return this.get(`/api/v3/catalog/curations/${encodeURIComponent(curationId)}`);
+  }
+
+  entityRecord(entityId: string): Promise<ContentRecordResponse> {
+    return this.get(`/api/v3/catalog/entities/${encodeURIComponent(entityId)}`);
+  }
+
+  patchCurationRecord(
+    curationId: string,
+    fields: Record<string, unknown>,
+    version: number,
+    actorId: string,
+  ): Promise<ContentRecordResponse> {
+    return this.patch(
+      `/api/v3/catalog/curations/${encodeURIComponent(curationId)}`,
+      { fields },
+      { "x-cms-actor-id": actorId, "if-match": String(version) },
+    );
+  }
+
   private async post<Request, Response>(path: string, payload: Request, extraHeaders: Record<string, string> = {}): Promise<Response> {
     const response = await this.fetch(`${this.baseUrl}${path}`, {
       method: "POST",
@@ -134,6 +168,24 @@ export class FastApiAdminClient {
         "x-cms-service-key": this.serviceKey,
         ...extraHeaders,
       },
+    });
+    if (!response.ok) throw new FastApiClientError(response.status, await response.text());
+    return (await response.json()) as unknown as Response;
+  }
+
+  private async patch<Request, Response>(
+    path: string,
+    payload: Request,
+    extraHeaders: Record<string, string> = {},
+  ): Promise<Response> {
+    const response = await this.fetch(`${this.baseUrl}${path}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-cms-service-key": this.serviceKey,
+        ...extraHeaders,
+      },
+      body: JSON.stringify(payload),
     });
     if (!response.ok) throw new FastApiClientError(response.status, await response.text());
     return (await response.json()) as unknown as Response;

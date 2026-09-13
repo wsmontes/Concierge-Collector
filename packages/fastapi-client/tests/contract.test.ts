@@ -76,6 +76,28 @@ describe("FastApiAdminClient", () => {
     );
   });
 
+  it("writes a Curation field with the loaded version as the fence", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ kind: "curation", id: "cur_1", record: { version: 5 } }), { status: 200 }),
+    );
+    const client = new FastApiAdminClient({ baseUrl: "https://api.example.test", serviceKey: "service-key", fetch });
+
+    await expect(client.patchCurationRecord("cur_1", { "notes.private": "Reviewed" }, 4, "admin@example.com"))
+      .resolves.toMatchObject({ id: "cur_1" });
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.example.test/api/v3/catalog/curations/cur_1",
+      expect.objectContaining({
+        method: "PATCH",
+        headers: expect.objectContaining({
+          "x-cms-service-key": "service-key",
+          "x-cms-actor-id": "admin@example.com",
+          "if-match": "4",
+        }),
+        body: JSON.stringify({ fields: { "notes.private": "Reviewed" } }),
+      }),
+    );
+  });
+
   it("starts and advances a high-water scan using the service-only boundary", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>()
       .mockResolvedValueOnce(new Response(JSON.stringify({ scan_token: "scan-token", max_catalog_sequence: 42 }), { status: 200 }))
