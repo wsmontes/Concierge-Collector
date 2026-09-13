@@ -1,8 +1,12 @@
 .admin-page.application-views {
+  gap: 1.5rem;
   max-width: 1280px;
+  padding: clamp(1rem, 2vw, 2rem);
 }
 
-.application-views__form {
+/* Higher specificity is intentional while the legacy global
+   `.application-views form` rule still exists in admin.css. */
+.application-views form.application-views__form {
   display: grid;
   gap: 1rem;
   max-width: none;
