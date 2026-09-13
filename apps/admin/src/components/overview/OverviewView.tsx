@@ -1,6 +1,7 @@
 'use client'
 
 import { Button } from '@payloadcms/ui'
+import type { ReactNode } from 'react'
 import type { ActivityRow } from '../collections/ActivityView'
 import type { DraftDiffRow } from '../collections/DraftDiffView'
 import type { VersionRow } from '../collections/VersionsView'
@@ -54,7 +55,7 @@ function navigate(onNavigate: OverviewViewProps['onNavigate'], target: OverviewT
   return () => onNavigate?.(target)
 }
 
-function OverviewAction({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+function OverviewAction({ children, onClick }: { children: ReactNode; onClick: () => void }) {
   return (
     <Button buttonStyle="secondary" margin={false} size="small" type="button" onClick={onClick}>
       {children}
@@ -96,10 +97,10 @@ export function OverviewView({ collection, versions = [], activity = [], diff = 
         {versions.length === 0 ? (
           <p className="overview-view__empty">No published versions yet.</p>
         ) : (
-          <ul className="overview-view__list">
+          <ul className="overview-view__list overview-view__list--actions">
             {versions.slice(0, 5).map((version) => (
               <li key={version.version}>
-                <Button buttonStyle="none" margin={false} type="button" onClick={navigate(onNavigate, 'Versions')}>
+                <Button buttonStyle="secondary" margin={false} size="small" type="button" onClick={navigate(onNavigate, 'Versions')}>
                   Version {version.version} · {count(version.selectedCount)} selected · {when(version.publishedAt)}
                 </Button>
               </li>
