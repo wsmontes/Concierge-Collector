@@ -1,8 +1,11 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import Link from 'next/link'
 import { useState } from 'react'
 import type { CollectionDistributionClient } from '../../collections/distribution-client'
+import { InlineNotice } from '../ui/InlineNotice'
+import { StatusPill } from '../ui/StatusPill'
 import { ActivityView, type ActivityRow } from './ActivityView'
 import { CollectionDistributionView } from './CollectionDistributionView'
 import { DraftDiffView, type DraftDiffRow } from './DraftDiffView'
@@ -77,26 +80,43 @@ export function CollectionViews({
   return (
     <section className="collection-views" aria-labelledby="collection-title">
       <header className="collection-views__header">
-        <div>
+        <div className="collection-views__identity">
           <p className="collection-views__eyebrow">Collection</p>
           <h1 id="collection-title">{collection.title}</h1>
-          <p><span>{count(collection.draftSelectedCount)} selected</span> · draft revision {collection.draftRevision}</p>
+          <div className="collection-views__status" aria-label="Collection status">
+            <StatusPill status={collection.lifecycle} label={collection.lifecycle} />
+            <StatusPill status={collection.draftState} label={collection.draftState} />
+            <span>{count(collection.draftSelectedCount)} selected</span>
+            <span>draft revision {collection.draftRevision}</span>
+          </div>
         </div>
         <div className="collection-views__actions">
           {archived ? (
-            <button type="button" onClick={actions.onRestore}>Restore collection</button>
+            <Button margin={false} onClick={actions.onRestore} type="button">Restore collection</Button>
           ) : <>
-            <Link href={`/admin/explorer?collection=${encodeURIComponent(collection.id)}`}>Add Curations</Link>
-            <button type="button" onClick={actions.onEditMetadata}>Edit metadata</button>
-            <button type="button" onClick={actions.onArchive}>Archive collection</button>
-            <button type="button" disabled={publishing} aria-label="Publish new version" onClick={actions.onPublish}>
+            <Link className="collection-views__link-button" href={`/admin/explorer?collection=${encodeURIComponent(collection.id)}`}>
+              Add Curations
+            </Link>
+            <Button buttonStyle="secondary" margin={false} onClick={actions.onEditMetadata} type="button">Edit metadata</Button>
+            <Button buttonStyle="secondary" margin={false} onClick={actions.onArchive} type="button">Archive collection</Button>
+            <Button
+              disabled={publishing}
+              margin={false}
+              aria-label="Publish new version"
+              onClick={actions.onPublish}
+              type="button"
+            >
               {publishing ? 'Publishing…' : 'Publish new version'}
-            </button>
+            </Button>
           </>}
         </div>
       </header>
-      {archived && <p role="status">Archived collections are read-only until restored.</p>}
-      <div role="tablist" aria-label="Collection review">
+      {archived && (
+        <InlineNotice tone="warning">
+          <p>Archived collections are read-only until restored.</p>
+        </InlineNotice>
+      )}
+      <div role="tablist" aria-label="Collection review" className="collection-views__tabs">
         {TABS.map((item) => (
           <button key={item} type="button" role="tab" aria-selected={tab === item} onClick={() => setTab(item)}>
             {item}

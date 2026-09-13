@@ -1,5 +1,6 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import type { FormEvent } from 'react'
 import type { CurationFilters } from '../../explorer/types'
 
@@ -34,6 +35,12 @@ export function ExplorerFilterForm({
   }
 
   return <form aria-label="Curation filters" className="explorer-filter-form" onSubmit={submit}>
+    <header className="explorer-filter-form__header">
+      <div>
+        <h2>Filters</h2>
+        <p>Narrow the catalog without changing the underlying Curations.</p>
+      </div>
+    </header>
     <div className="explorer-filter-form__fields">
       <label>
         Search Curations
@@ -64,8 +71,8 @@ export function ExplorerFilterForm({
       </label>)}
     </fieldset>
     <div className="explorer-filter-form__actions">
-      <button type="submit">Apply filters</button>
-      <button type="button" onClick={onClear}>Clear filters</button>
+      <Button margin={false} type="submit">Apply filters</Button>
+      <Button buttonStyle="secondary" margin={false} type="button" onClick={onClear}>Clear filters</Button>
     </div>
   </form>
 }

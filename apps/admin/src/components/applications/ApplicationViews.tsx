@@ -1,7 +1,12 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { CredentialRevealDialog, type IssuedCredential } from '../credentials/CredentialRevealDialog'
+import { AdminPage, AdminSection } from '../ui/AdminPage'
+import { EmptyState } from '../ui/EmptyState'
+import { InlineNotice } from '../ui/InlineNotice'
+import { StatusPill } from '../ui/StatusPill'
 import { ApplicationAccessDialog } from './ApplicationAccessDialog'
 import { CollectionAccessPicker } from './CollectionAccessPicker'
 import { CredentialActionDialog, IssueCredentialDialog } from './CredentialCommandDialogs'
@@ -218,7 +223,6 @@ export function ApplicationViews() {
       body: JSON.stringify({ overlapUntil: rotateOverlapUntil() }),
     })
     setRevealed(result)
-    // Refresh without toggling the list open/closed state.
     const refreshed = await api<{ items: CredentialRecord[] }>(`/api/admin/v1/applications/${applicationId}/credentials`)
     setCredentials((current) => ({ ...current, [applicationId]: refreshed.items }))
   }
@@ -240,66 +244,138 @@ export function ApplicationViews() {
   }
 
   return (
-    <main className="application-views">
-      <header>
-        <p className="collection-views__eyebrow">Distribution</p>
-        <h1>Consumer applications</h1>
-        <p>Grant each consumer only the Collections it needs. Credentials are individually revocable and their secrets are never stored in the CMS.</p>
-      </header>
-      {error && <p role="alert">Request failed: {error}</p>}
-      <section aria-labelledby="new-application-title" className="application-views__create">
-        <h2 id="new-application-title">New application</h2>
-        <form onSubmit={createApplication}>
-          <label>Name <input name="name" required maxLength={120} /></label>
-          <label>Owner <input name="owner" required maxLength={200} /></label>
+    <AdminPage
+      className="application-views"
+      eyebrow="Distribution"
+      title="Consumer applications"
+      description="Grant each consumer only the Collections it needs. Credentials are individually revocable and their secrets are never stored in the CMS."
+    >
+      {error && (
+        <InlineNotice tone="error">
+          <p>Request failed: {error}</p>
+        </InlineNotice>
+      )}
+
+      <AdminSection
+        title="New application"
+        description="Define ownership, Collection access and a default request budget before issuing credentials."
+      >
+        <form className="application-views__form" onSubmit={createApplication}>
+          <div className="application-views__identity-fields">
+            <label>Name <input name="name" required maxLength={120} /></label>
+            <label>Owner <input name="owner" required maxLength={200} /></label>
+            <label>Requests per minute <input name="rate" type="number" min="1" max="100000" defaultValue="60" required /></label>
+          </div>
           <CollectionAccessPicker value={newApplicationCollections} onChange={setNewApplicationCollections} />
-          <label>Requests per minute <input name="rate" type="number" min="1" max="100000" defaultValue="60" required /></label>
-          <button type="submit">Create application</button>
+          <div className="application-views__form-actions">
+            <Button icon="plus" margin={false} type="submit">Create application</Button>
+          </div>
         </form>
-      </section>
-      <section aria-labelledby="applications-title">
-        <h2 id="applications-title">Applications</h2>
-        {loading ? <p role="status">Loading applications…</p> : applications.length === 0 ? <p>No consumer applications yet.</p> : (
+      </AdminSection>
+
+      <AdminSection
+        title="Applications"
+        description="Manage Collection grants and credentials independently for every consumer."
+      >
+        {loading ? <p role="status">Loading applications…</p> : applications.length === 0 ? (
+          <EmptyState
+            title="No consumer applications yet"
+            description="Create an application to issue scoped credentials for published Collections."
+          />
+        ) : (
           <ul className="application-views__list">
             {applications.map((application) => (
-              <li key={application.id}>
-                <div>
-                  <h3>{application.name}</h3>
-                  <p>{application.owner} · {application.status} · {application.allowedCollectionIds.length} Collections · {application.defaultRequestsPerMinute}/min</p>
+              <li className="application-card" key={application.id}>
+                <div className="application-card__header">
+                  <div className="application-card__identity">
+                    <div className="application-card__title-row">
+                      <h3>{application.name}</h3>
+                      <StatusPill status={application.status} label={application.status} />
+                    </div>
+                    <p>{application.owner} · {application.allowedCollectionIds.length} Collections · {application.defaultRequestsPerMinute}/min</p>
+                  </div>
+                  <div className="application-card__actions">
+                    <Button
+                      buttonStyle="secondary"
+                      margin={false}
+                      size="small"
+                      type="button"
+                      aria-label={`Edit access for ${application.name}`}
+                      onClick={() => setEditingApplication(application)}
+                    >
+                      Edit access
+                    </Button>
+                    <Button
+                      margin={false}
+                      size="small"
+                      type="button"
+                      onClick={() => setIssuingApplication(application)}
+                      disabled={application.status !== 'active' || issuingFor === application.id}
+                    >
+                      {issuingFor === application.id ? 'Issuing…' : 'Issue credential'}
+                    </Button>
+                    <Button
+                      buttonStyle="secondary"
+                      margin={false}
+                      size="small"
+                      type="button"
+                      onClick={() => void loadCredentials(application.id)}
+                      disabled={credentialLoading === application.id}
+                    >
+                      {credentialLoading === application.id ? 'Loading…' : credentials[application.id] ? 'Hide credentials' : 'Manage credentials'}
+                    </Button>
+                  </div>
                 </div>
-                <button type="button" aria-label={`Edit access for ${application.name}`} onClick={() => setEditingApplication(application)}>
-                  Edit access
-                </button>
-                <button type="button" onClick={() => setIssuingApplication(application)} disabled={application.status !== 'active' || issuingFor === application.id}>
-                  {issuingFor === application.id ? 'Issuing…' : 'Issue credential'}
-                </button>
-                <button type="button" onClick={() => void loadCredentials(application.id)} disabled={credentialLoading === application.id}>
-                  {credentialLoading === application.id ? 'Loading…' : credentials[application.id] ? 'Hide credentials' : 'Manage credentials'}
-                </button>
+
                 {credentials[application.id] && (
-                  <ul className="application-views__credentials" aria-label={`${application.name} credentials`}>
-                    {credentials[application.id].length === 0 ? <li>No credentials issued.</li> : credentials[application.id].map((credential) => (
-                      <li key={credential.id}>
-                        <span>{credential.name} ({credential.prefix}) · {credential.status} · last use {credential.lastUsedAt ?? 'never'}</span>
-                        <button
-                          type="button"
-                          disabled={credential.status !== 'active'}
-                          onClick={() => setCredentialCommand({ action: 'rotate', applicationId: application.id, credential })}
-                        >Rotate</button>
-                        <button
-                          type="button"
-                          disabled={credential.status !== 'active'}
-                          onClick={() => setCredentialCommand({ action: 'revoke', applicationId: application.id, credential })}
-                        >Revoke</button>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="application-card__credentials">
+                    <div className="application-card__credentials-heading">
+                      <h4>Credentials</h4>
+                      <span>{credentials[application.id].length.toLocaleString('en-US')} issued</span>
+                    </div>
+                    {credentials[application.id].length === 0 ? (
+                      <p className="application-card__credentials-empty">No credentials issued.</p>
+                    ) : (
+                      <ul className="application-views__credentials" aria-label={`${application.name} credentials`}>
+                        {credentials[application.id].map((credential) => (
+                          <li key={credential.id}>
+                            <div className="application-credential__identity">
+                              <div className="application-credential__title-row">
+                                <strong>{credential.name}</strong>
+                                <StatusPill status={credential.status} label={credential.status} />
+                              </div>
+                              <p>{credential.prefix} · last use {credential.lastUsedAt ?? 'never'}</p>
+                            </div>
+                            <div className="application-credential__actions">
+                              <Button
+                                buttonStyle="secondary"
+                                margin={false}
+                                size="small"
+                                type="button"
+                                disabled={credential.status !== 'active'}
+                                onClick={() => setCredentialCommand({ action: 'rotate', applicationId: application.id, credential })}
+                              >Rotate</Button>
+                              <Button
+                                buttonStyle="error"
+                                margin={false}
+                                size="small"
+                                type="button"
+                                disabled={credential.status !== 'active'}
+                                onClick={() => setCredentialCommand({ action: 'revoke', applicationId: application.id, credential })}
+                              >Revoke</Button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 )}
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </AdminSection>
+
       {editingApplication && (
         <ApplicationAccessDialog
           application={editingApplication}
@@ -332,6 +408,6 @@ export function ApplicationViews() {
           onClose={() => setRevealed(null)}
         />
       )}
-    </main>
+    </AdminPage>
   )
 }

@@ -1,13 +1,8 @@
 'use client'
 
+import { Button, Pill } from '@payloadcms/ui'
 import type { SelectionState } from '../../explorer/types'
 
-/**
- * "1 Curation" / "0 Curations" — o rótulo era plural fixo, então uma seleção
- * de um único item anunciava "1 Curations selected" (a leitura em voz alta
- * errava o singular). O padrão já estava especificado nos testes de unidade
- * do Explorer; a implementação é que tinha divergido.
- */
 function curationCountLabel(count: number): string {
   return `${count.toLocaleString()} ${count === 1 ? 'Curation' : 'Curations'}`
 }
@@ -20,22 +15,32 @@ export function SelectionToolbar({ onSelectAllMatching, onApplyToCollections, se
   applying: boolean
 }) {
   const message = selection.mode === 'all_matching'
-    // Wording do modo all-matching mantido: "<n> matching Curations selected"
-    // (com "All" quando o preview ainda não chegou). Só o ramo de seleção
-    // explícita precisava de singular/plural.
     ? `${selection.previewCount?.toLocaleString() ?? 'All'} matching Curations selected`
     : `${curationCountLabel(selection.selected.size)} selected`
   const hasSelection = selection.mode === 'all_matching' || selection.selected.size > 0
+
   return (
     <div className="selection-toolbar">
-      <p aria-live="polite" role="status">{message}</p>
+      <div className="selection-toolbar__summary" aria-live="polite" role="status">
+        <Pill pillStyle={hasSelection ? 'success' : 'light-gray'} rounded size="small">{message}</Pill>
+      </div>
       {selection.mode === 'explicit' && (
-        <button onClick={onSelectAllMatching} type="button">Select all matching results</button>
+        <Button buttonStyle="secondary" margin={false} onClick={onSelectAllMatching} size="small" type="button">
+          Select all matching results
+        </Button>
       )}
       {hasSelection && (
-        <button className="selection-toolbar__apply" disabled={applying} onClick={onApplyToCollections} type="button">
-          {applying ? 'Materializing selection…' : 'Apply to Collections…'}
-        </button>
+        <span className="selection-toolbar__apply">
+          <Button
+            disabled={applying}
+            margin={false}
+            onClick={onApplyToCollections}
+            size="small"
+            type="button"
+          >
+            {applying ? 'Materializing selection…' : 'Apply to Collections…'}
+          </Button>
+        </span>
       )}
       <p className="selection-toolbar__hint">
         {total === null ? 'Selection is kept as a server-side intent.' : `${total.toLocaleString()} results match these filters.`}
