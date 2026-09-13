@@ -40,6 +40,196 @@
   text-transform: uppercase;
 }
 
+/* Shared product vocabulary. Payload owns the primitive controls; these
+   classes only establish Concierge information hierarchy and spacing. */
+.admin-page {
+  display: grid;
+  gap: 1.5rem;
+  margin: 0 auto;
+  max-width: 1280px;
+  min-width: 0;
+  padding: clamp(1rem, 2vw, 2rem);
+  width: 100%;
+}
+
+.admin-page__header {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--theme-border-color);
+  display: flex;
+  gap: 1.5rem;
+  justify-content: space-between;
+  padding-bottom: 1.25rem;
+}
+
+.admin-page__heading {
+  display: grid;
+  gap: 0.35rem;
+  max-width: 52rem;
+}
+
+.admin-page__heading h1,
+.admin-page__heading p {
+  margin: 0;
+}
+
+.admin-page__heading h1 {
+  font-size: clamp(1.65rem, 2.4vw, 2.25rem);
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+}
+
+.admin-page__description {
+  color: var(--cms-olive-600);
+  line-height: 1.55;
+  max-width: 46rem;
+}
+
+.admin-page__eyebrow,
+.collection-views__eyebrow {
+  color: var(--cms-olive-700);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.admin-page__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
+.admin-page__actions > * {
+  margin: 0;
+}
+
+.admin-page__body {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.admin-section {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.admin-section__header {
+  align-items: flex-end;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.admin-section__header h2,
+.admin-section__header p {
+  margin: 0;
+}
+
+.admin-section__header h2 {
+  font-size: 1.05rem;
+}
+
+.admin-section__header p {
+  color: var(--cms-olive-600);
+  font-size: 0.9rem;
+  margin-top: 0.2rem;
+}
+
+.admin-section__action > * {
+  margin: 0;
+}
+
+.admin-section__body {
+  min-width: 0;
+}
+
+.admin-status {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.admin-empty-state {
+  align-items: center;
+  background: var(--theme-elevation-50);
+  border: 1px dashed var(--theme-border-color);
+  border-radius: 8px;
+  display: flex;
+  gap: 1.5rem;
+  justify-content: space-between;
+  min-height: 8rem;
+  padding: 1.5rem;
+}
+
+.admin-empty-state h2,
+.admin-empty-state p {
+  margin: 0;
+}
+
+.admin-empty-state h2 {
+  font-size: 1rem;
+}
+
+.admin-empty-state p {
+  color: var(--cms-olive-600);
+  margin-top: 0.35rem;
+}
+
+.admin-empty-state__action > * {
+  margin: 0;
+}
+
+.admin-notice {
+  align-items: center;
+  background: var(--theme-elevation-50);
+  border: 1px solid var(--theme-border-color);
+  border-left-width: 4px;
+  border-radius: 6px;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.8rem 0.9rem;
+}
+
+.admin-notice--info {
+  border-left-color: var(--cms-olive-500);
+}
+
+.admin-notice--success {
+  border-left-color: var(--theme-success-500);
+}
+
+.admin-notice--warning {
+  border-left-color: var(--theme-warning-500, var(--cms-olive-700));
+}
+
+.admin-notice--error {
+  border-left-color: var(--theme-error-500, var(--cms-olive-900));
+}
+
+.admin-notice__content {
+  min-width: 0;
+}
+
+.admin-notice__content > :first-child {
+  margin-top: 0;
+}
+
+.admin-notice__content > :last-child {
+  margin-bottom: 0;
+}
+
+.admin-notice__action {
+  flex: 0 0 auto;
+}
+
+.admin-notice__action > * {
+  margin: 0;
+}
+
 .collection-views {
   display: grid;
   gap: 1rem;
@@ -58,14 +248,6 @@
 .collection-views__header h1,
 .collection-views__header p {
   margin: 0;
-}
-
-.collection-views__eyebrow {
-  color: var(--cms-olive-700);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .collection-views [role='tablist'] {
@@ -292,6 +474,20 @@
 @media (prefers-contrast: more) {
   :root {
     --theme-border-color: var(--cms-olive-900);
+  }
+}
+
+@media (max-width: 720px) {
+  .admin-page__header,
+  .admin-section__header,
+  .admin-empty-state,
+  .admin-notice {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-page__actions {
+    justify-content: flex-start;
   }
 }
 
