@@ -1,5 +1,6 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import {
@@ -8,6 +9,10 @@ import {
   type OperationsAdminClient,
   type PublishJobHistoryRow,
 } from '../../operations/admin-client'
+import { AdminPage, AdminSection } from '../ui/AdminPage'
+import { EmptyState } from '../ui/EmptyState'
+import { InlineNotice } from '../ui/InlineNotice'
+import { StatusPill } from '../ui/StatusPill'
 
 const browserClient = createBrowserOperationsAdminClient()
 
@@ -27,10 +32,6 @@ function progressLabel(progress: BulkOperationHistoryRow['progress']): string {
     progress.failed > 0 ? `${progress.failed} failed` : null,
   ].filter(Boolean)
   return parts.length > 0 ? parts.join(', ') : 'queued'
-}
-
-function publicationStatus(job: PublishJobHistoryRow): string {
-  return job.checkpoint ? `${job.status} · ${job.checkpoint}` : job.status
 }
 
 function formatTime(value: string): string {
@@ -71,8 +72,6 @@ export function OperationsWorkspace({
     }
   }, [client])
 
-  // Carga inicial (e recarga quando o client muda): setState só dentro do bloco
-  // assíncrono — o corpo síncrono do efeito não pode disparar render.
   useEffect(() => {
     let active = true
     void (async () => {
@@ -142,74 +141,100 @@ export function OperationsWorkspace({
   }
 
   return (
-    <main className="operations-workspace">
-      <header className="operations-workspace__header">
-        <div>
-          <p className="collection-views__eyebrow">Operations</p>
-          <h1>Operations</h1>
-          <p>Current and recent bulk draft work plus Collection publication jobs.</p>
-        </div>
-        <button type="button" onClick={() => void reload()}>Refresh</button>
-      </header>
-
-      {error && <p role="alert">Unable to refresh Operations: {error}</p>}
+    <AdminPage
+      className="operations-workspace"
+      eyebrow="Operations"
+      title="Operations"
+      description="Current and recent bulk draft work plus Collection publication jobs."
+      actions={(
+        <Button buttonStyle="secondary" margin={false} onClick={() => void reload()} type="button">
+          Refresh
+        </Button>
+      )}
+    >
+      {error && <InlineNotice tone="error"><p>Unable to refresh Operations: {error}</p></InlineNotice>}
       {loading && <p role="status">Loading Operations…</p>}
 
-      <section aria-labelledby="bulk-operations-title">
-        <h2 id="bulk-operations-title">Bulk operations</h2>
-        {!loading && bulk.length === 0 ? <p>No bulk operations yet.</p> : (
+      <AdminSection
+        title="Bulk operations"
+        description="Draft membership changes executed across one or more Collections."
+        action={bulkCursor ? (
+          <Button buttonStyle="secondary" margin={false} onClick={() => void loadMoreBulk()} size="small" type="button">
+            Load more
+          </Button>
+        ) : undefined}
+      >
+        {!loading && bulk.length === 0 ? (
+          <EmptyState title="No bulk operations yet" description="Bulk work from the Curation Explorer will appear here." />
+        ) : (
           <ul className="operations-workspace__list">
             {bulk.map((operation) => {
               const { active, completed, failed } = operation.parentSummary
               return (
                 <li className="operations-workspace__card" key={operation.id}>
                   <div className="operations-workspace__card-header">
-                    <div>
+                    <div className="operations-workspace__identity">
                       <strong>{operation.action === 'add' ? 'Add to draft' : 'Remove from draft'}</strong>
-                      <span className={`operations-workspace__status operations-workspace__status--${operation.status}`}>{operation.status}</span>
+                      <StatusPill status={operation.status} label={operation.status} />
                     </div>
                     <time dateTime={operation.updatedAt}>{formatTime(operation.updatedAt)}</time>
                   </div>
-                  <p>{active} pending, {completed} done, {failed} failed</p>
-                  <p>{progressLabel(operation.progress)}</p>
+                  <div className="operations-workspace__metrics">
+                    <span>{active} pending, {completed} done, {failed} failed</span>
+                    <span>{progressLabel(operation.progress)}</span>
+                  </div>
                   <div className="operations-workspace__collections" aria-label="Affected Collections">
                     {operation.collections.map((collection) => (
                       <Link href={`/admin/collections/collections/${encodeURIComponent(collection.id)}`} key={collection.id}>{collection.title}</Link>
                     ))}
                   </div>
                   {operation.status === 'active' && operation.cancellable && (
-                    <button
-                      type="button"
-                      aria-label="Cancel operation"
-                      disabled={cancelling === operation.id}
-                      onClick={() => void cancel(operation)}
-                    >
-                      {cancelling === operation.id ? 'Cancelling…' : 'Cancel remaining work'}
-                    </button>
+                    <div className="operations-workspace__card-actions">
+                      <Button
+                        aria-label="Cancel operation"
+                        buttonStyle="error"
+                        disabled={cancelling === operation.id}
+                        margin={false}
+                        onClick={() => void cancel(operation)}
+                        size="small"
+                        type="button"
+                      >
+                        {cancelling === operation.id ? 'Cancelling…' : 'Cancel remaining work'}
+                      </Button>
+                    </div>
                   )}
                 </li>
               )
             })}
           </ul>
         )}
-        {bulkCursor && <button type="button" onClick={() => void loadMoreBulk()}>Load more bulk operations</button>}
-      </section>
+      </AdminSection>
 
-      <section aria-labelledby="publish-operations-title">
-        <h2 id="publish-operations-title">Publications</h2>
-        {!loading && publishes.length === 0 ? <p>No publication jobs yet.</p> : (
+      <AdminSection
+        title="Publications"
+        description="Version promotion jobs and their latest checkpoints."
+        action={publishCursor ? (
+          <Button buttonStyle="secondary" margin={false} onClick={() => void loadMorePublishes()} size="small" type="button">
+            Load more
+          </Button>
+        ) : undefined}
+      >
+        {!loading && publishes.length === 0 ? (
+          <EmptyState title="No publication jobs yet" description="Collection publish activity will appear here." />
+        ) : (
           <ul className="operations-workspace__list">
             {publishes.map((job) => (
               <li className="operations-workspace__card" key={job.id}>
                 <div className="operations-workspace__card-header">
-                  <div>
+                  <div className="operations-workspace__identity">
                     <Link href={`/admin/collections/collections/${encodeURIComponent(job.collection.id)}`}>{job.collection.title}</Link>
                     <strong>Version {job.targetVersion}</strong>
+                    <StatusPill status={job.status} label={job.status} />
                   </div>
                   <time dateTime={job.updatedAt}>{formatTime(job.updatedAt)}</time>
                 </div>
-                <p>{publicationStatus(job)}</p>
-                <p>
+                {job.checkpoint && <p className="operations-workspace__checkpoint">{job.checkpoint}</p>}
+                <p className="operations-workspace__summary">
                   {job.selectedCount === null ? 'Selection count pending' : `${job.selectedCount.toLocaleString('en-US')} selected`}
                   {job.confirmedUnavailableCount > 0 ? ` · ${job.confirmedUnavailableCount} unavailable confirmed` : ''}
                 </p>
@@ -217,8 +242,7 @@ export function OperationsWorkspace({
             ))}
           </ul>
         )}
-        {publishCursor && <button type="button" onClick={() => void loadMorePublishes()}>Load more publications</button>}
-      </section>
-    </main>
+      </AdminSection>
+    </AdminPage>
   )
 }
