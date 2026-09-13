@@ -1,5 +1,6 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -8,6 +9,10 @@ import {
   type AdminCollectionRecord,
   type CollectionsAdminClient,
 } from '../../collections/admin-client'
+import { AdminPage } from '../ui/AdminPage'
+import { EmptyState } from '../ui/EmptyState'
+import { InlineNotice } from '../ui/InlineNotice'
+import { StatusPill } from '../ui/StatusPill'
 import { NewCollectionDialog } from './NewCollectionDialog'
 
 const browserCollectionsClient = createBrowserCollectionsAdminClient()
@@ -59,9 +64,6 @@ export function CollectionsWorkspace({
     }
   }, [client])
 
-  // Carga inicial: os setState ficam DENTRO do bloco assíncrono (nunca no corpo
-  // síncrono do efeito, que dispararia renders em cascata). `reload` continua
-  // existindo para os handlers imperativos, onde ligar o loading é intencional.
   useEffect(() => {
     let active = true
     void (async () => {
@@ -97,16 +99,17 @@ export function CollectionsWorkspace({
   }
 
   return (
-    <main className="collections-workspace">
-      <header className="collections-workspace__header">
-        <div>
-          <p className="collection-views__eyebrow">Content</p>
-          <h1>Collections</h1>
-          <p>Build, review, version and publish curated sets without changing the source Curations.</p>
-        </div>
-        <button type="button" onClick={() => setCreating(true)}>New Collection</button>
-      </header>
-
+    <AdminPage
+      className="collections-workspace"
+      eyebrow="Content"
+      title="Collections"
+      description="Build, review, version and publish curated sets without changing the source Curations."
+      actions={(
+        <Button icon="plus" margin={false} onClick={() => setCreating(true)} type="button">
+          New Collection
+        </Button>
+      )}
+    >
       <section className="collections-workspace__filters" aria-label="Collection filters">
         <label>
           Filter Collections
@@ -134,16 +137,32 @@ export function CollectionsWorkspace({
       </section>
 
       {error && (
-        <div className="collections-workspace__error" role="alert">
+        <InlineNotice
+          tone="error"
+          action={(
+            <Button buttonStyle="secondary" margin={false} onClick={() => void reload()} size="small" type="button">
+              Try again
+            </Button>
+          )}
+        >
           <p>{error}</p>
-          <button type="button" onClick={() => void reload()}>Try again</button>
-        </div>
+        </InlineNotice>
       )}
 
       {loading ? (
         <p role="status">Loading Collections…</p>
       ) : visible.length === 0 ? (
-        <p>No Collections match the current filters.</p>
+        <EmptyState
+          title={rows.length === 0 ? 'No Collections yet' : 'No Collections match'}
+          description={rows.length === 0
+            ? 'Create the first Collection to start packaging curated knowledge.'
+            : 'Change the current filters to broaden the result set.'}
+          action={rows.length === 0 ? (
+            <Button icon="plus" margin={false} onClick={() => setCreating(true)} type="button">
+              Create Collection
+            </Button>
+          ) : undefined}
+        />
       ) : (
         <div className="collections-workspace__table-wrap">
           <table className="collections-workspace__table">
@@ -163,8 +182,8 @@ export function CollectionsWorkspace({
                     <Link href={`/admin/collections/collections/${collection.id}`}>{collection.title}</Link>
                     <span className="collections-workspace__slug">/{collection.slug}</span>
                   </td>
-                  <td><span>{collection.lifecycle}</span></td>
-                  <td><span>{collection.draftState}</span></td>
+                  <td><StatusPill status={collection.lifecycle} label={collection.lifecycle} /></td>
+                  <td><StatusPill status={collection.draftState} label={collection.draftState} /></td>
                   <td>{versionLabel(collection)}</td>
                   <td>{collection.draftSelectedCount.toLocaleString('en-US')}</td>
                 </tr>
@@ -180,6 +199,6 @@ export function CollectionsWorkspace({
           onCreate={createCollection}
         />
       )}
-    </main>
+    </AdminPage>
   )
 }
