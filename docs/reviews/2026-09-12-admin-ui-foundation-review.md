@@ -44,9 +44,17 @@ The branch remains based directly on the current `main` merge base used for this
 
 Automated execution is **not verified in this session**.
 
-The repository's GitHub Actions produced no workflow runs or commit statuses for the feature head, and the local command executor available to this session failed before it could access a workspace. Therefore this review does not claim that tests, typecheck, lint, or build pass.
+This is not a newly broken workflow trigger. Repository history shows that GitHub Actions was deliberately shut down because billing caused runs to fail almost immediately:
 
-Before merge, run from the repository root:
+- `fff0fa2` — `chore(ci): remove workflows do GitHub Actions (billing travado)` records that Actions was disabled and workflows deleted, moving tests/lint to local execution.
+- `c048a24` — removes the GitHub Actions quality workflow.
+- `c8923d8` — removes the GitHub Actions image-build workflow.
+
+The current `main` has no `.github/workflows/` directory, so feature commits correctly produce no workflow runs or commit statuses. Recreating workflow YAML without first resolving/re-enabling the account/repository Actions billing state would not provide useful verification.
+
+The local command executor available to this session also failed before it could access a workspace. Therefore this review does not claim that tests, typecheck, lint, or build pass.
+
+Before merge, run from the repository root in a real workspace:
 
 ```bash
 npm ci
@@ -84,6 +92,10 @@ Then rerun the five verification commands above.
 4. Dialog primitives are still mixed: some existing domain dialogs remain custom overlays. A later pass can converge them on Payload Modal/Drawer primitives once regression coverage includes focus trapping, Escape handling, and focus restoration.
 5. Responsive styling was improved in code but still needs browser/device visual QA after a successful local build.
 
+## CI restoration note
+
+Treat CI restoration as a separate infrastructure task from this UI PR. The prerequisite is to confirm the GitHub Actions billing/account state and repository Actions permission, then decide which quality gate should be restored. Only after that should workflow files be reintroduced. Restoring old YAML first would address the symptom, not the recorded root cause.
+
 ## Merge recommendation
 
-Do not merge yet. The implementation is ready for executable verification, but there is currently no fresh test/typecheck/lint/build evidence for the head commit. Once the verification commands pass and the direct `@payloadcms/ui` dependency is committed with a synchronized lockfile, this branch can move from draft to review/merge consideration.
+Do not merge yet. The implementation is ready for executable verification, but there is currently no fresh test/typecheck/lint/build evidence for the head commit. Once the local verification commands pass and the direct `@payloadcms/ui` dependency is committed with a synchronized lockfile, this branch can move from draft to review/merge consideration.
