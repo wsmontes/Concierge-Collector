@@ -1,3 +1,149 @@
+.admin-page.application-views {
+  max-width: 1280px;
+}
+
+.application-views__form {
+  display: grid;
+  gap: 1rem;
+  max-width: none;
+}
+
+.application-views__identity-fields {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(10rem, 0.6fr);
+}
+
+.application-views__identity-fields label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.application-views__identity-fields input {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  border-radius: 6px;
+  color: var(--theme-text);
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  width: 100%;
+}
+
+.application-views__form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.application-views__list {
+  display: grid;
+  gap: 0.85rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.application-views__list > .application-card {
+  align-items: stretch;
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  border-radius: 8px;
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.application-card__header {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.application-card__identity {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.application-card__title-row,
+.application-credential__title-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.application-card__title-row h3,
+.application-card__identity p,
+.application-card__credentials-heading h4,
+.application-card__credentials-empty,
+.application-credential__identity p {
+  margin: 0;
+}
+
+.application-card__identity p,
+.application-card__credentials-heading span,
+.application-credential__identity p {
+  color: var(--cms-olive-600);
+  font-size: 0.875rem;
+}
+
+.application-card__actions,
+.application-credential__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.application-card__credentials {
+  background: var(--theme-elevation-50);
+  border: 1px solid var(--cms-limestone-200);
+  border-radius: 7px;
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+}
+
+.application-card__credentials-heading {
+  align-items: baseline;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.application-views__credentials {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.application-views__credentials > li {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--theme-border-color);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+}
+
+.application-views__credentials > li:last-child {
+  padding-bottom: 0;
+}
+
+.application-credential__identity {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
 .collection-access-picker {
   display: grid;
   gap: 0.65rem;
@@ -14,12 +160,15 @@
 .application-access-dialog input[type='number'] {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
+  border-radius: 6px;
   color: var(--theme-text);
   padding: 0.55rem;
 }
 
 .collection-access-picker__list {
+  background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
+  border-radius: 7px;
   display: grid;
   gap: 0;
   list-style: none;
@@ -64,6 +213,8 @@
 .application-access-dialog {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
+  border-radius: 10px;
+  box-shadow: 0 24px 64px rgb(24 38 24 / 18%);
   display: grid;
   gap: 1rem;
   max-height: min(86vh, 48rem);
@@ -88,4 +239,21 @@
 
 .application-access-dialog > footer {
   justify-content: flex-end;
+}
+
+@media (max-width: 880px) {
+  .application-views__identity-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .application-card__header,
+  .application-views__credentials > li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .application-card__actions,
+  .application-credential__actions {
+    justify-content: flex-start;
+  }
 }
