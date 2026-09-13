@@ -45,7 +45,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-test('renders navigable bulk operations and publication history', async () => {
+test('renders navigable bulk operations and publication history with semantic statuses', async () => {
   render(<OperationsWorkspace client={client()} pollMs={60_000} />)
 
   expect(await screen.findByRole('heading', { name: 'Operations' })).toBeVisible()
@@ -56,7 +56,9 @@ test('renders navigable bulk operations and publication history', async () => {
   collectionLinks.forEach((link) => expect(link).toHaveAttribute('href', `/admin/collections/collections/${collection.id}`))
   expect(screen.getByRole('heading', { name: 'Publications' })).toBeVisible()
   expect(screen.getByText('Version 3')).toBeVisible()
-  expect(screen.getByText('completed · promoted')).toBeVisible()
+  expect(screen.getByText('active').closest('[data-status]')).toHaveAttribute('data-status', 'active')
+  expect(screen.getByText('completed').closest('[data-status]')).toHaveAttribute('data-status', 'completed')
+  expect(screen.getByText('promoted')).toBeVisible()
   expect(screen.queryByText(/65f000000000000000000010/)).toBeNull()
 })
 
