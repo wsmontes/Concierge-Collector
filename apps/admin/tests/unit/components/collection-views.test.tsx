@@ -24,9 +24,11 @@ const publishedDirtyCollection = {
 describe('CollectionViews', () => {
   afterEach(cleanup)
 
-  test('Collection view mostra contagens e não oferece reorder', async () => {
+  test('Collection view mostra contagens, status operacionais e não oferece reorder', async () => {
     render(<CollectionViews collection={publishedDirtyCollection} />)
     expect(screen.getByText('12,000 selected')).toBeVisible()
+    expect(screen.getByText('published').closest('[data-status]')).toHaveAttribute('data-status', 'published')
+    expect(screen.getByText('dirty').closest('[data-status]')).toHaveAttribute('data-status', 'dirty')
     expect(screen.getByRole('tab', { name: 'Draft Changes' })).toBeVisible()
     expect(screen.queryByText(/rank|position|reorder/i)).toBeNull()
     expect(screen.getByRole('button', { name: 'Publish new version' })).toBeEnabled()
@@ -48,6 +50,7 @@ describe('CollectionViews', () => {
       publishedSelectedCount: 8, draftSelectedCount: 8,
     }} />)
 
+    expect(screen.getByText('archived').closest('[data-status]')).toHaveAttribute('data-status', 'archived')
     expect(screen.getByRole('button', { name: 'Restore collection' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: 'Publish new version' })).toBeNull()
   })
@@ -63,23 +66,15 @@ describe('CollectionViews', () => {
     />)
 
     expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
-
-    // Draft health aggregation.
     expect(screen.getByRole('heading', { name: 'Draft' })).toBeVisible()
     expect(screen.getByText('12,000 selected in draft · 11,912 selected published')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Review draft changes' })).toBeVisible()
-
-    // Recent publications come from the paginated versions read and link back.
     expect(screen.getByRole('heading', { name: 'Recent publications' })).toBeVisible()
     expect(screen.getByRole('button', { name: /Version 2/ })).toBeVisible()
     expect(screen.getByRole('button', { name: 'View all versions' })).toBeVisible()
-
-    // Jobs and activity come from the paginated audit read.
     expect(screen.getByRole('heading', { name: 'Jobs and activity' })).toBeVisible()
     expect(screen.getByText(/collection\.published · admin@example\.com/)).toBeVisible()
     expect(screen.getByRole('button', { name: 'View activity' })).toBeVisible()
-
-    // Availability summarizes the pending draft delta and links to members.
     expect(screen.getByRole('heading', { name: 'Availability' })).toBeVisible()
     expect(screen.getByText('1 add · 1 remove pending in the draft.')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Review members' })).toBeVisible()
