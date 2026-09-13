@@ -24,12 +24,13 @@ const activeLabels = (pathname: string): string[] =>
 describe('active item', () => {
   test('highlights the section that owns the route', () => {
     expect(activeLabels('/admin')).toEqual(['Dashboard'])
-    expect(activeLabels('/admin/explorer')).toEqual(['Curation Explorer'])
+    expect(activeLabels('/admin/curations')).toEqual(['Curations'])
     expect(activeLabels('/admin/applications')).toEqual(['Applications'])
     expect(activeLabels('/admin/operations')).toEqual(['Operations'])
   })
 
   test('keeps the section lit on its nested routes', () => {
+    expect(activeLabels('/admin/curations/507fd0a1c9e07f22be2c1d34')).toEqual(['Curations'])
     expect(activeLabels('/admin/collections/collections/507f1f77bcf86cd799439011')).toEqual(['Collections'])
     expect(activeLabels('/admin/collections/consumer-credentials/abc')).toEqual([
       'Consumer Credentials (records)',

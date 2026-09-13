@@ -12,7 +12,8 @@ import { ExplorerSavedViews } from './ExplorerSavedViews'
 import { SelectionToolbar } from './SelectionToolbar'
 import { VirtualCurationTable } from './VirtualCurationTable'
 
-type LoadPage = (input: { cursor: string | null; filters: CurationFilters }) => Promise<CurationSearchPage>
+/** The list page loader, injected by callers (the browser default below). */
+export type LoadPage = (input: { cursor: string | null; filters: CurationFilters }) => Promise<CurationSearchPage>
 
 async function browserLoadPage({ cursor, filters }: { cursor: string | null; filters: CurationFilters }): Promise<CurationSearchPage> {
   const url = new URL('/api/admin/v1/curations', window.location.origin)
@@ -48,13 +49,26 @@ export function CurationExplorer({
   loadPage = browserLoadPage,
   targetCollectionId = null,
   savedViewsClient,
+  initialFilters,
+  onFiltersChange,
 }: {
   loadPage?: LoadPage
   targetCollectionId?: string | null
   savedViewsClient?: SavedCurationViewsClient
+  /**
+   * Filters restored from the URL. Changing the prop (a `popstate` after
+   * Back/Forward) re-applies them; the caller must pass a NEW object only when
+   * the URL actually changed, or the effect would fight the user's input.
+   */
+  initialFilters?: NormalizedCurationFilters
+  onFiltersChange?: (filters: NormalizedCurationFilters) => void
 }) {
-  const [filters, setFilters] = useState<NormalizedCurationFilters>({})
-  const [filterDraft, setFilterDraft] = useState<CurationFilters>({})
+  const [filters, setFilters] = useState<NormalizedCurationFilters>(initialFilters ?? {})
+  // The form mirrors the applied filters, so a URL-restored search must be
+  // visible in the inputs — otherwise the table is filtered with no explanation.
+  const [filterDraft, setFilterDraft] = useState<CurationFilters>(
+    initialFilters ? editableFilters(initialFilters) : {},
+  )
   const [page, setPage] = useState<CurationSearchPage>({ items: [], next_cursor: null, total: null })
   const [selection, setSelection] = useState<SelectionState>({ mode: 'explicit', selected: new Set() })
   const [error, setError] = useState<string | null>(null)
@@ -102,17 +116,38 @@ export function CurationExplorer({
     resetSelection()
     setFilterDraft(editableFilters(normalized))
     setFilters(normalized)
+    // Recorded before the URL changes so the prop echo of our own push does not
+    // re-apply (and re-fetch) the same filters.
+    appliedFiltersKey.current = JSON.stringify(normalized)
+    onFiltersChange?.(normalized)
   }
 
   function clearFilters() {
     resetSelection()
     setFilterDraft({})
     setFilters({})
+    appliedFiltersKey.current = JSON.stringify({})
+    onFiltersChange?.({})
   }
 
   function applySavedView(next: NormalizedCurationFilters) {
     applyFilters(editableFilters(next))
   }
+
+  // External filters arrive from the URL (Back/Forward or a pasted link). The
+  // serialized key both keeps the mount render from re-applying what the initial
+  // state already holds and ignores the echo of our own push.
+  const appliedFiltersKey = useRef(JSON.stringify(initialFilters ?? {}))
+  useEffect(() => {
+    if (!initialFilters) return
+    const key = JSON.stringify(initialFilters)
+    if (key === appliedFiltersKey.current) return
+    appliedFiltersKey.current = key
+    const normalized = normalizeCurationFilters(editableFilters(initialFilters))
+    resetSelection()
+    setFilterDraft(editableFilters(normalized))
+    setFilters(normalized)
+  }, [initialFilters])
 
   function toggle(curationId: string, index: number, shiftKey: boolean) {
     setSelection((current) => {
@@ -210,8 +245,8 @@ export function CurationExplorer({
     <section className="curation-explorer" aria-labelledby="curation-explorer-title" onKeyDown={handleKeyDown}>
       <header>
         <p className="collection-views__eyebrow">Content</p>
-        <h1 id="curation-explorer-title">Curation Explorer</h1>
-        <p>Search and filter Curations, then build a server-side selection for one or more Collection drafts.</p>
+        <h1 id="curation-explorer-title">Curations</h1>
+        <p>Find any Curation, read it in full, and build a server-side selection for one or more Collection drafts.</p>
       </header>
       {targetCollectionId && (
         <aside className="curation-explorer__target" aria-label="Target Collection">

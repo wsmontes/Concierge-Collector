@@ -17,6 +17,7 @@ import { collectorCollectionEndpoints } from './src/payload/endpoints/collector-
 import { applicationEndpoints } from './src/payload/endpoints/applications'
 import { credentialEndpoints } from './src/payload/endpoints/credentials'
 import { explorerEndpoints } from './src/payload/endpoints/explorer'
+import { contentEndpoints } from './src/payload/endpoints/content'
 import { selectionEndpoints } from './src/payload/endpoints/selections'
 import { exportEndpoints } from './src/payload/endpoints/exports'
 import { materializeSelectionTask } from './src/jobs/materializeSelectionTask'
@@ -54,6 +55,7 @@ const collectionsAdminEndpoints = guardFeatureEndpoints('collections_admin', [
   ...operationsAdminEndpoints(),
   ...publishingEndpoints(),
   ...explorerEndpoints(),
+  ...contentEndpoints(),
   ...selectionEndpoints(),
   ...exportEndpoints(),
 ])
@@ -136,6 +138,24 @@ export default buildConfig({
         curationExplorer: {
           Component: '/src/components/shell/CmsAdminViews#ExplorerAdminView',
           path: '/explorer',
+          exact: true,
+        },
+        // `/admin/curations` é o nome canônico da lista (o Explorer virou Curations);
+        // `/admin/curations/<id>` é a tela completa de UM registro. O `exact` da
+        // primeira é o que permite a segunda existir como view separada.
+        curationsWorkspace: {
+          Component: '/src/components/shell/CmsAdminViews#CurationsAdminView',
+          path: '/curations',
+          exact: true,
+        },
+        curationRecord: {
+          Component: '/src/components/shell/CmsAdminViews#CurationRecordAdminView',
+          path: '/curations/:id',
+          exact: true,
+        },
+        entityRecord: {
+          Component: '/src/components/shell/CmsAdminViews#EntityRecordAdminView',
+          path: '/entities/:id',
           exact: true,
         },
         operationsWorkspace: {

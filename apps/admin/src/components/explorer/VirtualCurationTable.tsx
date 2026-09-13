@@ -3,6 +3,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useRef, useState } from 'react'
 import type { AdminCurationRow } from '../../explorer/types'
+import { curationRecordPath } from '../curations/record-paths'
 
 export interface VirtualCurationTableProps {
   height: number
@@ -126,7 +127,17 @@ export function VirtualCurationTable({
                     type="checkbox"
                   />
                 </span>
-                <span role="cell">{row.restaurant_name ?? row.curation_id}</span>
+                <span role="cell">
+                  {/*
+                    The anchor stretches over the whole row (CSS `::after`, inset 0)
+                    so the row is clickable without nesting controls inside a link:
+                    the checkbox cell is lifted above the overlay. `recordPath` is
+                    the Admin route registered for the full Curation record.
+                  */}
+                  <a className="curation-table__record" href={curationRecordPath(row.curation_id)}>
+                    {row.restaurant_name ?? row.curation_id}
+                  </a>
+                </span>
                 <span role="cell">{row.status}</span>
                 <span role="cell">{row.city ?? '—'}</span>
                 <span role="cell">{row.entity_type ?? '—'}</span>

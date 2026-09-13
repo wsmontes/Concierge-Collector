@@ -119,7 +119,7 @@ This is the primary integration gate. Do not weaken its test-database safety gua
 3. Open `/admin/collections/collections/<id>`.
 4. Edit metadata with CAS.
 5. Paginate Members, Draft Changes, Versions and Activity independently.
-6. `Add Curations` navigates to Explorer with the target Collection as a hint.
+6. `Add Curations` navigates to `/admin/curations` with the target Collection as a hint.
 7. Publish preview shows selected/add/remove/available/unavailable counts.
 8. If availability changes, the prior unavailable confirmation is invalidated.
 9. Publish only reports success after the Collection reread confirms the promoted version and clean draft.
@@ -133,6 +133,24 @@ This is the primary integration gate. Do not weaken its test-database safety gua
 3. All-matching selections remain server-side manifests.
 4. Multi-target operation appears in `/admin/operations`.
 5. Cancel on a parent operation cancels only children still before the commit barrier.
+6. `/admin/curations` keeps the filters in the URL: a reload, Back and a pasted link all restore
+   them, and the filter form shows the restored values.
+
+### Curations records
+
+1. `/admin/curations` rows are links to `/admin/curations/<id>`; the old `/admin/explorer` path
+   redirects to `/admin/curations` with `?collection=` preserved.
+2. `/admin/curations/<id>` renders inside the Payload shell (sidebar + header) and shows About,
+   Your curation, Concepts, Media & sources, History and All fields.
+3. All fields lists every stored field, including ones the Admin does not model; searching by a
+   value finds the path that holds it.
+4. Editing a text block saves only that field and bumps `version`; the legacy/unknown fields of the
+   document are preserved.
+5. Saving from a page whose version moved must report the conflict, not a success.
+
+### Entity records
+
+1. `/admin/entities/<id>` exists for a linked Entity (reached from a Curation's About section).
 
 ### Operations
 

@@ -32,7 +32,7 @@ test('Collection detail links into Explorer with the Collection target encoded',
 
   expect(screen.getByRole('link', { name: 'Add Curations' })).toHaveAttribute(
     'href',
-    `/admin/explorer?collection=${collectionId}`,
+    `/admin/curations?collection=${collectionId}`,
   )
 })
 

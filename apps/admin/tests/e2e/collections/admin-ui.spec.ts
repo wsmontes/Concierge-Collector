@@ -130,8 +130,8 @@ live('creates, edits, publishes, archives/restores and targets Explorer through 
   await expect(page.getByRole('button', { name: 'Publish new version' })).toBeVisible()
 
   await page.getByRole('link', { name: 'Add Curations' }).click()
-  await page.waitForURL(new RegExp(`/admin/explorer\\?collection=${collectionId}$`))
-  await expect(page.getByRole('heading', { name: 'Curation Explorer' })).toBeVisible()
+  await page.waitForURL(new RegExp(`/admin/curations\\?collection=${collectionId}$`))
+  await expect(page.getByRole('heading', { name: 'Curations', exact: true })).toBeVisible()
   await expect(page.getByLabel('Target Collection')).toBeVisible()
   await page.getByRole('link', { name: 'Back to Collection' }).click()
   await page.waitForURL(new RegExp(`/admin/collections/collections/${collectionId}$`))

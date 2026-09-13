@@ -69,7 +69,7 @@ liveExplorer('keyboard selection: guarded shortcut, indeterminate header, shift 
   // ---------------------------------------------------------------------------
   // 2. Explorer page renders the three seeded rows.
   // ---------------------------------------------------------------------------
-  await page.goto('/admin/explorer')
+  await page.goto('/admin/curations')
   const table = page.getByRole('table', { name: 'Curations' })
   const status = page.locator('.selection-toolbar').getByRole('status')
   const headerCheckbox = table.getByLabel('Select all loaded Curations')
