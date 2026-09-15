@@ -3,6 +3,18 @@
     "schemas": {
       "AdminCurationRow": {
         "properties": {
+          "audio_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Length of ``sources.audio`` (null when it is not a list).",
+            "title": "Audio Count"
+          },
           "catalog_sequence": {
             "minimum": 1.0,
             "title": "Catalog Sequence",
@@ -19,6 +31,34 @@
             ],
             "title": "City"
           },
+          "concepts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Every concept value stored under ``categories``, de-duplicated and capped — null when ``categories`` is not a stored mapping.",
+            "title": "Concepts"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stored ``createdAt`` (null when the document has none).",
+            "title": "Created At"
+          },
           "curation_id": {
             "title": "Curation Id",
             "type": "string"
@@ -34,6 +74,18 @@
             ],
             "title": "Curator Id"
           },
+          "curator_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stored ``curator.name`` (null when the document has none).",
+            "title": "Curator Name"
+          },
           "entity_type": {
             "anyOf": [
               {
@@ -45,6 +97,24 @@
             ],
             "title": "Entity Type"
           },
+          "has_transcript": {
+            "default": false,
+            "description": "True only when ``transcript`` is a non-empty string.",
+            "title": "Has Transcript",
+            "type": "boolean"
+          },
+          "image_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Length of ``sources.image`` (null when it is not a list).",
+            "title": "Image Count"
+          },
           "restaurant_name": {
             "anyOf": [
               {
@@ -55,6 +125,18 @@
               }
             ],
             "title": "Restaurant Name"
+          },
+          "source_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Keys in the stored ``sources`` mapping (null when it is not a mapping).",
+            "title": "Source Count"
           },
           "status": {
             "title": "Status",
@@ -71,6 +153,18 @@
               }
             ],
             "title": "Updated At"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stored optimistic-locking version.",
+            "title": "Version"
           }
         },
         "required": [
@@ -79,6 +173,48 @@
           "status"
         ],
         "title": "AdminCurationRow",
+        "type": "object"
+      },
+      "AdminFilterCondition": {
+        "additionalProperties": false,
+        "description": "One advanced field condition (``where``).\n\nEvery condition must hold (AND), so the same field may carry several of\nthem. ``field`` is validated against the closed allowlist here — the model\nis the single place both the query parameter and the scan body go through —\nand resolved into its stored Mongo path by ``resolve_filter_field``.",
+        "properties": {
+          "field": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "equals",
+              "not_equals",
+              "contains",
+              "not_contains",
+              "starts_with",
+              "greater_than",
+              "less_than",
+              "exists",
+              "not_exists",
+              "is_empty",
+              "is_not_empty",
+              "before",
+              "after",
+              "contains_any",
+              "contains_all"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field",
+          "op"
+        ],
+        "title": "AdminFilterCondition",
         "type": "object"
       },
       "CatalogFilters": {
@@ -94,6 +230,13 @@
               }
             ],
             "title": "City"
+          },
+          "concepts": {
+            "items": {
+              "$ref": "#/components/schemas/ConceptFilter"
+            },
+            "title": "Concepts",
+            "type": "array"
           },
           "curator_id": {
             "anyOf": [
@@ -131,6 +274,27 @@
             ],
             "title": "Q"
           },
+          "sort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "sequence_asc",
+                  "sequence_desc",
+                  "updated_at_desc",
+                  "updated_at_asc",
+                  "created_at_desc",
+                  "created_at_asc",
+                  "name_asc",
+                  "name_desc"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort"
+          },
           "status": {
             "items": {
               "enum": [
@@ -144,6 +308,18 @@
             },
             "title": "Status",
             "type": "array"
+          },
+          "unlinked": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "True selects Curations with no Entity (``entity_id`` missing, null, empty or whitespace-only); false selects only Curations that have one. Omitted means both.",
+            "title": "Unlinked"
           },
           "updated_from": {
             "anyOf": [
@@ -168,9 +344,31 @@
               }
             ],
             "title": "Updated To"
+          },
+          "where": {
+            "description": "Advanced field conditions, ANDed with every other filter.",
+            "items": {
+              "$ref": "#/components/schemas/AdminFilterCondition"
+            },
+            "title": "Where",
+            "type": "array"
           }
         },
         "title": "CatalogFilters",
+        "type": "object"
+      },
+      "CatalogRecordResponse": {
+        "description": "The complete stored document, JSON-safe and key-for-key faithful.\n\nMongo's ``_id`` is exposed as ``id``; ``ObjectId``/``Decimal128`` become\nstrings, dates become ISO-8601 strings and binary payloads (packed float32\nembedding vectors included) become a ``{\"format\": ..., \"byte_length\": N}``\nsummary. Every other key — unknown and legacy ones included — is returned\nuntouched.",
+        "properties": {
+          "record": {
+            "title": "Record",
+            "type": "object"
+          }
+        },
+        "required": [
+          "record"
+        ],
+        "title": "CatalogRecordResponse",
         "type": "object"
       },
       "CatalogScanPage": {
@@ -355,6 +553,282 @@
         "title": "CmsAuthorization",
         "type": "object"
       },
+      "CmsCurationUpdate": {
+        "additionalProperties": true,
+        "description": "Curation update sent by the CMS: every root key is accepted.\n\nThe domain model stays strict on purpose; this boundary is the one that\nlets the Admin edit a legacy field no screen ever declared (plan §45).\nSystem-managed keys are rejected against the raw request body before this\nmodel is built, so a rejected key never reaches a write.",
+        "properties": {
+          "categories": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurationCategories"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "curator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CuratorInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "curator_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Curator Id"
+          },
+          "embeddings": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embeddings"
+          },
+          "embeddings_metadata": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embeddings Metadata"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
+          "items": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurationNotes"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "restaurant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restaurant Name"
+          },
+          "sources": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "linked",
+                  "active",
+                  "deleted",
+                  "archived"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "transcript": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transcript"
+          },
+          "updatedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedby"
+          }
+        },
+        "title": "CmsCurationUpdate",
+        "type": "object"
+      },
+      "CmsEntityUpdate": {
+        "additionalProperties": true,
+        "description": "Entity update sent by the CMS: every root key is accepted.",
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Flexible data storage",
+            "title": "Data"
+          },
+          "externalId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Externalid"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Metadata"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "active",
+                  "inactive",
+                  "draft"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "sync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "restaurant",
+                  "hotel",
+                  "venue",
+                  "bar",
+                  "cafe",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "updatedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Curator ID who updated this",
+            "title": "Updatedby"
+          }
+        },
+        "title": "CmsEntityUpdate",
+        "type": "object"
+      },
       "CmsExchangeRequest": {
         "description": "Payload accepted by the server-to-server one-shot exchange endpoint.",
         "properties": {
@@ -391,6 +865,369 @@
           "subject"
         ],
         "title": "CmsIntrospectionRequest",
+        "type": "object"
+      },
+      "ConceptFilter": {
+        "description": "One ``concept.<Category>=<value>`` array-contains condition.\n\nThe value must be contained in the stored ``categories.<Category>`` array;\nevery supplied condition must hold (AND).",
+        "properties": {
+          "category": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "value": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "value"
+        ],
+        "title": "ConceptFilter",
+        "type": "object"
+      },
+      "ContentHealthRequest": {
+        "description": "Members the caller already tracks in published Collections.",
+        "properties": {
+          "member_curation_ids": {
+            "description": "Curation ids currently published as Collection members (at most 10000; over the bound the route answers 413).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Member Curation Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "member_curation_ids"
+        ],
+        "title": "ContentHealthRequest",
+        "type": "object"
+      },
+      "ContentHealthResponse": {
+        "description": "Editorial counters for the Admin overview, over non-deleted Curations.\n\n``updated_today`` counts Curations whose ``updatedAt`` falls inside the last\n24 hours from the moment of the request. ``without_collections`` counts the\nCurations that are not in the member ids the caller reported.",
+        "properties": {
+          "synthetic_drafts": {
+            "description": "``curator_type == 'synthetic'`` and ``status == 'draft'``.",
+            "minimum": 0.0,
+            "title": "Synthetic Drafts",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "unlinked": {
+            "description": "No Entity attached (``entity_id`` missing, null or blank).",
+            "minimum": 0.0,
+            "title": "Unlinked",
+            "type": "integer"
+          },
+          "updated_today": {
+            "description": "``updatedAt`` inside the last 24 hours.",
+            "minimum": 0.0,
+            "title": "Updated Today",
+            "type": "integer"
+          },
+          "without_collections": {
+            "description": "Not among the reported Collection member ids.",
+            "minimum": 0.0,
+            "title": "Without Collections",
+            "type": "integer"
+          },
+          "without_images": {
+            "description": "No usable ``sources.image`` list (absent, non-list or empty).",
+            "minimum": 0.0,
+            "title": "Without Images",
+            "type": "integer"
+          },
+          "without_transcript": {
+            "description": "``transcript`` missing, null or empty.",
+            "minimum": 0.0,
+            "title": "Without Transcript",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "unlinked",
+          "synthetic_drafts",
+          "without_images",
+          "without_transcript",
+          "updated_today",
+          "without_collections"
+        ],
+        "title": "ContentHealthResponse",
+        "type": "object"
+      },
+      "CurationCategories": {
+        "additionalProperties": true,
+        "description": "Concept categories - flexible structure loaded from MongoDB concepts collection\nCategories are NOT hardcoded - they come from database and can change dynamically",
+        "properties": {},
+        "title": "CurationCategories",
+        "type": "object"
+      },
+      "CurationNotes": {
+        "description": "Public and private notes",
+        "properties": {
+          "private": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Private"
+          },
+          "public": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public"
+          }
+        },
+        "title": "CurationNotes",
+        "type": "object"
+      },
+      "CurationSummariesRequest": {
+        "description": "A bounded batch of Curations the CMS wants to render as list rows.",
+        "properties": {
+          "curation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Curation Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "curation_ids"
+        ],
+        "title": "CurationSummariesRequest",
+        "type": "object"
+      },
+      "CurationSummariesResponse": {
+        "description": "One ``AdminCurationRow`` per requested Curation, in the requested order.\n\nIds that do not exist are omitted — a stale Collection membership or a\ndeleted Curation renders as nothing instead of failing the whole batch.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminCurationRow"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CurationSummariesResponse",
+        "type": "object"
+      },
+      "CuratorInfo": {
+        "description": "Curator information",
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "CuratorInfo",
+        "type": "object"
+      },
+      "EntityCurationsPage": {
+        "description": "Every stored Curation attached to one Entity, newest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "EntityCurationsPage",
+        "type": "object"
+      },
+      "EntityListPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EntityRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "EntityListPage",
+        "type": "object"
+      },
+      "EntityRow": {
+        "description": "One row of the Admin Entity list.",
+        "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "City derived from the stored ``data.city`` value (null when the document has none).",
+            "title": "City"
+          },
+          "curations_count": {
+            "default": 0,
+            "description": "Curations referencing this Entity, excluding those with status == 'deleted'.",
+            "minimum": 0.0,
+            "title": "Curations Count",
+            "type": "integer"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "EntityRow",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -464,6 +1301,45 @@
           "unavailable_count"
         ],
         "title": "HydrateCurationsResponse",
+        "type": "object"
+      },
+      "Metadata": {
+        "description": "Extensible metadata from multiple sources",
+        "properties": {
+          "data": {
+            "description": "Flexible data storage",
+            "title": "Data",
+            "type": "object"
+          },
+          "importedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Import timestamp",
+            "title": "Importedat"
+          },
+          "source": {
+            "description": "Data source identifier",
+            "title": "Source",
+            "type": "string"
+          },
+          "type": {
+            "description": "Metadata type (e.g., 'google_places', 'michelin')",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "source"
+        ],
+        "title": "Metadata",
         "type": "object"
       },
       "PublicCurationItem": {
@@ -613,6 +1489,44 @@
           "rejected"
         ],
         "title": "ResolveCurationsResponse",
+        "type": "object"
+      },
+      "SyncInfo": {
+        "description": "Client-server synchronization metadata",
+        "properties": {
+          "lastSyncedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last sync timestamp",
+            "title": "Lastsyncedat"
+          },
+          "serverId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Server-side ID",
+            "title": "Serverid"
+          },
+          "status": {
+            "default": "pending",
+            "description": "Sync status",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "SyncInfo",
         "type": "object"
       },
       "UnavailableItem": {
@@ -888,6 +1802,63 @@
         ]
       }
     },
+    "/api/v3/catalog/content-health": {
+      "post": {
+        "description": "Editorial counters for the Admin overview, over non-deleted Curations.",
+        "operationId": "read_content_health_api_v3_catalog_content_health_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentHealthRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Read Content Health",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
     "/api/v3/catalog/curations": {
       "get": {
         "operationId": "search_curations_api_v3_catalog_curations_get",
@@ -974,6 +1945,59 @@
             }
           },
           {
+            "description": "true lists only Curations with no Entity (``entity_id`` missing, null, empty or whitespace-only); false lists only the ones that have one.",
+            "in": "query",
+            "name": "unlinked",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "true lists only Curations with no Entity (``entity_id`` missing, null, empty or whitespace-only); false lists only the ones that have one.",
+              "title": "Unlinked"
+            }
+          },
+          {
+            "description": "Repeated advanced condition, each value a URL-encoded JSON object `{\"field\": \"<path>\", \"op\": \"<op>\", \"value\": <json>}`; every condition must hold.",
+            "in": "query",
+            "name": "where",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Repeated advanced condition, each value a URL-encoded JSON object `{\"field\": \"<path>\", \"op\": \"<op>\", \"value\": <json>}`; every condition must hold.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Where",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "sequence_asc",
+              "enum": [
+                "sequence_asc",
+                "sequence_desc",
+                "updated_at_desc",
+                "updated_at_asc",
+                "created_at_desc",
+                "created_at_asc",
+                "name_asc",
+                "name_desc"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
             "in": "query",
             "name": "cursor",
             "required": false,
@@ -1005,6 +2029,15 @@
             "in": "header",
             "name": "X-CMS-Actor-Id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Repeated array-contains condition on the stored `categories.<Category>` array; every supplied condition must hold. The category may not contain `$`, `.` or a null byte.",
+            "in": "query",
+            "name": "concept.<Category>",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1207,6 +2240,583 @@
           }
         ],
         "summary": "Start Scan",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/curations/summaries": {
+      "post": {
+        "description": "The Admin list row of many Curations in one query, in the requested order.\n\nHumanizes Collection members and draft diffs. Ids that do not exist are\nomitted instead of rejected, so a stale membership renders as nothing.",
+        "operationId": "read_curation_summaries_api_v3_catalog_curations_summaries_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CurationSummariesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurationSummariesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Read Curation Summaries",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/curations/{curation_id}": {
+      "patch": {
+        "description": "Update any editable root key of a stored Curation.\n\nThe domain update pipeline runs unchanged — ownership, version CAS,\nentity denormalization and embeddings bookkeeping included — with the CMS\nactor as its author. Returns the complete updated document, JSON-safe.",
+        "operationId": "update_curation_record_api_v3_catalog_curations__curation_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "curation_id",
+            "required": true,
+            "schema": {
+              "title": "Curation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cms-Actor-Role"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CmsCurationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Update Curation Record",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/curations/{curation_id}/record": {
+      "get": {
+        "description": "Return the complete stored Curation document, JSON-safe.",
+        "operationId": "read_curation_record_api_v3_catalog_curations__curation_id__record_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "curation_id",
+            "required": true,
+            "schema": {
+              "title": "Curation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Read Curation Record",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/entities": {
+      "get": {
+        "description": "Page the stored Entity collection ordered by ``_id`` ascending.\n\n``q`` matches ``name``, ``entity_id`` or ``externalId`` case-insensitively.\n``after_id`` is the ``id`` of the last row of the previous page; when a page\ncomes back full, its last ``id`` is returned as ``next_cursor``.",
+        "operationId": "list_stored_entities_api_v3_catalog_entities_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityListPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "List Stored Entities",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/entities/{entity_id}": {
+      "patch": {
+        "description": "Update any editable root key of a stored Entity.\n\nSame pipeline as the domain PATCH (ordered CAS probe, linked-Curation\ndenormalization) and the same ``If-Match`` convention: 428 when the header\nis missing, 409 on a version conflict.",
+        "operationId": "update_entity_record_api_v3_catalog_entities__entity_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cms-Actor-Role"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CmsEntityUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Update Entity Record",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/entities/{entity_id}/curations": {
+      "get": {
+        "description": "Every stored Curation attached to the Entity, newest ``updatedAt`` first.\n\n``after_id`` is the ``id`` of the last Curation of the previous page; the\nanchor is resolved back to its ``(updatedAt, _id)`` position, so paging\nstays consistent while the collection is written to.",
+        "operationId": "list_entity_curations_api_v3_catalog_entities__entity_id__curations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityCurationsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "List Entity Curations",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/entities/{entity_id}/record": {
+      "get": {
+        "description": "Return the complete stored Entity document, JSON-safe.",
+        "operationId": "read_entity_record_api_v3_catalog_entities__entity_id__record_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Read Entity Record",
         "tags": [
           "cms-catalog"
         ]

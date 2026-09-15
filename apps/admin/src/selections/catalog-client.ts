@@ -35,7 +35,13 @@ export class FastApiSelectionCatalogClient implements SelectionCatalogClient {
         ['draft', 'linked', 'active', 'deleted', 'archived'].includes(status)
       ))
       const { status: _ignoredStatus, ...baseFilters } = filters
-      const result = await this.client.startCatalogScan({ ...baseFilters, ...(statuses ? { status: statuses } : {}) }, actorId)
+      // A materialized selection is a SET: order never changes which Curations
+      // are eligible, so the scan keeps the boundary's own default ordering
+      // (`catalog_sequence`), which is also the list's tie-breaker.
+      const result = await this.client.startCatalogScan(
+        { ...baseFilters, sort: 'sequence_asc', ...(statuses ? { status: statuses } : {}) },
+        actorId,
+      )
       return { maxCatalogSequence: result.max_catalog_sequence, scanToken: result.scan_token }
     } catch (error) {
       throw this.map(error)

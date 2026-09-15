@@ -44,6 +44,29 @@ CMS_SECURITY_SCHEMES = {
     "FastApiAccessCookie": {"type": "apiKey", "in": "cookie", "name": "access_token"},
 }
 
+# Operations whose only credential is the rotating server-to-server CMS
+# service key. The generated ``X-CMS-Service-Key`` header parameter reflects
+# FastAPI's optional typing, so each operation is replaced by the security
+# scheme that actually enforces it; the actor header stays and becomes
+# required, because the dependency rejects a request without it.
+CMS_SERVICE_OPERATIONS = (
+    ("/api/v3/auth/cms/exchange", "post"),
+    ("/api/v3/auth/cms/introspect", "post"),
+    ("/api/v3/catalog/curations", "get"),
+    ("/api/v3/catalog/curations/resolve", "post"),
+    ("/api/v3/catalog/curations/summaries", "post"),
+    ("/api/v3/catalog/content-health", "post"),
+    ("/api/v3/catalog/curations/scan/start", "post"),
+    ("/api/v3/catalog/curations/scan/page", "post"),
+    ("/api/v3/catalog/curations/{curation_id}/record", "get"),
+    ("/api/v3/catalog/curations/{curation_id}", "patch"),
+    ("/api/v3/catalog/entities", "get"),
+    ("/api/v3/catalog/entities/{entity_id}/record", "get"),
+    ("/api/v3/catalog/entities/{entity_id}/curations", "get"),
+    ("/api/v3/catalog/entities/{entity_id}", "patch"),
+    ("/api/v3/internal/curations/hydrate", "post"),
+)
+
 
 def is_allowed_path(path: str) -> bool:
     return path in ALLOWED_PATHS or path.startswith(ALLOWED_PATH_PREFIXES)
@@ -112,25 +135,8 @@ def normalize_selected_operations(paths: dict[str, Any]) -> dict[str, Any]:
     associations = normalized.get("/api/v3/curations/{curation_id}/collections", {}).get("get")
     if associations is not None:
         associations["security"] = HUMAN_SESSION_SECURITY
-    search = normalized.get("/api/v3/catalog/curations", {}).get("get")
-    if search is not None:
-        search["security"] = CMS_SERVICE_SECURITY
-        search["parameters"] = [
-            parameter for parameter in search.get("parameters", []) if parameter.get("name") != "X-CMS-Service-Key"
-        ]
-        for parameter in search["parameters"]:
-            if parameter.get("name") == "X-CMS-Actor-Id":
-                parameter["required"] = True
-                parameter["schema"] = {"type": "string"}
-    for path in (
-        "/api/v3/auth/cms/exchange",
-        "/api/v3/auth/cms/introspect",
-        "/api/v3/catalog/curations/resolve",
-        "/api/v3/catalog/curations/scan/start",
-        "/api/v3/catalog/curations/scan/page",
-        "/api/v3/internal/curations/hydrate",
-    ):
-        operation = normalized.get(path, {}).get("post")
+    for path, method in CMS_SERVICE_OPERATIONS:
+        operation = normalized.get(path, {}).get(method)
         if operation is None:
             continue
         operation["security"] = CMS_SERVICE_SECURITY

@@ -255,15 +255,14 @@ async def get_entity_images(
     }
 
 
-@router.patch("/{entity_id}", response_model=Entity)
-def update_entity(
-    entity_id: str,
-    updates: EntityUpdate,
-    if_match: Optional[str] = Header(None, alias="If-Match"),
-    db: Database = Depends(get_database),
-    auth: dict = Depends(require_role("curator")),
-):
-    """Update entity with optimistic locking"""
+def apply_entity_update(db: Database, entity_id: str, updates: EntityUpdate, if_match: Optional[str]) -> dict:
+    """The ONE entity update pipeline; returns the raw updated document.
+
+    PATCH /entities (this module) and the CMS boundary
+    (app/api/catalog_records.py) both call this function so the ordered CAS
+    probe and the curation denormalization can never fork into a second
+    implementation.
+    """
     if not if_match:
         raise HTTPException(status_code=428, detail="If-Match header required")
 
@@ -296,7 +295,19 @@ def update_entity(
         raise HTTPException(status_code=409, detail="Version conflict or not found")
 
     refresh_linked_curation_projections(db, result, requested_id=entity_id)
-    return Entity(**result)
+    return result
+
+
+@router.patch("/{entity_id}", response_model=Entity)
+def update_entity(
+    entity_id: str,
+    updates: EntityUpdate,
+    if_match: Optional[str] = Header(None, alias="If-Match"),
+    db: Database = Depends(get_database),
+    auth: dict = Depends(require_role("curator")),
+):
+    """Update entity with optimistic locking"""
+    return Entity(**apply_entity_update(db, entity_id, updates, if_match))
 
 
 @router.delete("/{entity_id}", status_code=204)

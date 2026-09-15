@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, test } from 'vitest'
 import { CollectionViews } from '../../../src/components/collections/CollectionViews'
 import { OverviewView } from '../../../src/components/overview/OverviewView'
+import { makeRows } from '../../support/factories'
 
 /**
  * Collection management views are presentational: they render only what the
@@ -61,7 +62,10 @@ describe('CollectionViews', () => {
       preview={{
         versions: [{ version: 2, selectedCount: 11_912, membershipHash: 'a'.repeat(64), publishedAt: '2026-08-18T12:00:00.000Z' }],
         activity: [{ eventType: 'collection.published', actorId: 'admin@example.com', createdAt: '2026-08-18T12:00:00.000Z' }],
-        diff: [{ curationId: 'c-add', desiredState: 'add', operationId: 'op-1' }, { curationId: 'c-remove', desiredState: 'remove', operationId: 'op-2' }],
+        diff: [
+          { curationId: 'c-add', desiredState: 'add', operationId: 'op-1', summary: null },
+          { curationId: 'c-remove', desiredState: 'remove', operationId: 'op-2', summary: null },
+        ],
       }}
     />)
 
@@ -112,5 +116,25 @@ describe('CollectionViews', () => {
     expect(screen.getByText('No recent activity.')).toBeVisible()
     expect(screen.getByText('No draft changes pending.')).toBeVisible()
     expect(screen.queryByText(/rank|position|reorder/i)).toBeNull()
+  })
+
+  test('summarizes the relationships of the loaded members and says the page is bounded', () => {
+    const members = [
+      { curationId: 'cur_1', summary: makeRows(1, { curation_id: 'cur_1', restaurant_name: 'Ritz', curator_id: 'admin-1' })[0] },
+      { curationId: 'cur_2', summary: makeRows(1, { curation_id: 'cur_2', restaurant_name: 'Ritz', curator_id: 'admin-2' })[0] },
+    ]
+    render(<CollectionViews
+      collection={publishedDirtyCollection}
+      pagination={{ members: { hasMore: true } }}
+      preview={{ members }}
+    />)
+
+    expect(screen.getByRole('heading', { name: 'Relationships' })).toBeVisible()
+    expect(screen.getByText('Based on the first 2 members.')).toBeVisible()
+    expect(screen.getByText('Entities represented')).toBeVisible()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Members' }))
+    const memberList = screen.getByRole('list', { name: 'Collection members' })
+    expect(within(memberList).getAllByText('Ritz')).toHaveLength(2)
   })
 })

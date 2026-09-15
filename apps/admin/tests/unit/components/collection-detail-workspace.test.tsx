@@ -32,9 +32,9 @@ function client(overrides: Partial<CollectionsAdminClient> = {}): CollectionsAdm
     publishPreview: vi.fn(),
     publish: vi.fn(),
     restoreVersionAsDraft: vi.fn(),
-    members: vi.fn().mockResolvedValue({ items: [{ curationId: 'c1' }], nextCursor: 'm2' }),
+    members: vi.fn().mockResolvedValue({ items: [{ curationId: 'c1', summary: null }], nextCursor: 'm2' }),
     draftDiff: vi.fn().mockResolvedValue({
-      items: [{ curationId: 'c2', desiredState: 'add', operationId: 'op1' }],
+      items: [{ curationId: 'c2', desiredState: 'add', operationId: 'op1', summary: null }],
       nextCursor: null,
     }),
     versions: vi.fn().mockResolvedValue({
@@ -72,8 +72,8 @@ test('loads Collection and tab previews from the live cursor endpoints', async (
 })
 
 test('appends the next members page instead of replacing the first page', async () => {
-  const first: MemberRowDto[] = [{ curationId: 'c1' }]
-  const second: MemberRowDto[] = [{ curationId: 'c2' }]
+  const first: MemberRowDto[] = [{ curationId: 'c1', summary: null }]
+  const second: MemberRowDto[] = [{ curationId: 'c2', summary: null }]
   const members = vi.fn()
     .mockResolvedValueOnce({ items: first, nextCursor: 'm2' })
     .mockResolvedValueOnce({ items: second, nextCursor: null })

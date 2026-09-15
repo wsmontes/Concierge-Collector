@@ -1,0 +1,240 @@
+/* Editorial content layer: the Universal Field Inspector ("All fields"), its
+   field rows and the generic per-type field editors. The class vocabulary is
+   frozen — see docs/Concierge Admin — Plano completo de CMS editorial…,
+   sections 9 (Field Registry), 10 (Universal Record Inspector) and 31
+   (Editing Engine). Only the Concierge brand tokens and Payload's --theme-*
+   mapping carry colour; no palette value is hardcoded here. */
+
+.content-inspector {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.content-inspector__heading {
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+.content-inspector__search {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  color: var(--theme-text);
+  padding: 0.55rem;
+  width: 100%;
+}
+
+.content-inspector__tree,
+.content-inspector__declared ul {
+  border: 1px solid var(--theme-border-color);
+  border-radius: 8px;
+  display: grid;
+  list-style: none;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.content-inspector__tree {
+  overflow: hidden;
+}
+
+.content-inspector__row {
+  align-items: baseline;
+  border-top: 1px solid var(--theme-elevation-100);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.75rem;
+  min-height: 40px;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+}
+
+.content-inspector__row:first-child {
+  border-top: 0;
+}
+
+.content-inspector__row:hover {
+  background: var(--theme-elevation-50);
+}
+
+.content-inspector__empty {
+  color: var(--cms-olive-600);
+  margin: 0;
+  padding: 0.75rem;
+}
+
+.content-inspector__declared {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.content-inspector__declared h3 {
+  color: var(--cms-olive-700);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.content-inspector__declared ul {
+  border-style: dashed;
+}
+
+/* A declared-but-empty row carries neither a value nor an editor: it only
+   proves the registry knows a field the record does not hold. */
+.content-inspector__declared .content-inspector__row {
+  color: var(--cms-olive-600);
+}
+
+.content-field {
+  min-width: 0;
+}
+
+.content-field__label {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.content-field__path {
+  color: var(--cms-olive-600);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+}
+
+.content-field__value {
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+/* Owner is the record family the field belongs to; `system` rows are the
+   only ones an editor can never write. */
+.content-field__owner {
+  border: 1px solid var(--theme-border-color);
+  border-radius: 999px;
+  color: var(--cms-olive-700);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 0.05rem 0.45rem;
+  text-transform: uppercase;
+}
+
+.content-inspector__row[data-owner='system'] .content-field__owner {
+  border-color: var(--cms-olive-900);
+  color: var(--cms-olive-900);
+}
+
+.content-field__derived,
+.content-field__system {
+  color: var(--cms-olive-600);
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+/* A field the registry has never heard of: shown, explained, never flagged. */
+.content-field__hint {
+  color: var(--cms-olive-600);
+  font-size: 0.75rem;
+}
+
+.content-field__actions {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.content-field__actions > * {
+  margin: 0;
+}
+
+/* An open editor is not a row action: it takes the whole line below the
+   field's own label, path and value preview. */
+.content-field__actions:has(.content-editor) {
+  flex: 1 1 100%;
+  margin-left: 0;
+}
+
+/* Generic editors. One component per field type renders `.content-editor`
+   plus a `.content-editor--<fieldType>` modifier, so a long or structured
+   value can claim more room without every editor restating the box. */
+.content-editor {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.content-editor__input {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  color: var(--theme-text);
+  min-height: 40px;
+  padding: 0.5rem 0.6rem;
+  width: 100%;
+}
+
+/* A rendered value rather than a control: the field is shown, never written. */
+p.content-editor__input {
+  background: var(--theme-elevation-50);
+  border-style: dashed;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 0.6rem;
+}
+
+.content-editor__actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.content-editor__actions > * {
+  margin: 0;
+}
+
+.content-editor__hint {
+  color: var(--cms-olive-600);
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.content-editor__error {
+  color: var(--theme-error-500, var(--cms-olive-900));
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.content-editor--longText .content-editor__input,
+.content-editor--json .content-editor__input {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.content-editor--boolean .content-editor__input {
+  accent-color: var(--cms-olive-700);
+  justify-self: start;
+  min-height: auto;
+  width: auto;
+}
+
+.content-editor--binary .content-editor__input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Mirrors admin.css: stack the row's own controls once the fields column is
+   narrower than the two-line layout it was designed for. */
+@media (max-width: 720px) {
+  .content-inspector__row {
+    gap: 0.25rem 0.5rem;
+  }
+
+  .content-field__actions,
+  .content-editor__actions {
+    margin-left: 0;
+    width: 100%;
+  }
+}

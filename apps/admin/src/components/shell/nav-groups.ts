@@ -26,8 +26,9 @@ export const CMS_NAV_GROUPS: readonly CmsNavGroup[] = [
   {
     label: 'Content',
     items: [
+      { href: '/admin/curations', label: 'Curations' },
+      { href: '/admin/entities', label: 'Entities' },
       { href: '/admin/collections/collections', label: 'Collections' },
-      { href: '/admin/explorer', label: 'Curation Explorer' },
     ],
   },
   {

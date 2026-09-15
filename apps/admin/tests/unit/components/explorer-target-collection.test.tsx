@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { CollectionViews } from '../../../src/components/collections/CollectionViews'
-import { CurationExplorer } from '../../../src/components/explorer/CurationExplorer'
+import { CurationsWorkspace } from '../../../src/components/curations/CurationsWorkspace'
 import { BulkActionDialog } from '../../../src/components/operations/BulkActionDialog'
 import type { SavedCurationViewsClient } from '../../../src/explorer/saved-views-client'
 
@@ -17,7 +17,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-test('Collection detail links into Explorer with the Collection target encoded', () => {
+test('Collection detail links into Curations with the Collection target encoded', () => {
   render(<CollectionViews collection={{
     id: collectionId,
     title: 'Victoria',
@@ -32,12 +32,12 @@ test('Collection detail links into Explorer with the Collection target encoded',
 
   expect(screen.getByRole('link', { name: 'Add Curations' })).toHaveAttribute(
     'href',
-    `/admin/explorer?collection=${collectionId}`,
+    `/admin/curations?collection=${collectionId}`,
   )
 })
 
-test('Explorer exposes a safe target context and a way back to the Collection', async () => {
-  render(<CurationExplorer
+test('Curations exposes a safe target context and a way back to the Collection', async () => {
+  render(<CurationsWorkspace
     targetCollectionId={collectionId}
     savedViewsClient={savedViewsClient}
     loadPage={vi.fn().mockResolvedValue({ items: [], next_cursor: null, total: 0 })}

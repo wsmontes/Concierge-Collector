@@ -1,0 +1,306 @@
+/* Entities: the catalog list (plan §20), its filters, the virtualized table and
+   the side preview. Only the Concierge brand tokens and Payload's --theme-*
+   mapping carry colour; no palette value is hardcoded here. */
+
+.entities-workspace {
+  max-width: 1320px;
+}
+
+/* Higher specificity than admin.css' legacy `.curation-explorer form` rule, so
+   the filter grid keeps its own layout on every surface. */
+.entities-workspace form.entities-filter-form {
+  display: grid;
+}
+
+.entities-filter-form {
+  border: 1px solid var(--theme-border-color);
+  border-radius: 8px;
+  gap: 0.85rem;
+  padding: 0.9rem;
+}
+
+.entities-filter-form__header h2,
+.entities-filter-form__header p {
+  margin: 0;
+}
+
+.entities-filter-form__header h2 {
+  font-size: 1rem;
+}
+
+.entities-filter-form__header p {
+  color: var(--cms-olive-600);
+  font-size: 0.875rem;
+  margin-top: 0.2rem;
+}
+
+.entities-filter-form__fields {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(15rem, 2fr) minmax(9rem, 1fr) minmax(9rem, 1fr);
+}
+
+.entities-filter-form label {
+  display: grid;
+  font-size: 0.875rem;
+  font-weight: 600;
+  gap: 0.35rem;
+}
+
+.entities-filter-form input,
+.entities-filter-form select {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  border-radius: 6px;
+  color: var(--theme-text);
+  padding: 0.55rem 0.65rem;
+}
+
+.entities-filter-form__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.entities-filter-form__actions > * {
+  margin: 0;
+}
+
+.entity-table {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.entity-table:focus-visible {
+  outline: 2px solid var(--cms-olive-700);
+  outline-offset: 2px;
+}
+
+.entity-table__header,
+.entity-table__row {
+  align-items: center;
+  display: grid;
+  gap: 0.75rem;
+  padding: 0 0.85rem;
+}
+
+.entity-table__header {
+  background: var(--cms-limestone-100);
+  border-bottom: 1px solid var(--theme-border-color);
+  color: var(--cms-olive-800);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  min-height: 2.5rem;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 2;
+}
+
+.entity-table__row {
+  border-bottom: 1px solid var(--cms-limestone-200);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.entity-table__row:hover {
+  background: var(--theme-elevation-50);
+}
+
+.entity-table__row[data-active='true'] {
+  background: var(--theme-elevation-50);
+  box-shadow: inset 3px 0 0 var(--cms-olive-700);
+}
+
+.entity-table__row [role='cell'] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entity-table__identity {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.entity-table__name {
+  color: var(--theme-text);
+  font-weight: 600;
+}
+
+.entity-table__technical {
+  color: var(--cms-olive-600);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+}
+
+.entity-table__link {
+  color: var(--cms-olive-800);
+  text-decoration: underline;
+}
+
+.entities-workspace__pagination {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.entities-workspace__pagination > button {
+  margin: 0;
+}
+
+.entity-drawer {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.85rem;
+  grid-template-rows: auto 1fr auto;
+  max-height: 80vh;
+  max-width: 26rem;
+  padding: 1rem;
+  position: fixed;
+  right: 1.25rem;
+  top: 5rem;
+  width: min(26rem, calc(100vw - 2.5rem));
+  z-index: 20;
+}
+
+.entity-drawer__header {
+  align-items: start;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.entity-drawer__heading h2 {
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+.entity-drawer__subtitle {
+  margin: 0.35rem 0 0;
+}
+
+.entity-drawer__close {
+  background: none;
+  border: 1px solid var(--theme-border-color);
+  border-radius: 6px;
+  color: var(--theme-text);
+  cursor: pointer;
+  padding: 0.3rem 0.6rem;
+}
+
+.entity-drawer__close:hover {
+  background: var(--theme-elevation-50);
+}
+
+.entity-drawer__state {
+  color: var(--cms-olive-600);
+  margin: 0;
+}
+
+.entity-drawer__state--error {
+  color: var(--theme-error-500, var(--cms-olive-800));
+}
+
+.entity-drawer__body {
+  display: grid;
+  gap: 0.85rem;
+  overflow-y: auto;
+}
+
+.entity-drawer__facts {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.entity-drawer__facts div {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(6rem, 1fr) minmax(0, 2fr);
+}
+
+.entity-drawer__facts dt {
+  color: var(--cms-olive-600);
+  font-size: 0.8125rem;
+}
+
+.entity-drawer__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.entity-drawer__value {
+  margin: 0;
+}
+
+.entity-drawer__muted {
+  color: var(--cms-olive-600);
+  margin: 0;
+}
+
+.entity-drawer__link {
+  color: var(--cms-olive-800);
+  text-decoration: underline;
+}
+
+.entity-drawer__sources {
+  display: grid;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.entity-drawer__sources li {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.entity-drawer__actions {
+  border-top: 1px solid var(--theme-border-color);
+  padding-top: 0.75rem;
+}
+
+.entity-drawer__primary {
+  color: var(--cms-olive-800);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+  .entities-filter-form__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .entity-drawer {
+    max-height: none;
+    max-width: none;
+    right: 0;
+    top: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .entities-filter-form__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .entities-filter-form__actions,
+  .entities-workspace__pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .entities-workspace__pagination > button {
+    width: 100%;
+  }
+}

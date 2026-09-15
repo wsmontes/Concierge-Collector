@@ -1,6 +1,6 @@
 import type { AdminCurationRow } from '../../src/explorer/types'
 
-export function makeRows(count: number): AdminCurationRow[] {
+export function makeRows(count: number, overrides: Partial<AdminCurationRow> = {}): AdminCurationRow[] {
   return Array.from({ length: count }, (_, index) => ({
     catalog_sequence: index + 1,
     curation_id: `curation-${index + 1}`,
@@ -10,6 +10,7 @@ export function makeRows(count: number): AdminCurationRow[] {
     entity_type: 'restaurant',
     curator_id: 'admin-1',
     updated_at: null,
+    ...overrides,
   }))
 }
 

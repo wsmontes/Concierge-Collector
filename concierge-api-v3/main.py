@@ -32,6 +32,7 @@ from app.api import (
     openai_compat,
     capture,
     catalog,
+    catalog_records,
     internal_curations,
     internal_consumer_usage,
     curators,
@@ -148,6 +149,11 @@ app.include_router(
 )
 app.include_router(distribution.router, prefix="/api/v3", dependencies=_distribution_enabled)
 app.include_router(catalog.router, prefix="/api/v3", dependencies=_catalog_scan_enabled)
+# Acesso universal aos dados (Fase 0 do CMS editorial): leituras completas de
+# Curation/Entity para o Inspector. Fica FORA do gate catalog_scan de
+# propósito — o Admin precisa renderizar 100% de um registro, não apenas a
+# listagem do Explorer.
+app.include_router(catalog_records.router, prefix="/api/v3")
 app.include_router(internal_curations.router, prefix="/api/v3")
 app.include_router(internal_consumer_usage.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")

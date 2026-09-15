@@ -222,6 +222,19 @@ Os erros de imagem no console têm dois significados distintos e ambos são o co
 - [x] ~~Saved views (auditoria, ponto 20)~~ ✓ — chips "My drafts" (status=draft + curator atual), "Unlinked" (param novo `unlinked` no /curations/search) e "Recently added" (param `created_after`, janela 24h = badge "novo") na view de curations; toggle liga/desliga, My drafts deriva dos selects (mudança manual desliga o chip); fallback local também filtra. ⚠️ "Sync issues" (4º exemplo da auditoria) fica pendente — exige juntar estado local de fila/conflitos à listagem
 - [x] ~~Empty states tipados por seção~~ ✓ — templates no-curations (rate_review), no-entities (storefront), no-curator (person_off) no emptyStateManager; 4 blocos inline do uiManager trocados pelos presets
 
+## Admin editorial — plano de 2026-09-14
+
+Status completo, verificação executada e defeitos encontrados: `docs/reviews/2026-09-14-editorial-admin-universal-record-access.md`.
+Entregue: Fase 0 (field registry/inspector/editors), Fase 1 (`/admin/curations` + `/admin/curations/<id>`), Fase 2 (`/admin/entities` + detalhe), Fase 3 (paleta ⌘K + busca avançada por campo/operador/valor), Fase 4 (members e draft diff humanizados, preview a partir da Collection, card de relationships), Fase 9 (Content Health no `/admin`) e a fronteira `records/*` (18 paths no contrato). `/admin/explorer` virou redirect de compatibilidade.
+
+- [ ] **`draftSelectedCount` não é mantido em operações `mode: 'explicit'`** — `src/operations/apply-draft-operation.ts` incrementa o contador só no caminho `selection`; um "add" explícito commita a mudança (item `applied`, `draftRevision` sobe) mas o header continua dizendo "0 selected". Medido nos dois modos no stack local: a operação `selection` mostrou "1 selected", a `explicit` não. Fix correto precisa do delta de mudanças (re-add de membro existente não incrementa). Descoberto ao rodar o E2E `collections/admin-ui.spec.ts` (falha na linha 111); caminho não tocado pelo plano editorial.
+- [ ] **Integração do admin com Mongo local: 4 falhas pré-existentes** (`publish-concurrency.int.test.ts` ×2, `selection-manifest.int.test.ts` ×2). Medido contra um worktree limpo em HEAD: falha igual, não é regressão do plano.
+- [ ] **`verify:full` não foi rodado ponta a ponta** neste trabalho; os specs relevantes rodaram isolados (`curations/keyboard.spec.ts` ✓ antes da onda 3; `collections/admin-ui.spec.ts` ✗ pelo item acima).
+- [ ] Admin: mídia — thumbnails/originais precisam de uma fronteira que sirva mídia; hoje a seção Media & sources mostra só o que está armazenado (não inventa URL).
+- [ ] Admin: reatribuição de curador precisa de um endpoint de diretório de usuários; hoje `curator_id` é read-only com essa razão explícita.
+- [ ] Admin: coluna "Collections" na lista de Entities e o filtro "sem Collections" na lista de Curations precisam do join de membership do CMS exposto como consulta de lista (o contador do dashboard já existe via `POST /catalog/content-health`).
+- [ ] Admin: diff de versões no History precisa de snapshots — não existem para Curation; a tela diz isso. O lado de Collections tem versões e o draft diff já é humanizado.
+
 ## Cadência
 
 - Commitar + pushar **de tempos em tempos** durante sessões longas (a cada ~30 min com mudanças não commitadas) — sessão atual usa lembrete recorrente

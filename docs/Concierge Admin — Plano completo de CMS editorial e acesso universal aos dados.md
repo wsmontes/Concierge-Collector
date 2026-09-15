@@ -1176,6 +1176,20 @@ Exemplos:
 
 Advanced Search + sort + configurable columns transforma a lista em ferramenta de exploração real.
 
+## Default publicado
+
+O **servidor** mantém o default histórico: `sort` ausente = `sequence_asc`
+(`catalog_sequence` ASC + `curation_id` ASC), byte-compatível com a paginação e
+com o cursor que já existiam — nenhum consumidor atual (o Collector inclusive)
+muda de ordem. A lista editorial do Admin pede `updated_at_desc`
+explicitamente (o BFF do Admin envia `sort`), e o allowlist publicado é:
+
+`sequence_asc`, `sequence_desc`, `updated_at_desc`, `updated_at_asc`,
+`created_at_desc`, `created_at_asc`, `name_asc`, `name_desc`.
+
+O cursor assinado carrega o sort junto dos filtros: um cursor emitido para uma
+ordenação apresentado com outra é recusado (409), nunca reinterpretado.
+
 ---
 
 # 30. Edição de relationships

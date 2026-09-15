@@ -17,6 +17,8 @@ import { collectorCollectionEndpoints } from './src/payload/endpoints/collector-
 import { applicationEndpoints } from './src/payload/endpoints/applications'
 import { credentialEndpoints } from './src/payload/endpoints/credentials'
 import { explorerEndpoints } from './src/payload/endpoints/explorer'
+import { recordEndpoints } from './src/payload/endpoints/records'
+import { healthEndpoints } from './src/payload/endpoints/health'
 import { selectionEndpoints } from './src/payload/endpoints/selections'
 import { exportEndpoints } from './src/payload/endpoints/exports'
 import { materializeSelectionTask } from './src/jobs/materializeSelectionTask'
@@ -54,6 +56,8 @@ const collectionsAdminEndpoints = guardFeatureEndpoints('collections_admin', [
   ...operationsAdminEndpoints(),
   ...publishingEndpoints(),
   ...explorerEndpoints(),
+  ...recordEndpoints(),
+  ...healthEndpoints(),
   ...selectionEndpoints(),
   ...exportEndpoints(),
 ])
@@ -116,6 +120,19 @@ export default buildConfig({
       titleSuffix: '— Concierge',
     },
     components: {
+      // A paleta ⌘K NÃO pode morar dentro da nav: o `NavWrapper` marca a
+      // sidebar como `inert` enquanto ela está fechada e nada dentro de um
+      // subtree inert aceita foco (medido em browser real, 390 px e 1440 px).
+      // `providers` envolve a árvore inteira do admin, fora de qualquer inert.
+      providers: [
+        { path: '/src/components/shell/CmsProviders', exportName: 'CmsProviders' },
+      ],
+      // O Dashboard do Payload é fixo em `/admin` (segments.length === 0 não
+      // consulta `admin.components.views`), então a única extensão suportada é
+      // `beforeDashboard` — que renderiza DENTRO do template autenticado.
+      beforeDashboard: [
+        { path: '/src/components/overview/ContentHealthView', exportName: 'ContentHealthView' },
+      ],
       Nav: {
         path: '/src/components/shell/CmsNav',
         exportName: 'CmsNav',
@@ -138,6 +155,19 @@ export default buildConfig({
           path: '/explorer',
           exact: true,
         },
+        curationsList: {
+          Component: '/src/components/shell/CmsAdminViews#CurationsAdminView',
+          path: '/curations',
+          exact: true,
+        },
+        // O detalhe usa `:id` porque `isPathMatchingRoute` roda o path por
+        // `path-to-regexp`: com `exact: true` a view casa exatamente o segmento
+        // resolvido (`/curations/<id>`) e os irmãos continuam sob auth do Payload.
+        curationRecord: {
+          Component: '/src/components/shell/CmsAdminViews#CurationDetailAdminView',
+          path: '/curations/:id',
+          exact: true,
+        },
         operationsWorkspace: {
           Component: '/src/components/shell/CmsAdminViews#OperationsAdminView',
           path: '/operations',
@@ -146,6 +176,16 @@ export default buildConfig({
         consumerApplications: {
           Component: '/src/components/shell/CmsAdminViews#ApplicationsAdminView',
           path: '/applications',
+          exact: true,
+        },
+        entitiesList: {
+          Component: '/src/components/shell/CmsAdminViews#EntitiesAdminView',
+          path: '/entities',
+          exact: true,
+        },
+        entityRecord: {
+          Component: '/src/components/shell/CmsAdminViews#EntityDetailAdminView',
+          path: '/entities/:id',
           exact: true,
         },
       },

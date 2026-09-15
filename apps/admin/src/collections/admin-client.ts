@@ -1,3 +1,4 @@
+import type { AdminCurationRow } from '../explorer/types'
 import type { CollectionDraftState, CollectionLifecycle } from './types'
 
 export interface AdminCollectionRecord {
@@ -19,8 +20,14 @@ export interface CursorPage<T> {
   nextCursor: string | null
 }
 
-export interface MemberRowDto { curationId: string; available?: boolean; reasonCode?: string }
-export interface DraftDiffRowDto { curationId: string; desiredState: 'add' | 'remove'; operationId: string }
+/** A member or draft change plus the catalog row that humanizes it; `null` when the catalog no longer holds it. */
+export interface MemberRowDto { curationId: string; summary: AdminCurationRow | null }
+export interface DraftDiffRowDto {
+  curationId: string
+  desiredState: 'add' | 'remove'
+  operationId: string
+  summary: AdminCurationRow | null
+}
 export interface VersionRowDto { version: number; selectedCount: number; membershipHash: string; publishedAt?: string }
 export interface ActivityRowDto { eventType: string; actorId: string; createdAt: string }
 

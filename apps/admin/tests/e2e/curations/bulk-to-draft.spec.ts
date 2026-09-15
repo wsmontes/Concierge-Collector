@@ -123,7 +123,7 @@ liveBulk('applies an all-matching selection across Collections without ever ship
   // ---------------------------------------------------------------------------
   // 3. Build the all-matching selection in the Explorer and capture the POSTs.
   // ---------------------------------------------------------------------------
-  await page.goto('/admin/explorer')
+  await page.goto('/admin/curations')
   const table = page.getByRole('table', { name: 'Curations' })
   await expect(table.locator('.curation-table__row input[type="checkbox"]')).toHaveCount(3, { timeout: 30_000 })
 
@@ -186,7 +186,7 @@ liveBulk('applies an all-matching selection across Collections without ever ship
   }
 
   await page.goto('/admin')
-  await page.goto('/admin/explorer')
+  await page.goto('/admin/curations')
 
   // ---------------------------------------------------------------------------
   // 5. The worker finishes the bulk intent; the Collection draft accumulates.

@@ -421,14 +421,24 @@ def get_curation(
     return Curation(**result)
 
 
-@router.patch("/{curation_id}", response_model=Curation)
-def update_curation(
+def update_curation_document(
+    db: Database,
     curation_id: str,
     updates: CurationUpdate,
-    if_match: Optional[str] = Header(None, alias="If-Match"),
-    db: Database = Depends(get_database),
-    auth: dict = Depends(require_role("curator")),
-):
+    auth: dict,
+    if_match: Optional[str] = None,
+    projection: dict | None = CURATION_RESPONSE_PROJECTION,
+) -> dict:
+    """The ONE curation update pipeline; returns the raw updated document.
+
+    PATCH /curations (this module) and the CMS boundary
+    (app/api/catalog_records.py) both call this function, so ownership, CAS,
+    denormalization and embeddings/backfill bookkeeping can never fork into a
+    second implementation. ``auth`` is the already resolved actor dict — the
+    domain route gets it from ``require_role``, the CMS route from the
+    service-key + actor headers. ``projection`` narrows the returned document
+    (the domain response never carries embedding payloads).
+    """
     current = find_curation(db, curation_id, projection=CURATION_RESPONSE_PROJECTION)
     if not current:
         raise HTTPException(status_code=404, detail="Curation not found")
@@ -551,12 +561,23 @@ def update_curation(
     result = db.curations.find_one_and_update(
         write_filter,
         {"$set": update_data},
-        projection=CURATION_RESPONSE_PROJECTION,
+        projection=projection,
         return_document=True,
     )
     if not result:
         raise HTTPException(status_code=409, detail="Version conflict or curation not found")
-    return Curation(**result)
+    return result
+
+
+@router.patch("/{curation_id}", response_model=Curation)
+def update_curation(
+    curation_id: str,
+    updates: CurationUpdate,
+    if_match: Optional[str] = Header(None, alias="If-Match"),
+    db: Database = Depends(get_database),
+    auth: dict = Depends(require_role("curator")),
+):
+    return Curation(**update_curation_document(db, curation_id, updates, auth, if_match))
 
 
 @router.delete("/{curation_id}", status_code=204)

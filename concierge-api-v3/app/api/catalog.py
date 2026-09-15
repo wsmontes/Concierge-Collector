@@ -1,18 +1,26 @@
 """Payload-only, bounded catalog selection endpoints."""
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+import json
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 from pymongo.database import Database
 
 from app.core.database import get_database
 from app.core.security import verify_cms_service
 from app.core.config import settings
 from app.models.catalog import (
+    DEFAULT_CURATION_SORT,
+    AdminFilterCondition,
     CatalogFilters,
     CatalogSearchPage,
     CatalogScanPage,
     CatalogScanPageRequest,
     CatalogScanStart,
     CatalogScanStartRequest,
+    ConceptFilter,
+    CurationSort,
     ResolveCurationsRequest,
     ResolveCurationsResponse,
 )
@@ -25,6 +33,10 @@ from app.services.catalog_service import (
 )
 
 router = APIRouter(prefix="/catalog", tags=["cms-catalog"])
+
+# Concepts reach the list as repeated dynamic query keys (`concept.Mood=Casual`),
+# so the parameter cannot be declared as a typed one; see `_query_concepts`.
+CONCEPT_QUERY_PREFIX = "concept."
 
 
 @router.post("/curations/resolve", response_model=ResolveCurationsResponse)
@@ -47,13 +59,105 @@ def _actor(actor_id: str | None) -> str:
     return actor_id.strip()
 
 
-@router.get("/curations", response_model=CatalogSearchPage)
+def _query_concepts(request: Request) -> list[ConceptFilter]:
+    """Repeated ``concept.<Category>=<value>`` conditions, validated by the same
+    model the scan body uses.
+
+    A rejection reuses FastAPI's own request-validation error shape so the
+    dynamic parameter reports exactly like a declared enum one.
+    """
+    conditions = [
+        (key[len(CONCEPT_QUERY_PREFIX) :], value)
+        for key, value in request.query_params.multi_items()
+        if key.startswith(CONCEPT_QUERY_PREFIX)
+    ]
+    concepts: list[ConceptFilter] = []
+    for category, value in conditions:
+        try:
+            concepts.append(ConceptFilter(category=category, value=value))
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            raise RequestValidationError(
+                [
+                    {
+                        "type": first["type"],
+                        "loc": ("query", f"{CONCEPT_QUERY_PREFIX}{category}"),
+                        "msg": first["msg"],
+                        "input": first["input"],
+                    }
+                ]
+            ) from None
+    return concepts
+
+
+def _where_conditions(raw_conditions: list[str]) -> list[AdminFilterCondition]:
+    """Repeated ``where=<json>`` conditions, validated by the scan body's model.
+
+    Each value is one URL-encoded JSON object. A rejection reuses FastAPI's own
+    request-validation error shape, exactly like the dynamic concept keys, so
+    the Admin reports a bad condition like any other query parameter.
+    """
+    conditions: list[AdminFilterCondition] = []
+    for raw in raw_conditions:
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError):
+            raise _invalid_where(raw, "json_invalid", "Value is not valid JSON") from None
+        if not isinstance(payload, dict):
+            raise _invalid_where(raw, "dict_type", "Value is not a JSON object") from None
+        try:
+            conditions.append(AdminFilterCondition(**payload))
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            raise _invalid_where(first["input"], first["type"], first["msg"]) from None
+    return conditions
+
+
+def _invalid_where(value: object, error_type: str, message: str) -> RequestValidationError:
+    return RequestValidationError([{"type": error_type, "loc": ("query", "where"), "msg": message, "input": value}])
+
+
+@router.get(
+    "/curations",
+    response_model=CatalogSearchPage,
+    openapi_extra={
+        "parameters": [
+            {
+                "name": "concept.<Category>",
+                "in": "query",
+                "required": False,
+                "schema": {"type": "string"},
+                "description": (
+                    "Repeated array-contains condition on the stored `categories.<Category>` array; "
+                    "every supplied condition must hold. The category may not contain `$`, `.` or a "
+                    "null byte."
+                ),
+            }
+        ]
+    },
+)
 def search_curations(
+    request: Request,
     q: str | None = Query(default=None, max_length=200),
     statuses: list[str] = Query(default=[], alias="status"),
     city: str | None = Query(default=None, max_length=120),
     entity_type: str | None = Query(default=None, max_length=80),
     curator_id: str | None = Query(default=None, max_length=200),
+    unlinked: bool | None = Query(
+        default=None,
+        description=(
+            "true lists only Curations with no Entity (``entity_id`` missing, null, empty or "
+            "whitespace-only); false lists only the ones that have one."
+        ),
+    ),
+    where: list[str] = Query(
+        default=[],
+        description=(
+            "Repeated advanced condition, each value a URL-encoded JSON object "
+            '`{"field": "<path>", "op": "<op>", "value": <json>}`; every condition must hold.'
+        ),
+    ),
+    sort: CurationSort = Query(default=DEFAULT_CURATION_SORT),
     cursor: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     actor_id: str | None = Header(None, alias="X-CMS-Actor-Id"),
@@ -67,6 +171,10 @@ def search_curations(
             city=city,
             entity_type=entity_type,
             curator_id=curator_id,
+            unlinked=unlinked,
+            concepts=_query_concepts(request),
+            where=_where_conditions(where),
+            sort=sort,
         )
         return CatalogSearchPage(
             **catalog_search_page(

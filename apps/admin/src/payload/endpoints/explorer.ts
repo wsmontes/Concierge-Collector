@@ -2,6 +2,8 @@ import type { Endpoint, PayloadRequest } from 'payload'
 import type { Model } from 'mongoose'
 import { CurationAdapter, type SearchCurationsInput } from '../../fastapi/curation-adapter'
 import { normalizeCurationFilters } from '../../explorer/normalize-filters'
+import { parseWhereClauses } from '../../explorer/url-state'
+import { isCurationSort } from '../../explorer/types'
 import { AdminHttpError, adminErrorResponse } from '../../http/errors'
 import { withAdmin } from '../../http/with-admin'
 
@@ -14,22 +16,58 @@ function url(request: PayloadRequest): URL {
   return new URL((request as unknown as Request).url)
 }
 
+const SEARCH_KEYS = new Set(['q', 'status', 'city', 'entity_type', 'curator_id', 'unlinked', 'cursor', 'limit', 'sort', 'where'])
+const CONCEPT_PREFIX = 'concept.'
+
 function searchInput(request: PayloadRequest, actorId: string): SearchCurationsInput {
   const params = url(request).searchParams
-  const allowed = new Set(['q', 'status', 'city', 'entity_type', 'curator_id', 'cursor', 'limit'])
-  if ([...params.keys()].some((key) => !allowed.has(key))) throw new AdminHttpError(400, 'invalid_request')
+  const isConcept = (key: string): boolean => key.startsWith(CONCEPT_PREFIX) && key.length > CONCEPT_PREFIX.length
+  if ([...params.keys()].some((key) => !SEARCH_KEYS.has(key) && !isConcept(key))) {
+    throw new AdminHttpError(400, 'invalid_request')
+  }
   const rawLimit = params.get('limit') ?? '100'
   const limit = Number(rawLimit)
   if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new AdminHttpError(400, 'invalid_request')
+  const sort = params.get('sort')
+  if (sort !== null && !isCurationSort(sort)) throw new AdminHttpError(400, 'invalid_request')
+  const concepts = [...params.entries()]
+    .filter(([key]) => isConcept(key))
+    .map(([key, value]) => ({ category: key.slice(CONCEPT_PREFIX.length), value }))
+  // Advanced conditions travel verbatim: the UI owns their serialization, and a
+  // clause the catalog boundary refuses is its 422 to report, not a 400 here.
+  const where = parseWhereClauses(params.getAll('where'))
   return {
     actorId,
     cursor: params.get('cursor'),
     filters: normalizeCurationFilters({
       q: params.get('q'), status: params.getAll('status'), city: params.get('city'),
       entity_type: params.get('entity_type'), curator_id: params.get('curator_id'),
-    }),
+      unlinked: params.get('unlinked') === 'true', concepts,
+    }, where),
     limit,
+    ...(sort ? { sort } : {}),
   }
+}
+
+/**
+ * How many Collections currently hold each Curation of the page.
+ *
+ * Collections are CMS records, so this answer comes from the CMS membership
+ * ledger (a row is current while `removedInVersion` is null) instead of a
+ * cross-service call — one query per page, never one per row.
+ */
+async function collectionsCounts(request: PayloadRequest, curationIds: readonly string[]): Promise<Map<string, number>> {
+  const counts = new Map<string, number>()
+  if (curationIds.length === 0) return counts
+  const rows = await modelFor(request, 'collection-memberships')
+    .find({ curationId: { $in: [...curationIds] }, removedInVersion: null })
+    .select({ curationId: 1 })
+    .lean() as Record<string, unknown>[]
+  for (const row of rows) {
+    const id = String(row.curationId)
+    counts.set(id, (counts.get(id) ?? 0) + 1)
+  }
+  return counts
 }
 
 async function body(request: Request): Promise<Record<string, unknown>> {
@@ -160,7 +198,12 @@ export function explorerEndpoints(adapterForRequest: (request: PayloadRequest) =
       method: 'get', path: '/admin/v1/curations',
       handler: (request: PayloadRequest) => withAdmin(async (adminRequest, actor) => {
         try {
-          return Response.json(await adapterForRequest(request).search(searchInput(request, actor.user_id)))
+          const page = await adapterForRequest(request).search(searchInput(request, actor.user_id))
+          const counts = await collectionsCounts(request, page.items.map((row) => row.curation_id))
+          return Response.json({
+            ...page,
+            items: page.items.map((row) => ({ ...row, collections_count: counts.get(row.curation_id) ?? 0 })),
+          })
         } catch (error) {
           return adminErrorResponse(error)
         }

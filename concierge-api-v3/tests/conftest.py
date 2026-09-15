@@ -74,6 +74,32 @@ class InMemoryCollection:
             value = value.get(part)
         return value
 
+    @staticmethod
+    def _equals(actual, expected) -> bool:
+        """Semântica array-contains do MongoDB: comparar um campo que é ARRAY
+        casa quando QUALQUER elemento casa (`{categories.Mood: "Casual"}`).
+        Igualdade entre dois arrays segue sendo igualdade exata."""
+        if isinstance(actual, list) and not isinstance(expected, list):
+            return any(item == expected for item in actual)
+        return actual == expected
+
+    @staticmethod
+    def _type_matches(actual, expected: str) -> bool:
+        """Tipos BSON que os predicados do boundary CMS emitem."""
+        if expected == "number":
+            return isinstance(actual, (int, float)) and not isinstance(actual, bool)
+        if expected == "array":
+            return isinstance(actual, list)
+        if expected == "string":
+            return isinstance(actual, str)
+        if expected == "object":
+            return isinstance(actual, dict)
+        if expected == "bool":
+            return isinstance(actual, bool)
+        if expected == "null":
+            return actual is None
+        return False
+
     @classmethod
     def _matches(cls, document: dict, query: dict) -> bool:
         for key, expected in query.items():
@@ -88,14 +114,20 @@ class InMemoryCollection:
 
             actual = cls._value(document, key)
             if not isinstance(expected, dict):
-                if actual != expected:
+                if not cls._equals(actual, expected):
                     return False
                 continue
 
             for operator, operand in expected.items():
-                if operator == "$ne" and actual == operand:
+                if operator == "$ne" and cls._equals(actual, operand):
                     return False
-                if operator == "$in" and actual not in operand:
+                if operator == "$in" and not any(cls._equals(actual, item) for item in operand):
+                    return False
+                if operator == "$nin" and any(cls._equals(actual, item) for item in operand):
+                    return False
+                if operator == "$not" and cls._matches(document, {key: operand}):
+                    return False
+                if operator == "$size" and (not isinstance(actual, list) or len(actual) != operand):
                     return False
                 if operator == "$gte" and (actual is None or actual < operand):
                     return False
@@ -107,11 +139,7 @@ class InMemoryCollection:
                     return False
                 if operator == "$exists" and (actual is not None) != operand:
                     return False
-                if (
-                    operator == "$type"
-                    and operand == "number"
-                    and (isinstance(actual, bool) or not isinstance(actual, (int, float)))
-                ):
+                if operator == "$type" and not cls._type_matches(actual, operand):
                     return False
                 if operator == "$regex":
                     import re
@@ -198,8 +226,59 @@ class InMemoryCollection:
     def drop_index(self, *_args, **_kwargs):
         return None
 
-    def aggregate(self, *_args, **_kwargs):
-        return InMemoryCursor([])
+    def aggregate(self, *args, **_kwargs):
+        """Subset suficiente para os contadores do boundary CMS: ``$match``,
+        ``$group`` (``{"$sum": 1}``), ``$count`` e ``$facet`` sobre esses stages.
+        Qualquer outro stage mantém o resultado vazio que este fake sempre devolveu."""
+        pipeline = list(args[0]) if args else []
+        return InMemoryCursor(self._run_pipeline([deepcopy(document) for document in self.documents], pipeline))
+
+    @classmethod
+    def _run_pipeline(cls, rows: list, pipeline: list) -> list:
+        result = rows
+        for stage in pipeline:
+            if not isinstance(stage, dict) or len(stage) != 1:
+                return []
+            if "$match" in stage:
+                result = [row for row in result if cls._matches(row, stage["$match"])]
+            elif "$group" in stage:
+                result = cls._group(result, stage["$group"])
+            elif "$count" in stage:
+                result = [{stage["$count"]: len(result)}] if result else []
+            elif "$facet" in stage:
+                result = [{name: cls._run_pipeline(result, sub) for name, sub in stage["$facet"].items()}]
+            else:
+                return []
+        return result
+
+    @classmethod
+    def _group(cls, rows: list, group_spec: dict) -> list:
+        field = group_spec.get("_id")
+        accumulators = {name: value for name, value in group_spec.items() if name != "_id"}
+        if not (isinstance(field, str) and field.startswith("$")) or not all(
+            value == {"$sum": 1} for value in accumulators.values()
+        ):
+            return []
+        grouped: dict = {}
+        for row in rows:
+            key = cls._value(row, field[1:])
+            try:
+                hash(key)
+            except TypeError:
+                return []
+            bucket = grouped.setdefault(key, {"_id": key})
+            for name in accumulators:
+                bucket[name] = bucket.get(name, 0) + 1
+        return list(grouped.values())
+
+    def update_many(self, query: dict, update: dict):
+        matched = modified = 0
+        for document in self.documents:
+            if self._matches(document, query):
+                matched += 1
+                self._apply_update(document, update)
+                modified += 1
+        return SimpleNamespace(matched_count=matched, modified_count=modified)
 
     def delete_one(self, query: dict):
         for index, document in enumerate(self.documents):

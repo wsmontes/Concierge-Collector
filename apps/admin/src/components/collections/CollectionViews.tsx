@@ -4,10 +4,12 @@ import { Button } from '@payloadcms/ui'
 import Link from 'next/link'
 import { useState } from 'react'
 import type { CollectionDistributionClient } from '../../collections/distribution-client'
+import type { LoadCurationRecord } from '../../content/record-types'
 import { InlineNotice } from '../ui/InlineNotice'
 import { StatusPill } from '../ui/StatusPill'
 import { ActivityView, type ActivityRow } from './ActivityView'
 import { CollectionDistributionView } from './CollectionDistributionView'
+import { CollectionRelationships } from './CollectionRelationships'
 import { DraftDiffView, type DraftDiffRow } from './DraftDiffView'
 import { MembersView, type MemberRow } from './MembersView'
 import { VersionsView, type VersionRow } from './VersionsView'
@@ -66,12 +68,15 @@ export function CollectionViews({
   pagination = {},
   actions = {},
   distributionClient,
+  loadRecord,
 }: {
   collection: CollectionViewRecord
   preview?: CollectionReadPreview
   pagination?: CollectionPaginationPreview
   actions?: CollectionViewActions
   distributionClient?: CollectionDistributionClient
+  /** Loader of one Curation record for the member preview; the browser BFF one by default. */
+  loadRecord?: LoadCurationRecord
 }) {
   const [tab, setTab] = useState<CollectionTab>('Overview')
   const archived = collection.lifecycle === 'archived'
@@ -94,7 +99,7 @@ export function CollectionViews({
           {archived ? (
             <Button margin={false} onClick={actions.onRestore} type="button">Restore collection</Button>
           ) : <>
-            <Link className="collection-views__link-button" href={`/admin/explorer?collection=${encodeURIComponent(collection.id)}`}>
+            <Link className="collection-views__link-button" href={`/admin/curations?collection=${encodeURIComponent(collection.id)}`}>
               Add Curations
             </Link>
             <Button buttonStyle="secondary" margin={false} onClick={actions.onEditMetadata} type="button">Edit metadata</Button>
@@ -116,6 +121,10 @@ export function CollectionViews({
           <p>Archived collections are read-only until restored.</p>
         </InlineNotice>
       )}
+      <CollectionRelationships
+        members={preview.members ?? []}
+        hasMore={pagination.members?.hasMore ?? false}
+      />
       <div role="tablist" aria-label="Collection review" className="collection-views__tabs">
         {TABS.map((item) => (
           <button key={item} type="button" role="tab" aria-selected={tab === item} onClick={() => setTab(item)}>
@@ -133,8 +142,10 @@ export function CollectionViews({
         />}
         {tab === 'Members' && <MembersView
           items={preview.members ?? []}
+          collectionId={collection.id}
           hasMore={pagination.members?.hasMore}
           loading={pagination.members?.loading}
+          loadRecord={loadRecord}
           onLoadMore={actions.onLoadMoreMembers}
         />}
         {tab === 'Draft Changes' && <DraftDiffView

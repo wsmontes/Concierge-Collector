@@ -4,7 +4,10 @@ import { notFound, redirect } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { CollectionsWorkspace } from '../collections/CollectionsWorkspace'
 import { CollectionDetailWorkspace } from '../collections/CollectionDetailWorkspace'
-import { CurationExplorer } from '../explorer/CurationExplorer'
+import { CurationsWorkspace } from '../curations/CurationsWorkspace'
+import { CurationDetailWorkspace } from '../curations/CurationDetailWorkspace'
+import { EntitiesWorkspace } from '../entities/EntitiesWorkspace'
+import { EntityDetailWorkspace } from '../entities/EntityDetailWorkspace'
 import { OperationsWorkspace } from '../operations/OperationsWorkspace'
 import { ApplicationViews } from '../applications/ApplicationViews'
 
@@ -41,18 +44,88 @@ function singleParam(value: string | string[] | undefined): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null
 }
 
+/**
+ * Root Custom Views recebem `searchParams` já resolvidos pelo catch-all; as
+ * telas editoriais querem o query string. Chaves repetidas viram parâmetros
+ * repetidos, porque `status=a&status=b` é um estado válido da lista.
+ */
+function queryString(searchParams: AdminViewServerProps['searchParams']): string {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(searchParams ?? {})) {
+    if (Array.isArray(value)) value.forEach((item) => params.append(key, item))
+    else if (typeof value === 'string') params.set(key, value)
+  }
+  return params.toString()
+}
+
+/**
+ * `/admin/explorer` virou compatibilidade: o Explorer é agora a tela `Curations`.
+ * A view continua registrada para que deep links antigos (`/admin/explorer?collection=…`)
+ * não morram, e mantém a guarda de auth — Root Custom Views são públicas por padrão.
+ */
 export function ExplorerAdminView(props: AdminViewServerProps) {
-  return (
-    <AdminTemplate {...props}>
-      <CurationExplorer targetCollectionId={singleParam(props.searchParams?.collection)} />
-    </AdminTemplate>
-  )
+  if (!props.initPageResult.req.user) redirect(ADMIN_LOGIN)
+  const collection = singleParam(props.searchParams?.collection)
+  redirect(collection ? `/admin/curations?collection=${encodeURIComponent(collection)}` : '/admin/curations')
 }
 
 export function OperationsAdminView(props: AdminViewServerProps) {
   return (
     <AdminTemplate {...props}>
       <OperationsWorkspace />
+    </AdminTemplate>
+  )
+}
+
+/** `/admin/curations` — a lista editorial. O query string é o estado da tela. */
+export function CurationsAdminView(props: AdminViewServerProps) {
+  return (
+    <AdminTemplate {...props}>
+      <CurationsWorkspace
+        initialQuery={queryString(props.searchParams)}
+        targetCollectionId={singleParam(props.searchParams?.collection)}
+      />
+    </AdminTemplate>
+  )
+}
+
+/**
+ * `/admin/curations/<id>`. Como toda Root Custom View, o id não vem em `docID`:
+ * o catch-all entrega `params.segments = ['curations', '<id>']`, já decodificado.
+ */
+export function CurationDetailAdminView(props: AdminViewServerProps) {
+  const raw = props.params?.segments
+  const segments = Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : []
+  const id = segments[1]
+  if (!id) notFound()
+  return (
+    <AdminTemplate {...props}>
+      <CurationDetailWorkspace curationId={id} />
+    </AdminTemplate>
+  )
+}
+
+/** `/admin/entities` — a lista editorial de Entities. */
+export function EntitiesAdminView(props: AdminViewServerProps) {
+  return (
+    <AdminTemplate {...props}>
+      <EntitiesWorkspace initialQuery={queryString(props.searchParams)} />
+    </AdminTemplate>
+  )
+}
+
+/**
+ * `/admin/entities/<id>`. Como toda Root Custom View, o id não vem em `docID`:
+ * o catch-all entrega `params.segments = ['entities', '<id>']`.
+ */
+export function EntityDetailAdminView(props: AdminViewServerProps) {
+  const raw = props.params?.segments
+  const segments = Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : []
+  const id = segments[1]
+  if (!id) notFound()
+  return (
+    <AdminTemplate {...props}>
+      <EntityDetailWorkspace entityId={id} />
     </AdminTemplate>
   )
 }

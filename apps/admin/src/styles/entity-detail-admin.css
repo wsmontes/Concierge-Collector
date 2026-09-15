@@ -1,0 +1,244 @@
+/* Entity full-record page: the curated blocks of the editorial CMS plan §21
+   (Canonical identity, Location, Contact, Media, Attributes, Curations about
+   this Entity, Metadata, All fields, History) and the Entity → Curations list
+   (§22). Only the Concierge brand tokens and Payload's --theme-* mapping carry
+   colour; no palette value is hardcoded here. */
+
+.entity-detail__status {
+  color: var(--theme-elevation-600);
+  margin: 0;
+}
+
+.entity-detail__retry {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  border-radius: 4px;
+  color: var(--theme-text);
+  cursor: pointer;
+  font-weight: 600;
+  margin-top: 0.75rem;
+  min-height: 40px;
+  padding: 0 0.85rem;
+}
+
+.entity-detail__retry:hover {
+  background: var(--theme-elevation-50);
+}
+
+.entity-detail__link {
+  align-items: center;
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  border-radius: 4px;
+  color: var(--theme-text);
+  display: inline-flex;
+  font-weight: 600;
+  min-height: 40px;
+  padding: 0 0.85rem;
+  text-decoration: none;
+}
+
+.entity-detail__link:hover {
+  background: var(--theme-elevation-50);
+}
+
+/* ENTITY HEADER: the read-only summary that opens the page. */
+.entity-detail__header {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+}
+
+.entity-detail__facts {
+  display: grid;
+  gap: 0.5rem 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  margin: 0;
+}
+
+.entity-detail__fact {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.entity-detail__fact dt {
+  color: var(--theme-elevation-600);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.entity-detail__fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* One block per field inside a curated section. */
+.entity-fields {
+  display: grid;
+  gap: 0.6rem;
+  list-style: none;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.entity-field {
+  border-left: 2px solid var(--theme-elevation-100);
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  padding-inline-start: 0.75rem;
+}
+
+.entity-field--empty {
+  border-left-style: dashed;
+}
+
+.entity-field__head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  min-width: 0;
+}
+
+.entity-field__label {
+  font-weight: 600;
+}
+
+.entity-field__path {
+  color: var(--theme-elevation-500);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.entity-field__value {
+  overflow-wrap: anywhere;
+}
+
+.entity-field__hint,
+.entity-field__system {
+  border: 1px solid var(--theme-border-color);
+  border-radius: 999px;
+  color: var(--theme-elevation-600);
+  font-size: 0.72rem;
+  padding: 0.1rem 0.5rem;
+}
+
+.entity-field__edit {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  border-radius: 4px;
+  color: var(--theme-text);
+  cursor: pointer;
+  margin-inline-start: auto;
+  min-height: 32px;
+  padding: 0 0.7rem;
+}
+
+.entity-field__edit:hover {
+  background: var(--theme-elevation-50);
+}
+
+/* CURATIONS ABOUT THIS ENTITY. */
+.entity-curations {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.entity-curations__status {
+  color: var(--theme-elevation-600);
+  margin: 0;
+}
+
+.entity-curations__total {
+  color: var(--theme-elevation-600);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.entity-curations__list {
+  display: grid;
+  gap: 0.6rem;
+  list-style: none;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.entity-curations__card {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.entity-curations__name {
+  font-size: 1rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.entity-curations__link {
+  color: inherit;
+}
+
+.entity-curations__meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.entity-curations__curator {
+  color: var(--theme-elevation-600);
+  font-size: 0.85rem;
+}
+
+.entity-curations__concepts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.entity-curations__concept {
+  background: var(--theme-elevation-100);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.6rem;
+}
+
+.entity-curations__updated {
+  color: var(--theme-elevation-600);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+/* Stack the field rows once the section column is narrower than the two-line
+   layout the header was designed for. */
+@media (max-width: 720px) {
+  .entity-detail__facts {
+    grid-template-columns: 1fr;
+  }
+
+  .entity-field__head {
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .entity-field__edit {
+    margin-inline-start: 0;
+    width: 100%;
+  }
+}

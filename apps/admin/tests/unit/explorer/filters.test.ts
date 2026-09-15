@@ -9,4 +9,25 @@ describe('Curation Explorer filters', () => {
     expect(first).toEqual(second)
     await expect(hashNormalizedFilters(first)).resolves.toBe(await hashNormalizedFilters(second))
   })
+
+  test('canonicalizes concept facets so an all-matching intent carries them deterministically', async () => {
+    const first = normalizeCurationFilters({
+      concepts: [{ category: ' Mood ', value: 'Casual' }, { category: 'Cuisine', value: 'Italian' }],
+    })
+    const second = normalizeCurationFilters({
+      concepts: [{ category: 'Cuisine', value: 'Italian' }, { category: 'Mood', value: 'Casual' }, { category: 'Mood', value: 'Casual' }, { category: '', value: 'ignored' }],
+    })
+
+    expect(first).toEqual(second)
+    expect(first.concepts).toEqual([
+      { category: 'Cuisine', value: 'Italian' },
+      { category: 'Mood', value: 'Casual' },
+    ])
+    await expect(hashNormalizedFilters(first)).resolves.toBe(await hashNormalizedFilters(second))
+  })
+
+  test('omits the concept key entirely when no facet is present', () => {
+    expect(normalizeCurationFilters({ q: 'sushi' })).toEqual({ q: 'sushi' })
+    expect(normalizeCurationFilters({ concepts: [] })).toEqual({})
+  })
 })
