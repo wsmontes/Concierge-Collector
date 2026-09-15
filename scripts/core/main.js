@@ -501,7 +501,18 @@ function cleanupBrowserData() {
             'concierge_db_backup',  // backup do IndexedDB (databaseManager)
             'concierge_db_schema_version',  // versão do schema local
             'dbSchemaVersion',  // versão legada do schema
-            'migration_v3_complete'  // flag de migração V2→V3 (importManager)
+            'migration_v3_complete',  // flag de migração V2→V3 (importManager)
+            // Estado do app que não passa por `AppConfig.storage.keys`:
+            // `collector.filters.v1` (filtros/aba/saved views do uiManager) e
+            // `concierge-state` (rascunhos de formulário do StateStore) eram
+            // apagados a cada reload por não constarem aqui.
+            'collector.filters.v1',
+            'concierge-state',
+            // O registro canônico (config.js, carregado antes deste arquivo)
+            // declara as chaves que o app grava — `setApiKey`/preferências
+            // escrevem por ele. Preservar o registro inteiro evita que uma
+            // chave nova nasça condenada a sumir no próximo boot.
+            ...Object.values(window.AppConfig?.storage?.keys || {})
         ];
 
         // Prefixo one-time (ago/2026): o onboarding de primeira entrada

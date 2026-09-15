@@ -261,7 +261,13 @@ const AppConfig = {
             // Sync Settings
             syncEnabled: 'sync_enabled',
             lastSyncTime: 'last_sync_time',
-            syncOnStartup: 'sync_on_startup'
+            syncOnStartup: 'sync_on_startup',
+
+            // Estado da UI persistido entre reloads. Registrado aqui porque o
+            // boot preserva TUDO que está nesta tabela (`cleanupBrowserData`,
+            // main.js) — chave fora dela é apagada a cada reload.
+            curationFilters: 'collector.filters.v1',  // filtros/aba/saved views (uiManager)
+            uiStateStore: 'concierge-state'           // rascunhos de formulário (StateStore)
         }
     },
 
