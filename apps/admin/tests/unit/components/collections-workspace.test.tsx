@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { CollectionsWorkspace } from '../../../src/components/collections/CollectionsWorkspace'
 import type { AdminCollectionRecord, CollectionsAdminClient } from '../../../src/collections/admin-client'
@@ -97,10 +97,11 @@ test('creates through the command API and navigates to the detail page', async (
   render(<CollectionsWorkspace client={client({ list: vi.fn().mockResolvedValue([]), create })} navigate={navigate} />)
 
   fireEvent.click(await screen.findByRole('button', { name: 'New Collection' }))
-  expect(screen.getByRole('dialog', { name: 'New Collection' })).toBeVisible()
+  const dialog = screen.getByRole('dialog', { name: 'New Collection' })
+  expect(dialog).toBeVisible()
   fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'New' } })
   fireEvent.change(screen.getByLabelText('Slug'), { target: { value: 'new' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Create Collection' }))
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Create Collection' }))
 
   await waitFor(() => expect(create).toHaveBeenCalledWith({
     title: 'New',

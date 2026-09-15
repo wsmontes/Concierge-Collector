@@ -14,10 +14,13 @@ export function InlineNotice({
   children: ReactNode
   action?: ReactNode
 }) {
+  // Payload's Banner has no warning tone; the wrapper class carries the accent.
+  const bannerType = tone === 'warning' ? 'default' : tone
+
   return (
     <div className={`admin-notice admin-notice--${tone}`} role={tone === 'error' ? 'alert' : 'status'}>
       <div className="admin-notice__content">
-        <Banner type={tone}>{children}</Banner>
+        <Banner type={bannerType}>{children}</Banner>
       </div>
       {action && <div className="admin-notice__action">{action}</div>}
     </div>
