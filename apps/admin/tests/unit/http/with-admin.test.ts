@@ -81,14 +81,34 @@ describe('withAdmin', () => {
   })
 
   test('does not expose unexpected failures and reports them as unavailable', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const failure = new Error('internal connection details')
     const guarded = withAdmin(vi.fn(), {
-      requireCurrentAdmin: vi.fn().mockRejectedValue(new Error('internal connection details')),
+      requireCurrentAdmin: vi.fn().mockRejectedValue(failure),
+    })
+
+    const response = await guarded(new Request('https://admin.example.test/api/admin/v1/collections?actor=someone'))
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({ error: { code: 'service_unavailable' } })
+    // A resposta esconde o detalhe, então o log é o único rastro que o operador
+    // tem — e ele não pode carregar a query nem qualquer credencial.
+    expect(logged).toHaveBeenCalledWith(
+      '[withAdmin] GET https://admin.example.test/api/admin/v1/collections threw',
+      failure,
+    )
+  })
+
+  test('logs a 5xx admin failure with its code instead of its details', async () => {
+    const logged = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const guarded = withAdmin(vi.fn(), {
+      requireCurrentAdmin: vi.fn().mockRejectedValue(new AdminHttpError(503, 'authorization_unavailable')),
     })
 
     const response = await guarded(new Request('https://admin.example.test/api/admin/v1/collections'))
 
-    expect(response.status).toBe(503)
-    await expect(response.json()).resolves.toEqual({ error: { code: 'service_unavailable' } })
+    await expect(response.json()).resolves.toEqual({ error: { code: 'authorization_unavailable' } })
+    expect(logged).toHaveBeenCalledWith('[withAdmin] GET https://admin.example.test/api/admin/v1/collections → 503 authorization_unavailable')
   })
 
   test('does not trust a structurally forged admin error', async () => {

@@ -1,7 +1,7 @@
 import type { CmsIdentity } from '../auth/fastapi-authz-client'
 import { requireCurrentAdmin } from '../auth/require-current-admin'
 import { assertUnsafeCmsSessionOrigin } from '../auth/cms-session-request-policy'
-import { adminErrorResponse } from './errors'
+import { AdminHttpError, adminErrorResponse } from './errors'
 
 export type AdminRequest = Request & { actor: CmsIdentity }
 
@@ -42,6 +42,17 @@ export function withAdmin(
       const adminRequest = Object.assign(request, { actor }) as AdminRequest
       return noStore(await handler(adminRequest, actor))
     } catch (error) {
+      // A resposta nunca carrega detalhe interno (é o contrato de
+      // `adminErrorResponse`), então este log é o ÚNICO rastro que uma falha
+      // inesperada deixa: sem ele, um 503 deste wrapper é indistinguível de uma
+      // fronteira fora do ar e o incidente fica indiagnosticável pelos logs do
+      // serviço. Só método, URL sem query e o erro — nunca headers ou cookie.
+      const target = `${request.method} ${request.url.split('?')[0]}`
+      if (error instanceof AdminHttpError) {
+        if (error.status >= 500) console.warn(`[withAdmin] ${target} → ${error.status} ${error.code}`)
+      } else {
+        console.error(`[withAdmin] ${target} threw`, error)
+      }
       return noStore(adminErrorResponse(error))
     }
   }
