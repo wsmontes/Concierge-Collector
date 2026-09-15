@@ -64,6 +64,12 @@ export interface EntityRow {
   updated_at: string | null
   version: number | null
   curations_count: number | null
+  /**
+   * Collections currently holding any of this Entity's Curations, joined by the
+   * BFF from the CMS membership ledger. `null` is unknown — the boundary did
+   * not report the join input — and is never the same as zero.
+   */
+  collections_count: number | null
 }
 
 export interface EntitySearchPage {

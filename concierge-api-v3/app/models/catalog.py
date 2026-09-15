@@ -197,6 +197,14 @@ class ResolveCurationsResponse(BaseModel):
     rejected: list[RejectedCuration]
 
 
+# Ceiling of one scan-side exclusion list (``exclude_curation_ids``). It is the
+# same bound the Admin already forwards as a member set to ``/content-health``
+# (``CONTENT_HEALTH_MEMBER_LIMIT``): a view driven by the membership ledger must
+# not be excludable by the counter but refused by the scan. Over the bound the
+# route answers 413, exactly like the content-health route does.
+EXCLUDE_CURATION_IDS_MAX = 10000
+
+
 class CatalogFilters(BaseModel):
     q: str | None = Field(default=None, max_length=200)
     status: list[Literal["draft", "linked", "active", "deleted", "archived"]] = Field(default_factory=list)
@@ -221,6 +229,14 @@ class CatalogFilters(BaseModel):
     # is resolved when the filters are normalized, so an omitted sort still
     # pages — and still signs a cursor — exactly like the default listing.
     sort: CurationSort | None = None
+    exclude_curation_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Curation ids the scan must drop from its materialized set, ANDed with every other filter "
+            f"(at most {EXCLUDE_CURATION_IDS_MAX} ids; over the bound the route answers 413). "
+            "Omitted or empty means no exclusion."
+        ),
+    )
 
 
 class AdminCurationRow(BaseModel):

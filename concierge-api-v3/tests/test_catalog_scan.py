@@ -6,6 +6,8 @@ import json
 import pytest
 
 from app.core.config import settings
+from app.models.catalog import EXCLUDE_CURATION_IDS_MAX
+from app.services.catalog_service import _decode_token
 from tests.factories import active_curation
 
 
@@ -247,3 +249,131 @@ async def test_scan_start_refuses_an_unaddressable_condition(async_client, in_me
     detail = response.json()["detail"]
     assert detail[0]["loc"] == ["body", "filters", "where", 0, "field"]
     assert "sources.a.b.c.d" in detail[0]["msg"]
+
+
+# ── Scan-side exclusion (`exclude_curation_ids`) ─────────────────────────────
+
+
+def _exclusion_rows() -> list[dict]:
+    return [
+        active_curation(curation_id=curation_id, catalog_sequence=sequence)
+        for sequence, curation_id in enumerate(("e-1", "e-2", "e-3", "e-4", "e-5"), start=1)
+    ]
+
+
+def _seed_exclusion_rows(database) -> None:
+    for row in _exclusion_rows():
+        database.curations.insert_one(row)
+
+
+async def _scanned_ids(
+    async_client, token: str, cursor: str | None = None, limit: int = 100
+) -> tuple[list[str], str | None]:
+    page = await async_client.post(
+        "/api/v3/catalog/curations/scan/page",
+        headers=_headers(),
+        json={"scan_token": token, "cursor": cursor, "limit": limit},
+    )
+    assert page.status_code == 200, page.text
+    return [item["curation_id"] for item in page.json()["items"]], page.json()["next_cursor"]
+
+
+@pytest.mark.asyncio
+async def test_scan_without_exclusion_lists_every_row(async_client, in_memory_db, monkeypatch):
+    """Omitted and empty exclusions are the same request: nothing is dropped."""
+    in_memory_db._collections.clear()
+    monkeypatch.setattr(settings, "catalog_cursor_secret", "catalog-test-secret")
+    _seed_admin(in_memory_db)
+    _seed_exclusion_rows(in_memory_db)
+
+    omitted = await async_client.post("/api/v3/catalog/curations/scan/start", headers=_headers(), json={"filters": {}})
+    empty = await async_client.post(
+        "/api/v3/catalog/curations/scan/start",
+        headers=_headers(),
+        json={"filters": {"exclude_curation_ids": []}},
+    )
+    assert omitted.status_code == 200, omitted.text
+    assert empty.status_code == 200, empty.text
+
+    expected = ["e-1", "e-2", "e-3", "e-4", "e-5"]
+    assert await _scanned_ids(async_client, omitted.json()["scan_token"]) == (expected, None)
+    assert await _scanned_ids(async_client, empty.json()["scan_token"]) == (expected, None)
+
+
+@pytest.mark.asyncio
+async def test_scan_drops_the_excluded_ids_and_keeps_the_order(async_client, in_memory_db, monkeypatch):
+    in_memory_db._collections.clear()
+    monkeypatch.setattr(settings, "catalog_cursor_secret", "catalog-test-secret")
+    _seed_admin(in_memory_db)
+    _seed_exclusion_rows(in_memory_db)
+
+    started = await async_client.post(
+        "/api/v3/catalog/curations/scan/start",
+        headers=_headers(),
+        # Reversed and with a repeated id: the frozen set is de-duplicated and
+        # sorted, so equivalent exclusions sign byte-identical tokens.
+        json={"filters": {"exclude_curation_ids": ["e-4", "e-2", "e-2"]}},
+    )
+    assert started.status_code == 200, started.text
+    scan = _decode_token(started.json()["scan_token"], "catalog-test-secret")
+    assert scan["filters"]["exclude_curation_ids"] == ["e-2", "e-4"]
+
+    assert await _scanned_ids(async_client, started.json()["scan_token"]) == (["e-1", "e-3", "e-5"], None)
+
+    # The exclusion belongs to the scan only: the live list is untouched.
+    listed = await async_client.get(
+        "/api/v3/catalog/curations", params={"exclude_curation_ids": "e-2"}, headers=_headers()
+    )
+    assert listed.status_code == 200, listed.text
+    assert [item["curation_id"] for item in listed.json()["items"]] == ["e-1", "e-2", "e-3", "e-4", "e-5"]
+
+
+@pytest.mark.asyncio
+async def test_scan_applies_the_exclusion_while_the_cursor_advances(async_client, in_memory_db, monkeypatch):
+    """Each page keeps the exclusion, and the keyset cursor steps over it."""
+    in_memory_db._collections.clear()
+    monkeypatch.setattr(settings, "catalog_cursor_secret", "catalog-test-secret")
+    _seed_admin(in_memory_db)
+    _seed_exclusion_rows(in_memory_db)
+
+    started = await async_client.post(
+        "/api/v3/catalog/curations/scan/start",
+        headers=_headers(),
+        json={"filters": {"exclude_curation_ids": ["e-2", "e-4"]}},
+    )
+    assert started.status_code == 200, started.text
+    token = started.json()["scan_token"]
+
+    first_ids, cursor = await _scanned_ids(async_client, token, limit=1)
+    assert first_ids == ["e-1"]
+    assert cursor is not None
+    second_ids, cursor = await _scanned_ids(async_client, token, cursor=cursor, limit=1)
+    assert second_ids == ["e-3"]
+    assert cursor is not None
+    last_ids, cursor = await _scanned_ids(async_client, token, cursor=cursor, limit=1)
+    assert last_ids == ["e-5"]
+    assert cursor is None
+
+
+@pytest.mark.asyncio
+async def test_scan_refuses_an_exclusion_above_its_ceiling(async_client, in_memory_db, monkeypatch):
+    in_memory_db._collections.clear()
+    monkeypatch.setattr(settings, "catalog_cursor_secret", "catalog-test-secret")
+    _seed_admin(in_memory_db)
+
+    at_ceiling = await async_client.post(
+        "/api/v3/catalog/curations/scan/start",
+        headers=_headers(),
+        json={"filters": {"exclude_curation_ids": [f"e-{index}" for index in range(EXCLUDE_CURATION_IDS_MAX)]}},
+    )
+    assert at_ceiling.status_code == 200, at_ceiling.text
+
+    over_ceiling = await async_client.post(
+        "/api/v3/catalog/curations/scan/start",
+        headers=_headers(),
+        json={"filters": {"exclude_curation_ids": [f"e-{index}" for index in range(EXCLUDE_CURATION_IDS_MAX + 1)]}},
+    )
+
+    # Same bound and same status as the ``/content-health`` member set.
+    assert over_ceiling.status_code == 413
+    assert str(EXCLUDE_CURATION_IDS_MAX) in over_ceiling.json()["detail"]

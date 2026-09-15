@@ -1,13 +1,17 @@
 import type { Endpoint, PayloadRequest } from 'payload'
 import type { Model } from 'mongoose'
 import { CurationAdapter, type SearchCurationsInput } from '../../fastapi/curation-adapter'
+import { liveMemberCurationIds, MEMBER_CURATION_ID_LIMIT } from '../../collections/membership-ledger'
 import { normalizeCurationFilters } from '../../explorer/normalize-filters'
 import { parseWhereClauses } from '../../explorer/url-state'
 import { isCurationSort } from '../../explorer/types'
+import { summariesRowsFor, withoutCollectionsPage } from '../../explorer/without-collections'
 import { AdminHttpError, adminErrorResponse } from '../../http/errors'
 import { withAdmin } from '../../http/with-admin'
+import { RecordsAdapter } from '../../records/client'
 
-type CatalogSearch = Pick<CurationAdapter, 'search'>
+type CatalogSearch = Pick<CurationAdapter, 'search' | 'scanPage' | 'startScan'>
+type CurationRows = Pick<RecordsAdapter, 'curationSummaries'>
 type DocumentModel = Model<Record<string, unknown>>
 
 const VIEW_FIELDS = new Set(['name', 'normalizedFilters', 'sort', 'visibleColumns'])
@@ -16,8 +20,29 @@ function url(request: PayloadRequest): URL {
   return new URL((request as unknown as Request).url)
 }
 
-const SEARCH_KEYS = new Set(['q', 'status', 'city', 'entity_type', 'curator_id', 'unlinked', 'cursor', 'limit', 'sort', 'where'])
+const SEARCH_KEYS = new Set(['q', 'status', 'city', 'entity_type', 'curator_id', 'unlinked', 'without_collections', 'cursor', 'limit', 'sort', 'where'])
 const CONCEPT_PREFIX = 'concept.'
+
+/**
+ * The listing mode: `without_collections=true` asks for the Curations no
+ * Collection currently holds. It is read separately from the base listing
+ * filters because the boundary never receives it — the CMS membership ledger
+ * supplies the exclusion this view is built from.
+ */
+function withoutCollectionsMode(request: PayloadRequest): boolean {
+  return url(request).searchParams.get('without_collections') === 'true'
+}
+
+/**
+ * Live member Curation ids of the membership ledger. A caller holding more than
+ * the boundary's per-call bound cannot describe the set at all, so the view is
+ * refused instead of being computed from a partial one.
+ */
+async function exclusionIds(request: PayloadRequest): Promise<string[]> {
+  const members = await liveMemberCurationIds(modelFor(request, 'collection-memberships'))
+  if (members.length > MEMBER_CURATION_ID_LIMIT) throw new AdminHttpError(503, 'service_unavailable')
+  return members
+}
 
 function searchInput(request: PayloadRequest, actorId: string): SearchCurationsInput {
   const params = url(request).searchParams
@@ -191,14 +216,32 @@ function curationViewEndpoints(): Endpoint[] {
 }
 
 /** Browser BFF for the Explorer. It always derives actor and service credentials server-side. */
-export function explorerEndpoints(adapterForRequest: (request: PayloadRequest) => CatalogSearch = () => new CurationAdapter()): Endpoint[] {
+export function explorerEndpoints(
+  adapterForRequest: (request: PayloadRequest) => CatalogSearch = () => new CurationAdapter(),
+  rowsAdapterForRequest: (request: PayloadRequest) => CurationRows = () => new RecordsAdapter(),
+): Endpoint[] {
   return [
     ...curationViewEndpoints(),
     {
       method: 'get', path: '/admin/v1/curations',
       handler: (request: PayloadRequest) => withAdmin(async (adminRequest, actor) => {
         try {
-          const page = await adapterForRequest(request).search(searchInput(request, actor.user_id))
+          const input = searchInput(request, actor.user_id)
+          if (withoutCollectionsMode(request)) {
+            const catalog = adapterForRequest(request)
+            const summaries = rowsAdapterForRequest(request)
+            return Response.json(await withoutCollectionsPage({
+              actorId: input.actorId,
+              cursor: input.cursor,
+              filters: input.filters,
+              limit: input.limit,
+              memberCurationIds: await exclusionIds(request),
+              rowsFor: summariesRowsFor(async (ids, actorId) => (await summaries.curationSummaries(ids, actorId)).items),
+              scan: catalog,
+              ...(input.sort ? { sort: input.sort } : {}),
+            }))
+          }
+          const page = await adapterForRequest(request).search(input)
           const counts = await collectionsCounts(request, page.items.map((row) => row.curation_id))
           return Response.json({
             ...page,

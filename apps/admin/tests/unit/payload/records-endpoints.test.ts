@@ -41,6 +41,7 @@ interface ModelRows {
  */
 function payloadFor({ memberships = [], collections = [] }: ModelRows = {}) {
   const collectionFinds: unknown[] = []
+  const membershipFinds: unknown[] = []
   const model = (rows: Record<string, unknown>[], onFind?: (filter: unknown) => void) => {
     const query = { lean: async () => rows, limit: () => query, select: () => query }
     return {
@@ -53,11 +54,12 @@ function payloadFor({ memberships = [], collections = [] }: ModelRows = {}) {
   return {
     db: {
       collections: {
-        'collection-memberships': model(memberships),
+        'collection-memberships': model(memberships, (filter) => membershipFinds.push(filter)),
         collections: model(collections, (filter) => collectionFinds.push(filter)),
       },
     },
     collectionFinds,
+    membershipFinds,
   }
 }
 
@@ -200,7 +202,79 @@ describe('Entity record endpoints', () => {
       afterId: 'rest_0',
       limit: 25,
     })
-    await expect(response.json()).resolves.toEqual({ items: [{ id: 'rest_1' }], next_cursor: null, total: 1 })
+    // The boundary reported no Curation ids, so membership is unknown — `null`,
+    // which is not the same answer as zero.
+    await expect(response.json()).resolves.toEqual({
+      items: [{ id: 'rest_1', collections_count: null }],
+      next_cursor: null,
+      total: 1,
+    })
+  })
+
+  test('counts the Collections holding each Entity with one membership read for the page', async () => {
+    const entityPage = vi.fn().mockResolvedValue({
+      items: [
+        { id: 'rest_1', curation_ids: ['cur_1', 'cur_2'] },
+        { id: 'rest_2', curation_ids: [] },
+      ],
+      next_cursor: null,
+      total: 2,
+    })
+    const handler = recordEndpoints(() => ({ entityPage }) as never).find(
+      (entry) => entry.method === 'get' && entry.path === '/admin/v1/records/entities',
+    )!.handler
+
+    const payload = payloadFor({
+      memberships: [
+        // Two Collections hold `rest_1`, through two different Curations.
+        { curationId: 'cur_1', collectionId: 'col_1' },
+        { curationId: 'cur_1', collectionId: 'col_2' },
+        { curationId: 'cur_2', collectionId: 'col_1' },
+        // Neither of these belongs to the page's Curations: one repeats a
+        // Collection already counted, the other is another Entity's Curation.
+        { curationId: 'cur_2', collectionId: 'col_1' },
+        { curationId: 'cur_9', collectionId: 'col_3' },
+      ],
+    })
+    const response = await handler(requestFor(
+      'https://admin.example.test/api/admin/v1/records/entities',
+      { payload },
+    ) as never)
+
+    expect(response.status).toBe(200)
+    // ONE ledger read for the whole page, filtered to the page's Curation ids.
+    expect(payload.membershipFinds).toEqual([
+      { curationId: { $in: ['cur_1', 'cur_2'] }, removedInVersion: null },
+    ])
+    await expect(response.json()).resolves.toEqual({
+      items: [
+        { id: 'rest_1', collections_count: 2 },
+        // The boundary reported an empty list: a known zero, not unknown.
+        { id: 'rest_2', collections_count: 0 },
+      ],
+      next_cursor: null,
+      total: 2,
+    })
+  })
+
+  test('the page’s Curation ids are a server-side join input and never reach the browser', async () => {
+    const entityPage = vi.fn().mockResolvedValue({
+      items: [{ id: 'rest_1', curation_ids: ['cur_1'] }],
+      next_cursor: null,
+      total: 1,
+    })
+    const handler = recordEndpoints(() => ({ entityPage }) as never).find(
+      (entry) => entry.method === 'get' && entry.path === '/admin/v1/records/entities',
+    )!.handler
+
+    const response = await handler(requestFor(
+      'https://admin.example.test/api/admin/v1/records/entities',
+      { payload: payloadFor({ memberships: [{ curationId: 'cur_1', collectionId: 'col_1' }] }) },
+    ) as never)
+
+    const body = await response.json() as { items: Record<string, unknown>[] }
+    expect(body.items[0]).toEqual({ id: 'rest_1', collections_count: 1 })
+    expect('curation_ids' in body.items[0]).toBe(false)
   })
 
   test.each([
@@ -265,7 +339,12 @@ describe('Entity record endpoints', () => {
 describe('Global search endpoint', () => {
   test('answers with Curations, Entities and CMS Collections for one query', async () => {
     const search = vi.fn().mockResolvedValue({ items: [{ curation_id: 'cur_1' }], next_cursor: null, total: 1 })
-    const entityPage = vi.fn().mockResolvedValue({ items: [{ id: 'rest_1' }], next_cursor: null, total: 1 })
+    // The boundary row carries the join input; the palette response must not.
+    const entityPage = vi.fn().mockResolvedValue({
+      items: [{ id: 'rest_1', curation_ids: ['cur_1'] }],
+      next_cursor: null,
+      total: 1,
+    })
     const handler = recordEndpoints(
       () => ({ entityPage }) as never,
       () => ({ search }) as never,

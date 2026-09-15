@@ -71,4 +71,50 @@ describe('CurationAdapter wire format', () => {
     await expect(new CurationAdapter().search({ actorId: 'admin-1', cursor: null, filters: {}, limit: 100 }))
       .rejects.toMatchObject({ status: 403, code: 'authorization_revoked' })
   })
+
+  test('starts a scan with the base filters, the order and the exclusion, never the view mode', async () => {
+    const bodies: unknown[] = []
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)))
+      return Response.json({ scan_token: 'scan-token', max_catalog_sequence: 20 })
+    }))
+
+    const token = await new CurationAdapter().startScan({
+      actorId: 'admin-1',
+      excludeCurationIds: ['cur-2', 'cur-4'],
+      filters: { status: ['active'], q: 'sushi', without_collections: true },
+      sort: 'updated_at_desc',
+    })
+
+    expect(token).toBe('scan-token')
+    expect(bodies[0]).toEqual({
+      filters: {
+        q: 'sushi',
+        status: ['active'],
+        sort: 'updated_at_desc',
+        exclude_curation_ids: ['cur-2', 'cur-4'],
+      },
+    })
+  })
+
+  test('walks one scan page into the ids the listing needs', async () => {
+    const bodies: unknown[] = []
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)))
+      return Response.json({
+        items: [{ curation_id: 'cur-1' }, { curation_id: 'cur-2' }],
+        next_cursor: 'cursor-2',
+      })
+    }))
+
+    const page = await new CurationAdapter().scanPage({
+      actorId: 'admin-1',
+      cursor: null,
+      limit: 500,
+      scanToken: 'scan-token',
+    })
+
+    expect(page).toEqual({ ids: ['cur-1', 'cur-2'], nextCursor: 'cursor-2' })
+    expect(bodies[0]).toEqual({ scan_token: 'scan-token', cursor: null, limit: 500 })
+  })
 })

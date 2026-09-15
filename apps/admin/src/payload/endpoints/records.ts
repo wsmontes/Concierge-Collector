@@ -1,5 +1,6 @@
 import type { Endpoint, PayloadRequest } from 'payload'
 import type { Model } from 'mongoose'
+import type { EntityListPage } from '@concierge/fastapi-client'
 import type { CmsIdentity } from '../../auth/fastapi-authz-client'
 import { CurationAdapter } from '../../fastapi/curation-adapter'
 import { AdminHttpError } from '../../http/errors'
@@ -138,6 +139,80 @@ async function collectionHits(request: AdminRecordRequest, query: string, limit:
   }))
 }
 
+/** Membership rows read for one Entity page: the ledger read is bounded, the corpus is not. */
+const ENTITY_MEMBERSHIP_LIMIT = 10_000
+
+/**
+ * The Curation ids the boundary reported for one Entity row, or `null` when it
+ * reported none. `null` is unknown — an older boundary, a row without the
+ * field — and is deliberately not an empty list, which is a known zero.
+ */
+function curationIdsOf(row: Record<string, unknown>): string[] | null {
+  const value = row.curation_ids
+  if (!Array.isArray(value)) return null
+  return value.filter((id): id is string => typeof id === 'string')
+}
+
+/**
+ * How many Collections currently hold each Entity of the page.
+ *
+ * Collections are CMS records, so this answer comes from the CMS's own
+ * membership ledger (a row is current while `removedInVersion` is null)
+ * instead of a cross-service call — one query for the page, never one per row,
+ * exactly like the Explorer's `collectionsCounts`. The boundary supplies each
+ * row's Curation ids; they are a join input only and never reach the browser.
+ * A row the boundary did not describe gets `null`: unknown, which is not the
+ * same as zero.
+ */
+async function entityCollectionsCounts(
+  request: AdminRecordRequest,
+  rows: readonly Record<string, unknown>[],
+): Promise<(number | null)[]> {
+  const idsByRow = rows.map(curationIdsOf)
+  const curationIds = [...new Set(idsByRow.flatMap((ids) => ids ?? []))]
+  const collectionsByCuration = new Map<string, Set<string>>()
+  if (curationIds.length > 0) {
+    const memberships = await modelFor(request, 'collection-memberships')
+      .find({ curationId: { $in: curationIds }, removedInVersion: null })
+      .select({ curationId: 1, collectionId: 1 })
+      .limit(ENTITY_MEMBERSHIP_LIMIT)
+      .lean() as Record<string, unknown>[]
+    for (const membership of memberships) {
+      const curationId = String(membership.curationId)
+      const collections = collectionsByCuration.get(curationId) ?? new Set<string>()
+      collections.add(String(membership.collectionId))
+      collectionsByCuration.set(curationId, collections)
+    }
+  }
+  return idsByRow.map((ids) => {
+    if (ids === null) return null
+    const collections = new Set<string>()
+    for (const id of ids) {
+      for (const collectionId of collectionsByCuration.get(id) ?? []) collections.add(collectionId)
+    }
+    return collections.size
+  })
+}
+
+/**
+ * The Entity row the browser receives: the page's Curation ids stay on the
+ * server, where the membership join happened, and never reach the browser
+ * contract.
+ */
+function browserEntityRow(row: Record<string, unknown>, collectionsCount: number | null): Record<string, unknown> {
+  return { ...withoutBoundaryJoinInput(row), collections_count: collectionsCount }
+}
+
+/**
+ * Drops the boundary-only join input (`curation_ids`) from one Entity row. The
+ * global palette serves the same boundary rows, so it strips them too.
+ */
+function withoutBoundaryJoinInput(row: Record<string, unknown>): Record<string, unknown> {
+  const visible: Record<string, unknown> = { ...row }
+  delete visible.curation_ids
+  return visible
+}
+
 function guard(handler: (request: AdminRecordRequest, actor: CmsIdentity) => Promise<Response>) {
   const protectedHandler = withAdmin((request, actor) => handler(request as AdminRecordRequest, actor))
   return (request: PayloadRequest) => protectedHandler(request as unknown as Request)
@@ -182,7 +257,13 @@ export function recordEndpoints(
           afterId: optionalParam(adminRequest, 'cursor', 200),
           limit: numberParam(adminRequest, 'limit', 50, 200),
         }
-        return Response.json(await adapterForRequest(adminRequest).entityPage(input))
+        const page: EntityListPage = await adapterForRequest(adminRequest).entityPage(input)
+        const rows = page.items as unknown as Record<string, unknown>[]
+        const counts = await entityCollectionsCounts(adminRequest, rows)
+        return Response.json({
+          ...page,
+          items: rows.map((row, index) => browserEntityRow(row, counts[index])),
+        })
       }),
     },
     {
@@ -240,7 +321,11 @@ export function recordEndpoints(
           }),
           collectionHits(adminRequest, query, limit),
         ])
-        return Response.json({ curations: curations.items, entities: entities.items, collections })
+        return Response.json({
+          curations: curations.items,
+          entities: entities.items.map((row) => withoutBoundaryJoinInput(row as unknown as Record<string, unknown>)),
+          collections,
+        })
       }),
     },
   ]

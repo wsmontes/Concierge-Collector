@@ -259,6 +259,38 @@ def _curations_count_by_entity(db: Database, rows: list[dict[str, Any]]) -> dict
     return counts
 
 
+def _curation_ids_by_entity(db: Database, rows: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """Curation ids per Entity row with ONE query for the whole page.
+
+    Companion of ``_curations_count_by_entity``: the Admin cannot join the
+    Collection membership ledger from here (it lives in the CMS database), so
+    the boundary hands it the page's Curation ids and the BFF counts the
+    Collections. The ``$match`` is restricted to the page's entity references
+    (never a per-row query) and skips the same ``status == "deleted"``
+    tombstones the count skips, so the two fields always agree.
+    """
+    row_id_by_reference: dict[Any, str] = {}
+    for row in rows:
+        row_id = str(row.get("_id"))
+        for variant in _entity_reference_variants(row):
+            row_id_by_reference.setdefault(variant, row_id)
+    if not row_id_by_reference:
+        return {}
+    ids: dict[str, list[str]] = {}
+    cursor = db.curations.find(
+        {"entity_id": {"$in": list(row_id_by_reference)}, "status": {"$ne": _DELETED_STATUS}},
+        {"_id": 1, "entity_id": 1, "curation_id": 1},
+    )
+    for document in cursor:
+        row_id = row_id_by_reference.get(document.get("entity_id"))
+        if row_id is not None:
+            # The CMS identity of a stored Curation is its ``curation_id`` — the
+            # handle every other boundary read and the membership ledger use —
+            # with ``_id`` as the fallback for a document that carries no field.
+            ids.setdefault(row_id, []).append(str(document.get("curation_id") or document["_id"]))
+    return ids
+
+
 def _entity_city(document: dict[str, Any]) -> str | None:
     """The Entity's city through every shape the domain writes.
 
@@ -410,6 +442,7 @@ def list_stored_entities(
         transition["_id"] = {"$gt": _MIN_OBJECT_ID}
         rows = list(db.entities.find(transition, _ENTITY_LIST_PROJECTION).sort("_id", 1).limit(limit))
     counts = _curations_count_by_entity(db, rows)
+    curation_ids = _curation_ids_by_entity(db, rows)
     items: list[EntityRow] = []
     for row in rows:
         updated_at = row.get("updatedAt")
@@ -426,6 +459,7 @@ def list_stored_entities(
                 updated_at=utc_iso(updated_at) if isinstance(updated_at, datetime) else updated_at,
                 version=row.get("version"),
                 curations_count=sum(counts.get(str(variant), 0) for variant in _entity_reference_variants(row)),
+                curation_ids=curation_ids.get(str(row.get("_id")), []),
             )
         )
     return EntityListPage(

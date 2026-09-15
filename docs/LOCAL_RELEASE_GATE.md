@@ -42,6 +42,14 @@ O modo completo habilita obrigatoriamente as suites live do CMS:
 - `CMS_E2E_AUTH_HANDOFF=1`
 - `CMS_E2E_PUBLISH=1`
 - `CMS_E2E_EXPLORER=1`
+- `CMS_E2E_COLLECTIONS_UI=1`
+
+`CMS_E2E_BULK` (`curations/bulk-to-draft.spec.ts`) e `CMS_E2E_CREDENTIALS`
+(`credentials/lifecycle.spec.ts`) são opt-in próprios e **não** entram no gate completo: rode-os à mão
+com o stack no ar quando mexer na fila de operações ou em credenciais de consumidor. A suíte de
+credenciais exige um pré-requisito que o boot do runbook não traz: suba a FastAPI também com
+`CMS_MONGODB_READ_URL`/`CMS_MONGODB_DB_NAME` apontando para o banco CMS `-test`, porque a autenticação
+de consumidor valida contra as credenciais que a própria suíte cria.
 
 Por isso, `verify:full` exige o stack local de integração disponível: MongoDB de teste, FastAPI em development, Admin CMS, CMS worker e os dados de teste esperados pelas suites E2E. Ele é intencionalmente um release qualification gate; se o stack não estiver pronto, o comando deve falhar em vez de produzir um falso verde.
 

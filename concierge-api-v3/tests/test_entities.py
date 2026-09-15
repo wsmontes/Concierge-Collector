@@ -199,24 +199,24 @@ def test_list_entities_ids_filter(client, test_db, clean_test_entities, auth_hea
     test_db.entities.insert_many(
         [
             {
-                "_id": "ids_slug_ent",
-                "entity_id": "ids_slug_ent",
+                "_id": "test_ids_slug_ent",
+                "entity_id": "test_ids_slug_ent",
                 "name": "Alvo Slug",
                 "status": "active",
                 "type": "restaurant",
                 "updatedAt": "2026-08-13T00:00:00Z",
             },
             {
-                "_id": "ids_hex_ent",
-                "entity_id": "ids_hex_ent",
+                "_id": "test_ids_hex_ent",
+                "entity_id": "test_ids_hex_ent",
                 "name": "Alvo Hex",
                 "status": "active",
                 "type": "restaurant",
                 "updatedAt": "2026-08-13T00:00:00Z",
             },
             {
-                "_id": "ids_noise",
-                "entity_id": "ids_noise",
+                "_id": "test_ids_noise",
+                "entity_id": "test_ids_noise",
                 "name": "Ruído",
                 "status": "active",
                 "type": "restaurant",
@@ -227,22 +227,26 @@ def test_list_entities_ids_filter(client, test_db, clean_test_entities, auth_hea
 
     r = client.get(
         "/api/v3/entities",
-        params={"ids": ["ids_slug_ent", "ids_hex_ent"], "limit": 50},
+        params={"ids": ["test_ids_slug_ent", "test_ids_hex_ent"], "limit": 50},
         headers=auth_headers,
     )
     assert r.status_code == 200
     items = r.json()["items"]
     ids = {i.get("entity_id") or i.get("_id") for i in items}
-    assert "ids_slug_ent" in ids
-    assert "ids_hex_ent" in ids
-    assert "ids_noise" not in ids
+    assert "test_ids_slug_ent" in ids
+    assert "test_ids_hex_ent" in ids
+    assert "test_ids_noise" not in ids
 
     # hex válido casa ObjectId ($in de string NÃO casa ObjectId sem variante)
     from bson import ObjectId
 
+    # Um id por execução: um ObjectId fixo não é removido pela fixture de
+    # limpeza (que apaga só `^test_`), então a segunda execução da suíte contra
+    # o mesmo banco morria com duplicate key antes mesmo de testar nada.
+    oid = ObjectId()
     test_db.entities.insert_one(
         {
-            "_id": ObjectId("507f1f77bcf86cd799439011"),
+            "_id": oid,
             "entity_id": "hex-oid-slug",
             "name": "Alvo ObjectId",
             "status": "active",
@@ -252,12 +256,13 @@ def test_list_entities_ids_filter(client, test_db, clean_test_entities, auth_hea
     )
     r2 = client.get(
         "/api/v3/entities",
-        params={"ids": ["507f1f77bcf86cd799439011"], "limit": 50},
+        params={"ids": [str(oid)], "limit": 50},
         headers=auth_headers,
     )
     assert r2.status_code == 200
     r2_ids = [i.get("entity_id") or i.get("_id") for i in r2.json()["items"]]
-    assert any(str(i) == "507f1f77bcf86cd799439011" for i in r2_ids) or "hex-oid-slug" in r2_ids
+    assert any(str(i) == str(oid) for i in r2_ids) or "hex-oid-slug" in r2_ids
+    test_db.entities.delete_one({"_id": oid})
 
 
 @pytest.mark.mongo
@@ -593,8 +598,10 @@ def test_list_entities_ids_filter_finds_ids_containing_comma(client, test_db, cl
     """
     from bson import ObjectId
 
-    comma_id = "rest_a_pizza_da_mooca_-23.5520,_-46.6200"
-    oid = ObjectId("507f1f77bcf86cd799439011")
+    comma_id = "test_rest_a_pizza_da_mooca_-23.5520,_-46.6200"
+    # Por execução, e removido no fim: a fixture de limpeza só apaga `^test_`,
+    # então um ObjectId fixo fazia a segunda execução colidir.
+    oid = ObjectId()
     test_db.entities.insert_many(
         [
             {
@@ -636,6 +643,7 @@ def test_list_entities_ids_filter_finds_ids_containing_comma(client, test_db, cl
     assert r2.status_code == 200
     dois = {i.get("entity_id") or str(i.get("_id")) for i in r2.json()["items"]}
     assert len(dois) == 2, f"esperava os dois ids, veio {dois}"
+    test_db.entities.delete_one({"_id": oid})
 
 
 # ============================================================================

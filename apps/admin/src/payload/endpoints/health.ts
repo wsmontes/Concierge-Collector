@@ -1,6 +1,7 @@
 import type { Endpoint, PayloadRequest } from 'payload'
 import type { Model } from 'mongoose'
 import type { CmsIdentity } from '../../auth/fastapi-authz-client'
+import { liveMemberCurationIds, MEMBER_CURATION_ID_LIMIT } from '../../collections/membership-ledger'
 import type { ContentHealth } from '../../components/overview/ContentHealthView'
 import { withAdmin, type AdminRequest } from '../../http/with-admin'
 import { RecordsAdapter } from '../../records/client'
@@ -20,7 +21,7 @@ type AdminHealthRequest = AdminRequest & PayloadRequest
  * carries a bounded prefix and the counter that depends on the full set is
  * reported as unknown instead of being silently computed from a partial one.
  */
-const MEMBERSHIP_ID_CAP = 10000
+const MEMBERSHIP_ID_CAP = MEMBER_CURATION_ID_LIMIT
 
 const DEGRADED_LEDGER_TOO_LARGE =
   `The CMS membership ledger tracks more than ${MEMBERSHIP_ID_CAP} Curations, so the boundary received a bounded set of member ids and "Without Collections" is unavailable.`
@@ -31,15 +32,9 @@ function modelFor(request: AdminHealthRequest, slug: string): DocumentModel {
   return model as unknown as DocumentModel
 }
 
-/**
- * Curations some Collection currently holds. Collections live in the CMS
- * database, so this comes from the CMS's own membership ledger — a row is
- * current while `removedInVersion` is null.
- */
+/** Curations some Collection currently holds, read from the CMS's own membership ledger. */
 async function memberCurationIds(request: AdminHealthRequest): Promise<string[]> {
-  const ids = await modelFor(request, 'collection-memberships')
-    .distinct('curationId', { removedInVersion: null }) as unknown[]
-  return ids.map((id) => String(id)).filter((id) => id.length > 0).sort()
+  return liveMemberCurationIds(modelFor(request, 'collection-memberships'))
 }
 
 function guard(handler: (request: AdminHealthRequest, actor: CmsIdentity) => Promise<Response>) {

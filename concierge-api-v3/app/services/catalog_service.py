@@ -323,6 +323,10 @@ def catalog_filter_clauses(filters: dict) -> list[dict]:
         clauses.append({"updatedAt": updated})
     if filters.get("unlinked") is not None:
         clauses.append(unlinked_entity_clause(bool(filters["unlinked"])))
+    if filters.get("exclude_curation_ids"):
+        # The set is already de-duplicated and sorted by ``_normalized_filters``,
+        # so an equivalent exclusion always serializes — and signs — identically.
+        clauses.append({"curation_id": {"$nin": filters["exclude_curation_ids"]}})
     clauses.extend(concept_query_clauses(filters.get("concepts") or []))
     clauses.extend(field_condition_clauses(filters.get("where") or []))
     return clauses
@@ -518,6 +522,10 @@ def _normalized_filters(filters: dict) -> dict:
         value["concepts"] = _canonical_concepts(value["concepts"])
     if isinstance(value.get("where"), list):
         value["where"] = _canonical_conditions(value["where"])
+    if isinstance(value.get("exclude_curation_ids"), list):
+        # A set, not a sequence: the same ids in another order are the same
+        # request, so the token and every cursor minted from it stay identical.
+        value["exclude_curation_ids"] = sorted(set(value["exclude_curation_ids"]))
     if value.get("sort") == DEFAULT_CURATION_SORT:
         # Absence and the server default are the same request: the scan token
         # and the cursor payload stay byte-compatible with the ones minted

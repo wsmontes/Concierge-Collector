@@ -72,6 +72,13 @@ class EntityRow(BaseModel):
         ge=0,
         description="Curations referencing this Entity, excluding those with status == 'deleted'.",
     )
+    curation_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Ids of the Curations referencing this Entity (deleted tombstones excluded), so the CMS can count the "
+            "Collections that hold them. A boundary-only join input: it is not part of the Admin browser contract."
+        ),
+    )
 
 
 class EntityListPage(BaseModel):

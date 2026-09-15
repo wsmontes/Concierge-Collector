@@ -108,12 +108,14 @@ live('creates, edits, publishes, archives/restores and targets Explorer through 
   const operationId = await enqueueOneCuration(page, collectionId)
   await waitForOperation(page, operationId)
   await page.reload()
-  await expect(page.getByText('1 selected')).toBeVisible()
+  // O contador do workspace ("1 selected in draft · 0 selected published") contém o mesmo
+  // prefixo; sem `exact` o locator casa com dois elementos e o strict mode do Playwright falha.
+  await expect(page.getByText('1 selected', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Publish new version' }).click()
   const publishDialog = page.getByRole('dialog', { name: 'Publish Collection' })
   await expect(publishDialog.getByText('First publish → Version 1')).toBeVisible()
-  await expect(publishDialog.getByText('1 selected')).toBeVisible()
+  await expect(publishDialog.getByText('1 selected', { exact: true })).toBeVisible()
   const unavailableConfirmation = publishDialog.getByRole('checkbox', { name: /Publish with .* unavailable/ })
   if (await unavailableConfirmation.count()) await unavailableConfirmation.check()
   await publishDialog.getByRole('button', { name: 'Publish Collection now' }).click()

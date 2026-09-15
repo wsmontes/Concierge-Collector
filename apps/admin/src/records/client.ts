@@ -1,7 +1,9 @@
 import type {
   ContentHealthResponse,
   CurationSummariesResponse,
+  CuratorListPage,
   EntityCurationsPage,
+  EntityImagesResponse,
   EntityListPage,
 } from '@concierge/fastapi-client'
 import { FastApiAdminClient, FastApiClientError } from '@concierge/fastapi-client'
@@ -60,6 +62,19 @@ export class RecordsAdapter {
 
   entityCurations(entityId: string, actorId: string, limit: number): Promise<EntityCurationsPage> {
     return this.call(() => this.client.entityCurations(entityId, { limit }, actorId))
+  }
+
+  /**
+   * The Entity's ranked image metadata. Only the metadata: the bytes come from
+   * the Admin's own media route, which streams them with this same credential.
+   */
+  entityImages(entityId: string, actorId: string): Promise<EntityImagesResponse> {
+    return this.call(() => this.client.entityImages(entityId, actorId))
+  }
+
+  /** Bounded curator directory page, ordered by name. */
+  curatorDirectory(query: string | null, actorId: string): Promise<CuratorListPage> {
+    return this.call(() => this.client.curatorDirectory({ q: query }, actorId))
   }
 
   /**

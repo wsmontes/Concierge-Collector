@@ -92,6 +92,8 @@ export function normalizeCurationFilters(
     // Absent means unrestricted: a `false` flag would be a second spelling of
     // the same thing and would make the intent hash depend on the draft.
     ...(filters.unlinked === true ? { unlinked: true } : {}),
+    // Same rule for the view mode: it is only ever recorded when asked for.
+    ...(filters.without_collections === true ? { without_collections: true } : {}),
     ...(concepts.length ? { concepts } : {}),
     ...(clauses.length ? { where: clauses } : {}),
   }

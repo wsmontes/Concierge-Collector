@@ -33,6 +33,8 @@ from app.api import (
     capture,
     catalog,
     catalog_records,
+    catalog_curators,
+    catalog_media,
     internal_curations,
     internal_consumer_usage,
     curators,
@@ -154,6 +156,13 @@ app.include_router(catalog.router, prefix="/api/v3", dependencies=_catalog_scan_
 # propósito — o Admin precisa renderizar 100% de um registro, não apenas a
 # listagem do Explorer.
 app.include_router(catalog_records.router, prefix="/api/v3")
+# Mesmo boundary, mesma razão: o seletor de curator do registro de Curation
+# precisa de uma listagem real, fora do gate catalog_scan.
+app.include_router(catalog_curators.router, prefix="/api/v3")
+# Mídia da Entity (<img> da seção Media & sources): mesma fronteira e mesma
+# razão — o Admin chega com a service key, não com sessão de curator, e
+# precisa dos bytes fora do gate catalog_scan.
+app.include_router(catalog_media.router, prefix="/api/v3")
 app.include_router(internal_curations.router, prefix="/api/v3")
 app.include_router(internal_consumer_usage.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")

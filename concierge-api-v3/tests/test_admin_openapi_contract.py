@@ -31,6 +31,9 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         "/api/v3/catalog/entities/{entity_id}/record",
         "/api/v3/catalog/entities/{entity_id}/curations",
         "/api/v3/catalog/entities/{entity_id}",
+        "/api/v3/catalog/curators",
+        "/api/v3/catalog/entities/{entity_id}/images",
+        "/api/v3/catalog/entities/{entity_id}/image",
         "/api/v3/curations/{curation_id}/collections",
         "/api/v3/internal/curations/hydrate",
     }
@@ -68,8 +71,12 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         "CurationCategories",
         "CurationNotes",
         "CuratorInfo",
+        "CuratorListPage",
+        "CuratorRow",
         "EntityRow",
         "EntityListPage",
+        "EntityImageItem",
+        "EntityImagesResponse",
         "EntityCurationsPage",
         "Metadata",
         "SyncInfo",
@@ -100,6 +107,9 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         ("/api/v3/catalog/entities/{entity_id}/record", "get"),
         ("/api/v3/catalog/entities/{entity_id}/curations", "get"),
         ("/api/v3/catalog/entities/{entity_id}", "patch"),
+        ("/api/v3/catalog/curators", "get"),
+        ("/api/v3/catalog/entities/{entity_id}/images", "get"),
+        ("/api/v3/catalog/entities/{entity_id}/image", "get"),
         ("/api/v3/internal/curations/hydrate", "post"),
     ):
         operation = document["paths"][path][method]

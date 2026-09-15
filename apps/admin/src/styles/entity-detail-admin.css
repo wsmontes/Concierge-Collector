@@ -242,3 +242,49 @@
     width: 100%;
   }
 }
+
+/* Entity thumbnail (Media section): the one image this page renders — the
+   hero the domain resolved for the Entity. Sized to a card, so the reencoded
+   JPEG (up to 768px on its longest side) never dominates the section. */
+.entity-image {
+  margin: 0 0 1rem;
+}
+
+.entity-image__thumb {
+  background: var(--theme-elevation-100);
+  border-radius: 6px;
+  display: block;
+  height: auto;
+  max-height: 180px;
+  max-width: 320px;
+  object-fit: cover;
+  width: auto;
+}
+
+.entity-image__caption {
+  align-items: baseline;
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+}
+
+.entity-image__source {
+  color: var(--theme-elevation-600);
+  font-size: 0.75rem;
+}
+
+.entity-image__link {
+  color: inherit;
+}
+
+.entity-image__status {
+  color: var(--theme-elevation-600);
+  font-size: 0.85rem;
+  margin: 0 0 1rem;
+}
+
+@media (max-width: 720px) {
+  .entity-image__thumb {
+    max-width: 100%;
+  }
+}

@@ -95,6 +95,17 @@ export function CurationsFilterForm({
         {option.label}
       </label>)}
     </fieldset>
+    <fieldset className="curations-filter-form__collections">
+      <legend>Collections</legend>
+      <label>
+        <input
+          type="checkbox"
+          checked={value.without_collections === true}
+          onChange={() => onChange({ ...value, without_collections: value.without_collections !== true })}
+        />
+        Without Collections
+      </label>
+    </fieldset>
     <AdvancedFilterBuilder value={value.where ?? []} onChange={(clauses) => onChange({ ...value, where: clauses })} />
     {(concepts.length > 0 || where.length > 0) && (
       <div aria-label="Applied filters" className="curations-filter-form__concepts" role="group">

@@ -25,6 +25,7 @@ describe('Curation list URL state', () => {
       entity_type: 'restaurant',
       curator_id: 'admin-1',
       unlinked: false,
+      without_collections: false,
       concepts: [{ category: 'Mood', value: 'Casual' }],
       where: [],
       sort: 'name_asc',
@@ -32,6 +33,19 @@ describe('Curation list URL state', () => {
       cursor: 'abc',
     })
     expect(parseCurationListState(serializeCurationListState(state))).toEqual(state)
+  })
+
+  test('round-trips the "Without Collections" view mode', () => {
+    const state = parseCurationListState('without_collections=true&city=Victoria')
+
+    expect(state.without_collections).toBe(true)
+    expect(serializeCurationListState(state)).toBe('city=Victoria&without_collections=true')
+    expect(parseCurationListState(serializeCurationListState(state)).without_collections).toBe(true)
+  })
+
+  test('keeps the view mode out of a URL that did not ask for it', () => {
+    expect(parseCurationListState('without_collections=false').without_collections).toBe(false)
+    expect(serializeCurationListState(parseCurationListState(''))).toBe('')
   })
 
   test('serializes concept facets as repeated concept.<Category> keys', () => {

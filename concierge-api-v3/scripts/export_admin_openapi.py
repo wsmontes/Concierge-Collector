@@ -64,6 +64,9 @@ CMS_SERVICE_OPERATIONS = (
     ("/api/v3/catalog/entities/{entity_id}/record", "get"),
     ("/api/v3/catalog/entities/{entity_id}/curations", "get"),
     ("/api/v3/catalog/entities/{entity_id}", "patch"),
+    ("/api/v3/catalog/curators", "get"),
+    ("/api/v3/catalog/entities/{entity_id}/images", "get"),
+    ("/api/v3/catalog/entities/{entity_id}/image", "get"),
     ("/api/v3/internal/curations/hydrate", "post"),
 )
 

@@ -7,7 +7,7 @@ import type { EntityRow } from '../../content/record-types'
 import { StatusPill } from '../ui/StatusPill'
 import { formatAbsoluteDate, formatRelativeDate } from '../ui/format-relative-date'
 
-export type EntityColumnId = 'entity' | 'type' | 'city' | 'status' | 'curations' | 'updated'
+export type EntityColumnId = 'entity' | 'type' | 'city' | 'status' | 'curations' | 'collections' | 'updated'
 
 /** Column width vocabulary: the header and every row share one template. */
 const COLUMN_WIDTH: Record<EntityColumnId, string> = {
@@ -16,18 +16,19 @@ const COLUMN_WIDTH: Record<EntityColumnId, string> = {
   city: 'minmax(9rem, 1fr)',
   status: 'minmax(7rem, 0.8fr)',
   curations: 'minmax(6rem, 0.6fr)',
+  collections: 'minmax(6rem, 0.6fr)',
   updated: 'minmax(8rem, 0.9fr)',
 }
 
 /**
  * Default column set of the Entity list (plan §20).
  *
- * The plan also names `Collections`, but no Entity read returns collection
- * membership: membership lives on the Payload side and needs a join endpoint
- * before the column can show anything. Until then the list omits it rather
- * than fabricating a value.
+ * `Collections` counts the Collections holding any of the Entity's Curations:
+ * the membership ledger lives on the Payload side, so the BFF joins it onto
+ * the page (one ledger read per page) and the column renders whatever it
+ * reports.
  */
-const COLUMNS: readonly EntityColumnId[] = ['entity', 'type', 'city', 'status', 'curations', 'updated']
+const COLUMNS: readonly EntityColumnId[] = ['entity', 'type', 'city', 'status', 'curations', 'collections', 'updated']
 
 /** `City` is derived from the stored `data`, never presented as canonical. */
 const COLUMN_LABEL: Record<EntityColumnId, string> = {
@@ -36,6 +37,7 @@ const COLUMN_LABEL: Record<EntityColumnId, string> = {
   city: 'City (derived)',
   status: 'Status',
   curations: 'Curations',
+  collections: 'Collections',
   updated: 'Updated',
 }
 
@@ -101,6 +103,10 @@ function cellFor(column: EntityColumnId, row: EntityRow, navigate: (href: string
       return <StatusPill status={row.status} />
     case 'curations':
       return curationsCell(row, navigate)
+    case 'collections':
+      // Collections holding this Entity's Curations, joined by the BFF: `null`
+      // is unknown and renders as an em dash; `0` is a real zero.
+      return typeof row.collections_count === 'number' ? row.collections_count.toLocaleString() : '—'
     case 'updated':
       return timestampCell(row.updated_at)
   }

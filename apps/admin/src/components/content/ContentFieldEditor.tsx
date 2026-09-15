@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import type { FieldNode } from '../../content/field-types'
 import { BooleanEditor } from './fields/BooleanEditor'
+import { CuratorPickerField } from './fields/CuratorPickerField'
 import { DateTimeEditor } from './fields/DateTimeEditor'
 import { EnumEditor } from './fields/EnumEditor'
 import { LongTextEditor } from './fields/LongTextEditor'
@@ -24,6 +25,11 @@ export interface ContentFieldEditorProps {
  */
 export function ContentFieldEditor({ node, onCommit, onCancel }: ContentFieldEditorProps): ReactNode {
   const editorProps = { node, onCommit, onCancel }
+
+  // `curator_id` holds a curator identity, not text: the generic text control
+  // would let an editor write an owner no curator has, so it gets the real
+  // directory picker instead.
+  if (node.path === 'curator_id') return <CuratorPickerField {...editorProps} />
 
   switch (node.type) {
     case 'text':

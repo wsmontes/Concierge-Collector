@@ -16,6 +16,7 @@ function entity(overrides: Partial<EntityRow> = {}): EntityRow {
     updated_at: new Date(Date.now() - 2 * 3600_000).toISOString(),
     version: 3,
     curations_count: 2,
+    collections_count: 3,
     ...overrides,
   }
 }
@@ -49,13 +50,20 @@ test('renders the Entity page the injected loader returns, with the plan’s col
   expect(loadPage).toHaveBeenCalledWith({ cursor: null, query: '', type: null, status: null })
 })
 
-test('shows no Collections column: the Entity boundary carries no membership', async () => {
-  render(<EntitiesWorkspace loadPage={() => page([entity()])} />)
-  await screen.findByText('Ritz Restaurant')
+test('shows the Collections column with the joined count, an em dash when unknown', async () => {
+  const rows = [
+    entity({ id: 'a', name: 'Joined Entity', collections_count: 3 }),
+    entity({ id: 'b', name: 'Known Zero', collections_count: 0 }),
+    entity({ id: 'c', name: 'Unjoined Entity', collections_count: null }),
+  ]
+  render(<EntitiesWorkspace loadPage={() => page(rows)} />)
+  await screen.findByText('Joined Entity')
 
   const headers = screen.getAllByRole('columnheader').map((node) => node.textContent)
-  expect(headers).toEqual(['Entity', 'Type', 'City (derived)', 'Status', 'Curations', 'Updated'])
-  expect(headers).not.toContain('Collections')
+  expect(headers).toEqual(['Entity', 'Type', 'City (derived)', 'Status', 'Curations', 'Collections', 'Updated'])
+  expect(within(rowOf('Joined Entity')).getByText('3')).toBeVisible()
+  expect(within(rowOf('Known Zero')).getByText('0')).toBeVisible()
+  expect(within(rowOf('Unjoined Entity')).getByText('—')).toBeVisible()
 })
 
 test('renders an explicit em dash for a missing Curation count, never 0 or blank', async () => {

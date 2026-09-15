@@ -21,6 +21,10 @@ export type CatalogRecordResponse = components["schemas"]["CatalogRecordResponse
 export type EntityListPage = components["schemas"]["EntityListPage"];
 export type EntityRow = components["schemas"]["EntityRow"];
 export type EntityCurationsPage = components["schemas"]["EntityCurationsPage"];
+export type CuratorRow = components["schemas"]["CuratorRow"];
+export type CuratorListPage = components["schemas"]["CuratorListPage"];
+export type EntityImagesResponse = components["schemas"]["EntityImagesResponse"];
+export type EntityImageItem = components["schemas"]["EntityImageItem"];
 export type EntityListQuery = NonNullable<paths["/api/v3/catalog/entities"]["get"]["parameters"]["query"]>;
 export type EntityCurationsQuery = NonNullable<
   paths["/api/v3/catalog/entities/{entity_id}/curations"]["get"]["parameters"]["query"]
@@ -172,6 +176,28 @@ export class FastApiAdminClient {
   /** Complete stored Entity document. */
   entityRecord(entityId: string, actorId: string): Promise<CatalogRecordResponse> {
     return this.get(`/api/v3/catalog/entities/${encodeURIComponent(entityId)}/record`, {
+      "x-cms-actor-id": actorId,
+    });
+  }
+
+  /**
+   * One bounded page of the curator directory, ordered by name. The directory
+   * is what makes a Curation's `curator_id` a choice instead of a string.
+   */
+  curatorDirectory(query: { q?: string | null; limit?: number | null }, actorId: string): Promise<CuratorListPage> {
+    const params = new URLSearchParams();
+    if (query.q) params.set("q", query.q);
+    if (query.limit != null) params.set("limit", String(query.limit));
+    const suffix = params.size ? `?${params.toString()}` : "";
+    return this.get(`/api/v3/catalog/curators${suffix}`, { "x-cms-actor-id": actorId });
+  }
+
+  /**
+   * Image gallery of one Entity: metadata only. The bytes come from
+   * `entityImage`/the Admin's own media route, never from here.
+   */
+  entityImages(entityId: string, actorId: string): Promise<EntityImagesResponse> {
+    return this.get(`/api/v3/catalog/entities/${encodeURIComponent(entityId)}/images`, {
       "x-cms-actor-id": actorId,
     });
   }

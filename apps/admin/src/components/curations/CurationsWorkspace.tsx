@@ -1,6 +1,6 @@
 'use client'
 
-import { Button } from '@payloadcms/ui'
+import { Button, Pill } from '@payloadcms/ui'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { normalizeCurationColumns, type CurationColumnId } from '../../content/curation-columns'
@@ -22,6 +22,7 @@ import type {
 import { BulkActionDialog } from '../operations/BulkActionDialog'
 import { JobDrawer } from '../operations/JobDrawer'
 import { AdminPage } from '../ui/AdminPage'
+import { EmptyState } from '../ui/EmptyState'
 import { InlineNotice } from '../ui/InlineNotice'
 import { CurationColumnPicker } from './CurationColumnPicker'
 import { CurationPreviewDrawer } from './CurationPreviewDrawer'
@@ -56,6 +57,19 @@ async function browserLoadRecord(curationId: string): Promise<CurationRecordResp
   return await response.json() as CurationRecordResponse
 }
 
+/**
+ * The exhaustive count of the "Without Collections" view, read from the
+ * content-health counter: the boundary's own answer over the whole catalog.
+ * The filtered listing itself only ever sees one materialized page, so it can
+ * never count this view — and a number nobody measured is rendered as unknown.
+ */
+async function browserLoadWithoutCollectionsCount(): Promise<number | null> {
+  const response = await fetch('/api/admin/v1/records/content-health', { credentials: 'same-origin' })
+  if (!response.ok) throw new Error('Unable to load the Without Collections count')
+  const body = await response.json() as { without_collections?: unknown }
+  return typeof body.without_collections === 'number' ? body.without_collections : null
+}
+
 const SELECTION_READY_POLL_MS = 1_000
 const SELECTION_READY_TIMEOUT_MS = 90_000
 
@@ -72,6 +86,7 @@ function filtersPatch(filters: NormalizedCurationFilters): Partial<CurationListS
     entity_type: filters.entity_type ?? null,
     curator_id: filters.curator_id ?? null,
     unlinked: filters.unlinked === true,
+    without_collections: filters.without_collections === true,
     concepts: filters.concepts ?? [],
     where: filters.where ?? [],
   }
@@ -86,6 +101,7 @@ function filtersPatch(filters: NormalizedCurationFilters): Partial<CurationListS
 export function CurationsWorkspace({
   loadPage = browserLoadPage,
   loadRecord = browserLoadRecord,
+  loadWithoutCollectionsCount = browserLoadWithoutCollectionsCount,
   targetCollectionId = null,
   savedViewsClient,
   initialQuery = null,
@@ -93,6 +109,8 @@ export function CurationsWorkspace({
 }: {
   loadPage?: LoadCurationPage
   loadRecord?: LoadCurationRecord
+  /** The exhaustive "Without Collections" counter, from the content-health path. */
+  loadWithoutCollectionsCount?: () => Promise<number | null>
   targetCollectionId?: string | null
   savedViewsClient?: SavedCurationViewsClient
   /** Server-provided query string (or search params) the surface boots from. */
@@ -110,11 +128,13 @@ export function CurationsWorkspace({
       entity_type: boot.entity_type,
       curator_id: boot.curator_id,
       unlinked: boot.unlinked,
+      without_collections: boot.without_collections,
       concepts: boot.concepts,
       where: boot.where,
     }
   })
   const [page, setPage] = useState<CurationSearchPage>({ items: [], next_cursor: null, total: null })
+  const [pageLoaded, setPageLoaded] = useState(false)
   const [selection, setSelection] = useState<SelectionState>({ mode: 'explicit', selected: new Set() })
   const [preview, setPreview] = useState<AdminCurationRow | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -124,9 +144,10 @@ export function CurationsWorkspace({
   const [applySelection, setApplySelection] = useState<string | null>(null)
   const [showJobs, setShowJobs] = useState(false)
   const [lastPostedOperation, setLastPostedOperation] = useState<string | null>(null)
+  const [withoutCollectionsCount, setWithoutCollectionsCount] = useState<number | null>(null)
   const pollController = useRef<AbortController | null>(null)
   const preservedQuery = useRef<string | URLSearchParams | null>(initialQuery)
-  const { q, status, city, entity_type, curator_id, unlinked, concepts, where } = state
+  const { q, status, city, entity_type, curator_id, unlinked, without_collections, concepts, where } = state
 
   useEffect(() => () => pollController.current?.abort(), [])
 
@@ -135,9 +156,25 @@ export function CurationsWorkspace({
   // are normalized with the flat draft so the all-matching intent carries the
   // exact predicate the list was filtered by.
   const filters = useMemo(
-    () => normalizeCurationFilters({ q, status, city, entity_type, curator_id, unlinked, concepts }, where),
-    [q, status, city, entity_type, curator_id, unlinked, concepts, where],
+    () => normalizeCurationFilters({ q, status, city, entity_type, curator_id, unlinked, without_collections, concepts }, where),
+    [q, status, city, entity_type, curator_id, unlinked, without_collections, concepts, where],
   )
+
+  // The mode's header count is the content-health counter, asked for only while
+  // the mode is on. A counter the boundary did not report stays null: unknown,
+  // never invented from the page that happens to be loaded.
+  useEffect(() => {
+    if (!without_collections) {
+      setWithoutCollectionsCount(null)
+      return
+    }
+    let active = true
+    void loadWithoutCollectionsCount().then(
+      (count) => { if (active) setWithoutCollectionsCount(count) },
+      () => { if (active) setWithoutCollectionsCount(null) },
+    )
+    return () => { active = false }
+  }, [loadWithoutCollectionsCount, without_collections])
 
   useEffect(() => {
     let active = true
@@ -145,6 +182,7 @@ export function CurationsWorkspace({
       (nextPage) => {
         if (!active) return
         setPage(nextPage)
+        setPageLoaded(true)
         setError(null)
       },
       () => { if (active) setError('Unable to load Curations. Try again.') },
@@ -317,6 +355,13 @@ export function CurationsWorkspace({
       eyebrow="Content"
       title="Curations"
       description="Search and filter Curations, then build a server-side selection for one or more Collection drafts."
+      actions={without_collections ? (
+        <Pill pillStyle="light-gray" rounded size="small">
+          {withoutCollectionsCount === null
+            ? 'Without Collections: —'
+            : `${withoutCollectionsCount.toLocaleString()} without Collections`}
+        </Pill>
+      ) : undefined}
     >
       <div className="curations-workspace__workspace" onKeyDown={handleKeyDown}>
         {targetCollectionId && (
@@ -370,17 +415,26 @@ export function CurationsWorkspace({
         />
         {applyError && <InlineNotice tone="error"><p>{applyError}</p></InlineNotice>}
         {error && <InlineNotice tone="error"><p>{error}</p></InlineNotice>}
-        <CurationTable
-          columns={state.columns}
-          height={600}
-          isSelected={(row) => selected(row.curation_id)}
-          onOpenRow={setPreview}
-          onToggle={(row, index, shiftKey) => toggle(row.curation_id, index, shiftKey)}
-          onToggleAllLoaded={toggleAllLoaded}
-          rowHeight={44}
-          rows={page.items}
-          selectAllDisabled={selection.mode === 'all_matching'}
-        />
+        {pageLoaded && page.items.length === 0 ? (
+          <EmptyState
+            title={without_collections ? 'No Curations without Collections' : 'No Curations'}
+            description={without_collections
+              ? 'Every stored Curation is currently held by a Collection.'
+              : 'No stored Curation matches these filters.'}
+          />
+        ) : (
+          <CurationTable
+            columns={state.columns}
+            height={600}
+            isSelected={(row) => selected(row.curation_id)}
+            onOpenRow={setPreview}
+            onToggle={(row, index, shiftKey) => toggle(row.curation_id, index, shiftKey)}
+            onToggleAllLoaded={toggleAllLoaded}
+            rowHeight={44}
+            rows={page.items}
+            selectAllDisabled={selection.mode === 'all_matching'}
+          />
+        )}
         {nextCursor && (
           <div className="curations-workspace__pagination">
             <Button

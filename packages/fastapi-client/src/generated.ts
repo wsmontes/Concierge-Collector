@@ -240,6 +240,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/catalog/curators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Catalog Curators
+         * @description Search the curator directory by name or email, ordered by name.
+         *
+         *     ``q`` is text, not a pattern: regex metacharacters match themselves. Without
+         *     ``q`` the page is still bounded by ``limit``, so browsing never becomes a
+         *     whole-collection read.
+         */
+        get: operations["list_catalog_curators_api_v3_catalog_curators_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v3/catalog/entities": {
         parameters: {
             query?: never;
@@ -304,6 +328,54 @@ export interface paths {
          *     stays consistent while the collection is written to.
          */
         get: operations["list_entity_curations_api_v3_catalog_entities__entity_id__curations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/catalog/entities/{entity_id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Entity Image
+         * @description The reencoded JPEG of one ranked Entity image.
+         *
+         *     Rank 0 keeps the hero path of the curator-facing route; ranks 1..7 use the
+         *     ranked catalog. Both are the existing hardened paths — this route only
+         *     changes which credential opens the door.
+         */
+        get: operations["read_entity_image_api_v3_catalog_entities__entity_id__image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/catalog/entities/{entity_id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Entity Images
+         * @description The ranked images of one Entity, ascending by rank, bounded by the ceiling.
+         *
+         *     An Entity with sources but no usable image is an empty gallery, not an
+         *     error: the Admin needs the honest "no image" state, not a failure it would
+         *     have to guess about.
+         */
+        get: operations["read_entity_images_api_v3_catalog_entities__entity_id__images_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -466,6 +538,11 @@ export interface components {
             curator_id?: string | null;
             /** Entity Type */
             entity_type?: string | null;
+            /**
+             * Exclude Curation Ids
+             * @description Curation ids the scan must drop from its materialized set, ANDed with every other filter (at most 10000 ids; over the bound the route answers 413). Omitted or empty means no exclusion.
+             */
+            exclude_curation_ids?: string[];
             /** Q */
             q?: string | null;
             /** Sort */
@@ -767,6 +844,32 @@ export interface components {
             name: string;
         };
         /**
+         * CuratorListPage
+         * @description One bounded page of the curator directory, ordered by name.
+         *
+         *     The directory is always searched and never dumped: ``limit`` bounds the
+         *     page, and there is no keyset behind it — a curator search is a short list,
+         *     not a scrollable catalog — so ``next_cursor`` is always null.
+         */
+        CuratorListPage: {
+            /** Items */
+            items: components["schemas"]["CuratorRow"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /**
+         * CuratorRow
+         * @description One curator of the directory: the identity a ``curator_id`` write carries.
+         */
+        CuratorRow: {
+            /** Curator Id */
+            curator_id: string;
+            /** Email */
+            email?: string | null;
+            /** Name */
+            name?: string | null;
+        };
+        /**
          * EntityCurationsPage
          * @description Every stored Curation attached to one Entity, newest first.
          */
@@ -775,6 +878,26 @@ export interface components {
             items: Record<string, never>[];
             /** Total */
             total: number;
+        };
+        /**
+         * EntityImageItem
+         * @description One ranked Entity image and the boundary path that serves its bytes.
+         */
+        EntityImageItem: {
+            /** Rank */
+            rank: number;
+            /** Source */
+            source: string;
+            /** Url */
+            url: string;
+        };
+        /**
+         * EntityImagesResponse
+         * @description The ranked images of one Entity, ascending by rank, never past the ceiling.
+         */
+        EntityImagesResponse: {
+            /** Items */
+            items: components["schemas"]["EntityImageItem"][];
         };
         /** EntityListPage */
         EntityListPage: {
@@ -795,6 +918,11 @@ export interface components {
              * @description City derived from the stored ``data.city`` value (null when the document has none).
              */
             city?: string | null;
+            /**
+             * Curation Ids
+             * @description Ids of the Curations referencing this Entity (deleted tombstones excluded), so the CMS can count the Collections that hold them. A boundary-only join input: it is not part of the Admin browser contract.
+             */
+            curation_ids?: string[];
             /**
              * Curations Count
              * @description Curations referencing this Entity, excluding those with status == 'deleted'.
@@ -1389,6 +1517,40 @@ export interface operations {
             };
         };
     };
+    list_catalog_curators_api_v3_catalog_curators_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+            };
+            header: {
+                "X-CMS-Actor-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuratorListPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_stored_entities_api_v3_catalog_entities_get: {
         parameters: {
             query?: {
@@ -1488,6 +1650,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityCurationsPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_entity_image_api_v3_catalog_entities__entity_id__image_get: {
+        parameters: {
+            query?: {
+                /** @description Rank da imagem coletada; 0 é o hero que a listagem usa como thumbnail. */
+                rank?: number;
+            };
+            header: {
+                "X-CMS-Actor-Id": string;
+            };
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_entity_images_api_v3_catalog_entities__entity_id__images_get: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CMS-Actor-Id": string;
+            };
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityImagesResponse"];
                 };
             };
             /** @description Validation Error */

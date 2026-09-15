@@ -50,6 +50,12 @@ const CURATION_ROW: Record<string, unknown> = {
   updatedAt: '2026-02-01T10:00:00.000Z',
 }
 
+/**
+ * The gallery an Entity with no resolved image reports. Injected everywhere the
+ * page renders, so no test reaches the media BFF through the browser client.
+ */
+const NO_IMAGES = async () => ({ items: [] })
+
 function fieldBlock(path: string): HTMLElement {
   const block = document.querySelector<HTMLElement>(`.entity-field[data-path="${path}"]`)
   if (block === null) throw new Error(`No Entity field block rendered for path "${path}"`)
@@ -90,6 +96,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: ENTITY_RECORD })}
         saveRecord={vi.fn()}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -106,6 +113,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: ENTITY_RECORD })}
         saveRecord={vi.fn()}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -143,6 +151,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: ENTITY_RECORD })}
         saveRecord={vi.fn()}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -181,6 +190,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: ENTITY_RECORD })}
         saveRecord={vi.fn()}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -216,6 +226,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: ENTITY_RECORD })}
         saveRecord={saveRecord}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -252,6 +263,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: ENTITY_RECORD })}
         saveRecord={saveRecord}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -278,6 +290,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: ENTITY_RECORD })}
         saveRecord={vi.fn()}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -309,6 +322,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: ENTITY_RECORD })}
         saveRecord={saveRecord}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -342,6 +356,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: ENTITY_RECORD })}
         saveRecord={saveRecord}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -370,6 +385,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={loadRecord}
         saveRecord={saveRecord}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -396,6 +412,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: ENTITY_RECORD })}
         saveRecord={vi.fn()}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -417,6 +434,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: ENTITY_RECORD })}
         saveRecord={vi.fn()}
         loadCurations={async () => ({ items: [CURATION_ROW], total: 1 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -444,6 +462,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: ENTITY_RECORD })}
         saveRecord={vi.fn()}
         loadCurations={async () => ({ items: [CURATION_ROW], total: 1 })}
+        loadImages={NO_IMAGES}
         navigate={navigate}
       />,
     )
@@ -461,6 +480,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: ENTITY_RECORD })}
         saveRecord={vi.fn()}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -482,6 +502,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={async () => ({ record: bare })}
         saveRecord={vi.fn()}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -504,6 +525,7 @@ describe('EntityDetailWorkspace', () => {
         }}
         saveRecord={vi.fn()}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -521,6 +543,7 @@ describe('EntityDetailWorkspace', () => {
         loadRecord={loadRecord}
         saveRecord={vi.fn()}
         loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
       />,
     )
 
@@ -529,5 +552,48 @@ describe('EntityDetailWorkspace', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Ritz Restaurant' })).toBeVisible()
     expect(loadRecord).toHaveBeenCalledTimes(2)
+  })
+
+  test('shows the Entity image the gallery resolves as the Media thumbnail', async () => {
+    render(
+      <EntityDetailWorkspace
+        entityId="ent_1"
+        loadRecord={async () => ({ record: ENTITY_RECORD })}
+        saveRecord={vi.fn()}
+        loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={async () => ({
+          items: [
+            { rank: 0, source: 'website_og', url: '/api/admin/v1/records/entities/ent_1/image?rank=0' },
+            { rank: 1, source: 'google_places', url: '/api/admin/v1/records/entities/ent_1/image?rank=1' },
+          ],
+        })}
+      />,
+    )
+
+    await screen.findByRole('heading', { level: 1, name: 'Ritz Restaurant' })
+    const thumbnail = await within(section('Media')).findByRole('img', { name: 'Entity image' })
+    // The rank-0 hero, fetched through the BFF: never a boundary or origin URL.
+    expect(thumbnail).toHaveAttribute('src', '/api/admin/v1/records/entities/ent_1/image?rank=0')
+    expect(within(section('Media')).getByRole('link', { name: 'Open image' }))
+      .toHaveAttribute('href', '/api/admin/v1/records/entities/ent_1/image?rank=0')
+  })
+
+  test('says the Entity has no image instead of rendering a broken frame', async () => {
+    render(
+      <EntityDetailWorkspace
+        entityId="ent_1"
+        loadRecord={async () => ({ record: ENTITY_RECORD })}
+        saveRecord={vi.fn()}
+        loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={async () => {
+          throw new EntityDetailError(404, 'not_found')
+        }}
+      />,
+    )
+
+    await screen.findByRole('heading', { level: 1, name: 'Ritz Restaurant' })
+    const media = section('Media')
+    expect(await within(media).findByText('No image is available for this Entity.')).toBeVisible()
+    expect(within(media).queryByRole('img')).toBeNull()
   })
 })

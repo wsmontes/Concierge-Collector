@@ -118,6 +118,13 @@ export interface CurationFilters {
   curator_id?: string | null
   /** Only `true` narrows the list; an absent key means "no such restriction". */
   unlinked?: boolean
+  /**
+   * The "Without Collections" view: only the Curations no Collection currently
+   * holds. The CMS membership ledger supplies the exclusion, so the boundary
+   * never sees this key — the list BFF composes the page from a scan whose
+   * exclusion is derived from it.
+   */
+  without_collections?: boolean
   concepts?: CurationConceptFilter[]
   where?: WhereClause[]
 }
@@ -129,6 +136,13 @@ export interface NormalizedCurationFilters {
   entity_type?: string
   curator_id?: string
   unlinked?: boolean
+  /**
+   * Set only by the "Without Collections" view, and absent everywhere else. It
+   * travels into the list request AND into selection intents, where the worker
+   * turns it into the ledger-derived scan exclusion (`exclude_curation_ids`):
+   * "all matching" must mean exactly the set the filtered listing showed.
+   */
+  without_collections?: boolean
   concepts?: CurationConceptFilter[]
   where?: WhereClause[]
 }

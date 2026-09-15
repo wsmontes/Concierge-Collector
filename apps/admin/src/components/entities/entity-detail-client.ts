@@ -19,10 +19,30 @@ export interface EntityCurationsPage {
 /** `GET /api/admin/v1/records/entities/:id/curations` */
 export type LoadEntityCurations = (entityId: string) => Promise<EntityCurationsPage>
 
+/**
+ * One ranked Entity image as the BFF serves it. `url` is a path on the BFF
+ * itself — the browser holds a CMS session cookie, never the service key the
+ * boundary requires — and it is the only address for the image the browser is
+ * given: the origin URL the collector resolved stays on the server.
+ */
+export interface EntityImage {
+  rank: number
+  source: string
+  url: string
+}
+
+export interface EntityImagesPage {
+  items: EntityImage[]
+}
+
+/** `GET /api/admin/v1/records/entities/:id/images` */
+export type LoadEntityImages = (entityId: string) => Promise<EntityImagesPage>
+
 export interface EntityDetailClient {
   loadRecord: LoadEntityRecord
   saveRecord: SaveEntityRecord
   loadCurations: LoadEntityCurations
+  loadImages: LoadEntityImages
 }
 
 /**
@@ -91,6 +111,24 @@ function recordPath(entityId: string): string {
   return `${ENTITY_RECORDS_PATH}/${encodeURIComponent(entityId)}`
 }
 
+/**
+ * The gallery the UI can render: an item without a rank, a source and a URL the
+ * browser can fetch is not a thumbnail, so it is dropped rather than rendered
+ * as a nameless or broken frame.
+ */
+function imagesFrom(payload: unknown): EntityImagesPage {
+  if (!isRecord(payload) || !Array.isArray(payload.items)) {
+    throw new EntityDetailError(0, 'invalid_response')
+  }
+  const items: EntityImage[] = []
+  for (const item of payload.items) {
+    if (!isRecord(item)) continue
+    if (typeof item.rank !== 'number' || typeof item.source !== 'string' || typeof item.url !== 'string') continue
+    items.push({ rank: item.rank, source: item.source, url: item.url })
+  }
+  return { items }
+}
+
 export function createBrowserEntityDetailClient(): EntityDetailClient {
   return {
     async loadRecord(entityId) {
@@ -107,6 +145,10 @@ export function createBrowserEntityDetailClient(): EntityDetailClient {
 
     async loadCurations(entityId) {
       return curationsFrom(await requestJson(`${recordPath(entityId)}/curations`))
+    },
+
+    async loadImages(entityId) {
+      return imagesFrom(await requestJson(`${recordPath(entityId)}/images`))
     },
   }
 }

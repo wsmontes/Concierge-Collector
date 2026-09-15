@@ -59,6 +59,26 @@ describe('EntityDetail client', () => {
     expect(fetcher.mock.calls[0][0]).toBe('/api/admin/v1/records/entities/entity-ritz/curations')
   })
 
+  test('loads the Entity image gallery through the media route', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({
+      items: [
+        { rank: 0, source: 'website_og', url: '/api/admin/v1/records/entities/entity-ritz/image?rank=0' },
+        { rank: 1, url: 'missing-a-source' },
+        'not-a-record',
+      ],
+    }))
+    vi.stubGlobal('fetch', fetcher)
+
+    const page = await createBrowserEntityDetailClient().loadImages('entity-ritz')
+
+    // Only a complete row is a thumbnail: a rank without a source and a URL is
+    // not something the page can render.
+    expect(page.items).toEqual([
+      { rank: 0, source: 'website_og', url: '/api/admin/v1/records/entities/entity-ritz/image?rank=0' },
+    ])
+    expect(fetcher.mock.calls[0][0]).toBe('/api/admin/v1/records/entities/entity-ritz/images')
+  })
+
   test('surfaces a BFF failure as an error the caller can branch on', async () => {
     const fetcher = vi.fn().mockResolvedValue(response({ error: { code: 'version_conflict' } }, 409))
     vi.stubGlobal('fetch', fetcher)

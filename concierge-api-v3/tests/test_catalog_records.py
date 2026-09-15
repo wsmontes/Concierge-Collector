@@ -273,6 +273,10 @@ async def test_entity_list_pages_by_after_id_and_counts_curations(async_client, 
     assert body["next_cursor"] == "b"
     assert body["total"] == 3
     assert {item["id"]: item["curations_count"] for item in body["items"]} == {"a": 2, "b": 0}
+    # The ids travel for the CMS-side membership join: one per Curation of the
+    # Entity, the deleted tombstone excluded, and an empty list for an Entity
+    # no Curation references — never a missing key.
+    assert {item["id"]: item["curation_ids"] for item in body["items"]} == {"a": ["c1", "c2"], "b": []}
     assert body["items"][0]["city"] == "São Paulo"
     assert body["items"][0]["name"] == "Place a"
     assert body["items"][0]["status"] == "active"
@@ -282,7 +286,38 @@ async def test_entity_list_pages_by_after_id_and_counts_curations(async_client, 
     second_page = await async_client.get("/api/v3/catalog/entities?limit=2&after_id=b", headers=_headers())
     assert second_page.status_code == 200
     assert [item["id"] for item in second_page.json()["items"]] == ["c"]
+    assert second_page.json()["items"][0]["curation_ids"] == []
     assert second_page.json()["next_cursor"] is None
+
+
+@pytest.mark.asyncio
+async def test_entity_curation_ids_follow_every_reference_shape(async_client, in_memory_db):
+    """A Curation references its Entity by string ``_id``, by an ObjectId
+    ``_id`` written by a bulk import, or by the ``entity_id`` slug. The page
+    joins all three in ONE query and keys the ids back to the row the Admin
+    renders."""
+    in_memory_db._collections.clear()
+    _seed_cms_admin(in_memory_db)
+    bulk_entity_id = ObjectId()
+    in_memory_db.entities.insert_one(active_entity(_id=bulk_entity_id, entity_id="bulk-slug", name="Bulk Place"))
+    # `_id` and `curation_id` differ on purpose: the CMS identity — what the
+    # membership ledger references — is `curation_id`.
+    in_memory_db.curations.insert_one(
+        active_curation(_id="raw-object-id", curation_id="c-object-id", entity_id=bulk_entity_id)
+    )
+    in_memory_db.curations.insert_one(
+        active_curation(_id="raw-string-id", curation_id="c-string-id", entity_id=str(bulk_entity_id))
+    )
+    in_memory_db.curations.insert_one(active_curation(_id="raw-slug", curation_id="c-slug", entity_id="bulk-slug"))
+    in_memory_db.curations.insert_one(active_curation(_id="raw-other", curation_id="c-other", entity_id="elsewhere"))
+
+    response = await async_client.get("/api/v3/catalog/entities?limit=5", headers=_headers())
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["id"] == str(bulk_entity_id)
+    # Every reference shape resolves to the one row, and no id is duplicated.
+    assert sorted(item["curation_ids"]) == ["c-object-id", "c-slug", "c-string-id"]
 
 
 @pytest.mark.asyncio

@@ -18,6 +18,8 @@ import { applicationEndpoints } from './src/payload/endpoints/applications'
 import { credentialEndpoints } from './src/payload/endpoints/credentials'
 import { explorerEndpoints } from './src/payload/endpoints/explorer'
 import { recordEndpoints } from './src/payload/endpoints/records'
+import { mediaEndpoints } from './src/payload/endpoints/media'
+import { curatorEndpoints } from './src/payload/endpoints/curators'
 import { healthEndpoints } from './src/payload/endpoints/health'
 import { selectionEndpoints } from './src/payload/endpoints/selections'
 import { exportEndpoints } from './src/payload/endpoints/exports'
@@ -57,6 +59,10 @@ const collectionsAdminEndpoints = guardFeatureEndpoints('collections_admin', [
   ...publishingEndpoints(),
   ...explorerEndpoints(),
   ...recordEndpoints(),
+  // A mídia da Entity (<img> da seção Media) é a mesma superfície de registro:
+  // mesmo gate, mesmo serviço de fronteira.
+  ...mediaEndpoints(),
+  ...curatorEndpoints(),
   ...healthEndpoints(),
   ...selectionEndpoints(),
   ...exportEndpoints(),

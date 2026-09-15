@@ -14,6 +14,7 @@ function rows(count: number): EntityRow[] {
     updated_at: null,
     version: 1,
     curations_count: index,
+    collections_count: index,
   }))
 }
 

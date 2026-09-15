@@ -61,12 +61,12 @@ export const CURATION_FIELDS = [
   {
     path: 'curator_id',
     label: 'Curator',
-    owner: 'system',
+    owner: 'curation',
     type: 'text',
-    system: true,
+    editable: true,
     filterable: true,
     section: 'About',
-    help: 'Curator reassignment runs through the bulk action; there is no user directory endpoint yet.',
+    help: 'Search the curator directory and apply a curator to reassign this Curation.',
   },
   {
     path: 'curator.name',

@@ -12,6 +12,7 @@ from app.core.security import verify_cms_service
 from app.core.config import settings
 from app.models.catalog import (
     DEFAULT_CURATION_SORT,
+    EXCLUDE_CURATION_IDS_MAX,
     AdminFilterCondition,
     CatalogFilters,
     CatalogSearchPage,
@@ -197,6 +198,14 @@ def start_scan(
     _: None = Depends(verify_cms_service),
     db: Database = Depends(get_database),
 ) -> CatalogScanStart:
+    # The exclusion set rides inside the signed scan token, so it is bounded
+    # exactly like the member set ``/content-health`` accepts: over the bound the
+    # request is refused instead of minting an unbounded token.
+    if len(request.filters.exclude_curation_ids) > EXCLUDE_CURATION_IDS_MAX:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"At most {EXCLUDE_CURATION_IDS_MAX} excluded curation ids are accepted",
+        )
     return CatalogScanStart(
         **start_catalog_scan(
             db, _actor(actor_id), request.filters.model_dump(mode="json"), settings.catalog_cursor_secret_value

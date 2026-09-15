@@ -262,6 +262,14 @@
             ],
             "title": "Entity Type"
           },
+          "exclude_curation_ids": {
+            "description": "Curation ids the scan must drop from its materialized set, ANDed with every other filter (at most 10000 ids; over the bound the route answers 413). Omitted or empty means no exclusion.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Exclude Curation Ids",
+            "type": "array"
+          },
           "q": {
             "anyOf": [
               {
@@ -1068,6 +1076,70 @@
         "title": "CuratorInfo",
         "type": "object"
       },
+      "CuratorListPage": {
+        "description": "One bounded page of the curator directory, ordered by name.\n\nThe directory is always searched and never dumped: ``limit`` bounds the\npage, and there is no keyset behind it — a curator search is a short list,\nnot a scrollable catalog — so ``next_cursor`` is always null.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CuratorRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CuratorListPage",
+        "type": "object"
+      },
+      "CuratorRow": {
+        "description": "One curator of the directory: the identity a ``curator_id`` write carries.",
+        "properties": {
+          "curator_id": {
+            "title": "Curator Id",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "curator_id"
+        ],
+        "title": "CuratorRow",
+        "type": "object"
+      },
       "EntityCurationsPage": {
         "description": "Every stored Curation attached to one Entity, newest first.",
         "properties": {
@@ -1089,6 +1161,49 @@
           "total"
         ],
         "title": "EntityCurationsPage",
+        "type": "object"
+      },
+      "EntityImageItem": {
+        "description": "One ranked Entity image and the boundary path that serves its bytes.",
+        "properties": {
+          "rank": {
+            "maximum": 7.0,
+            "minimum": 0.0,
+            "title": "Rank",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rank",
+          "source",
+          "url"
+        ],
+        "title": "EntityImageItem",
+        "type": "object"
+      },
+      "EntityImagesResponse": {
+        "description": "The ranked images of one Entity, ascending by rank, never past the ceiling.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EntityImageItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "EntityImagesResponse",
         "type": "object"
       },
       "EntityListPage": {
@@ -1144,6 +1259,14 @@
             ],
             "description": "City derived from the stored ``data.city`` value (null when the document has none).",
             "title": "City"
+          },
+          "curation_ids": {
+            "description": "Ids of the Curations referencing this Entity (deleted tombstones excluded), so the CMS can count the Collections that hold them. A boundary-only join input: it is not part of the Admin browser contract.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Curation Ids",
+            "type": "array"
           },
           "curations_count": {
             "default": 0,
@@ -2456,6 +2579,82 @@
         ]
       }
     },
+    "/api/v3/catalog/curators": {
+      "get": {
+        "description": "Search the curator directory by name or email, ordered by name.\n\n``q`` is text, not a pattern: regex metacharacters match themselves. Without\n``q`` the page is still bounded by ``limit``, so browsing never becomes a\nwhole-collection read.",
+        "operationId": "list_catalog_curators_api_v3_catalog_curators_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CuratorListPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "List Catalog Curators",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
     "/api/v3/catalog/entities": {
       "get": {
         "description": "Page the stored Entity collection ordered by ``_id`` ascending.\n\n``q`` matches ``name``, ``entity_id`` or ``externalId`` case-insensitively.\n``after_id`` is the ``id`` of the last row of the previous page; when a page\ncomes back full, its last ``id`` is returned as ``next_cursor``.",
@@ -2761,6 +2960,130 @@
           }
         ],
         "summary": "List Entity Curations",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/entities/{entity_id}/image": {
+      "get": {
+        "description": "The reencoded JPEG of one ranked Entity image.\n\nRank 0 keeps the hero path of the curator-facing route; ranks 1..7 use the\nranked catalog. Both are the existing hardened paths — this route only\nchanges which credential opens the door.",
+        "operationId": "read_entity_image_api_v3_catalog_entities__entity_id__image_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Rank da imagem coletada; 0 é o hero que a listagem usa como thumbnail.",
+            "in": "query",
+            "name": "rank",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Rank da imagem coletada; 0 é o hero que a listagem usa como thumbnail.",
+              "maximum": 7,
+              "minimum": 0,
+              "title": "Rank",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Read Entity Image",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/entities/{entity_id}/images": {
+      "get": {
+        "description": "The ranked images of one Entity, ascending by rank, bounded by the ceiling.\n\nAn Entity with sources but no usable image is an empty gallery, not an\nerror: the Admin needs the honest \"no image\" state, not a failure it would\nhave to guess about.",
+        "operationId": "read_entity_images_api_v3_catalog_entities__entity_id__images_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityImagesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Read Entity Images",
         "tags": [
           "cms-catalog"
         ]

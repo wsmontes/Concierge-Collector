@@ -28,6 +28,7 @@ const MANAGED_KEY: Record<string, true | undefined> = {
   entity_type: true,
   curator_id: true,
   unlinked: true,
+  without_collections: true,
   where: true,
   sort: true,
   columns: true,
@@ -41,6 +42,8 @@ export interface CurationListState {
   entity_type: string | null
   curator_id: string | null
   unlinked: boolean
+  /** The URL's `without_collections=true` view mode. */
+  without_collections: boolean
   concepts: CurationConceptFilter[]
   where: WhereClause[]
   sort: CurationSort
@@ -140,6 +143,7 @@ export function parseCurationListState(
     entity_type: trimmed(params.get('entity_type')),
     curator_id: trimmed(params.get('curator_id')),
     unlinked: params.get('unlinked') === 'true',
+    without_collections: params.get('without_collections') === 'true',
     concepts: conceptFiltersOf(params),
     where: whereClausesOf(params),
     sort: rawSort && isCurationSort(rawSort) ? rawSort : DEFAULT_CURATION_SORT,
@@ -185,6 +189,7 @@ export function serializeCurationListState(
     params.append('where', whereParameter(clause))
   }
   if (state.unlinked) params.set('unlinked', 'true')
+  if (state.without_collections) params.set('without_collections', 'true')
   if (state.sort !== DEFAULT_CURATION_SORT) params.set('sort', state.sort)
   const columns = normalizeCurationColumns(state.columns)
   if (!isDefaultColumnSet(columns)) params.set('columns', columns.join(','))

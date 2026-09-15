@@ -43,6 +43,16 @@ export interface SelectionManifestRecord {
 export interface SelectionCatalogClient {
   introspectAdmin(actorId: string): Promise<void>
   resolveCurations(ids: string[], actorId: string): Promise<{ eligibleIds: string[]; rejected: Array<{ curationId: string; reason: string }> }>
-  startScan(filters: NormalizedCurationFilters, actorId: string): Promise<{ maxCatalogSequence: number; scanToken: string }>
+  /**
+   * Freezes the scan of one intent. `excludeCurationIds` is the boundary's
+   * `exclude_curation_ids`: the live membership exclusion the "Without
+   * Collections" view needs, so an all-matching intent materializes exactly the
+   * set the filtered listing showed.
+   */
+  startScan(
+    filters: NormalizedCurationFilters,
+    actorId: string,
+    excludeCurationIds?: readonly string[],
+  ): Promise<{ maxCatalogSequence: number; scanToken: string }>
   scanPage(input: { actorId: string; cursor: string | null; limit: number; scanToken: string }): Promise<{ items: Array<{ curation_id: string }>; next_cursor: string | null }>
 }

@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import { Types, type ClientSession, type Model } from 'mongoose'
 import type { Payload } from 'payload'
+import { liveMemberCurationIds, MEMBER_CURATION_ID_LIMIT } from '../collections/membership-ledger'
+import type { NormalizedCurationFilters } from '../explorer/types'
 import { AdminHttpError } from '../http/errors'
 import type { CreateSelectionCommand, SelectionCatalogClient, SelectionLease, SelectionManifestRecord } from './types'
 import { FastApiSelectionCatalogClient } from './catalog-client'
@@ -25,6 +27,27 @@ async function inTransaction<T>(payload: Payload, work: (session: ClientSession)
   } finally {
     await session.endSession()
   }
+}
+
+/**
+ * The exclusion set of one all-matching intent: the Curation ids the CMS
+ * membership ledger currently holds when the intent is the "Without
+ * Collections" view, and nothing otherwise.
+ *
+ * It is read here, at intent creation, because the scan freezes it into its
+ * signed token: materialization then walks one snapshot and the manifest cannot
+ * drift from the set the operator saw. A ledger larger than the boundary's
+ * per-call bound cannot describe that set at all, so the intent is refused
+ * instead of materializing from a partial one.
+ */
+export async function scanExclusionIds(
+  payload: Payload,
+  filters: NormalizedCurationFilters | null | undefined,
+): Promise<string[]> {
+  if (filters?.without_collections !== true) return []
+  const members = await liveMemberCurationIds(modelFor(payload, 'collection-memberships'))
+  if (members.length > MEMBER_CURATION_ID_LIMIT) throw new AdminHttpError(503, 'service_unavailable')
+  return members
 }
 
 export function asRecord(document: unknown): SelectionManifestRecord {
@@ -126,7 +149,11 @@ export async function createSelection(
     }))
     if (raced) return raced
   } else {
-    const scan = await catalog.startScan(command.filters!, command.actorId)
+    const scan = await catalog.startScan(
+      command.filters!,
+      command.actorId,
+      await scanExclusionIds(payload, command.filters!),
+    )
     const payloadJobId = new Types.ObjectId().toHexString()
     document = {
       _id: id, actorId: command.actorId, mode: 'all_matching', filters: command.filters, excludedIds,

@@ -21,7 +21,8 @@ import { InlineNotice } from '../ui/InlineNotice'
 import { StatusPill } from '../ui/StatusPill'
 import { EntityCurationsSection, type EntityCurationsState } from './EntityCurationsSection'
 import { EntityFieldSection } from './EntityFieldSection'
-import { browserEntityDetailClient } from './entity-detail-client'
+import { EntityImageThumbnail, type EntityImageState } from './EntityImageThumbnail'
+import { browserEntityDetailClient, type LoadEntityImages } from './entity-detail-client'
 
 const ENTITY_DESCRIPTORS = descriptorsFor('entity')
 
@@ -154,6 +155,7 @@ interface EntityDetailProps {
   loadRecord?: LoadEntityRecord
   saveRecord?: SaveEntityRecord
   loadCurations?: (entityId: string) => Promise<{ items: Record<string, unknown>[]; total: number }>
+  loadImages?: LoadEntityImages
   navigate?: (href: string) => void
 }
 
@@ -172,10 +174,11 @@ export function EntityDetailWorkspace(props: EntityDetailProps): ReactNode {
  * can never overwrite a field the editor was not looking at. Nothing here
  * invents a value: a section without stored fields says so.
  */
-function EntityDetailBody({ entityId, loadRecord, saveRecord, loadCurations, navigate }: EntityDetailProps): ReactNode {
+function EntityDetailBody({ entityId, loadRecord, saveRecord, loadCurations, loadImages, navigate }: EntityDetailProps): ReactNode {
   const load = loadRecord ?? browserEntityDetailClient.loadRecord
   const save = saveRecord ?? browserEntityDetailClient.saveRecord
   const loadEntityCurations = loadCurations ?? browserEntityDetailClient.loadCurations
+  const loadEntityImage = loadImages ?? browserEntityDetailClient.loadImages
 
   const [reloadToken, setReloadToken] = useState(0)
   const [phase, setPhase] = useState<LoadPhase>('loading')
@@ -187,6 +190,7 @@ function EntityDetailBody({ entityId, loadRecord, saveRecord, loadCurations, nav
   const [saveError, setSaveError] = useState<string | null>(null)
   const [conflict, setConflict] = useState(false)
   const [search, setSearch] = useState('')
+  const [image, setImage] = useState<EntityImageState>({ status: 'loading' })
   const [curations, setCurations] = useState<EntityCurationsState>({
     status: 'loading',
     items: [],
@@ -234,6 +238,31 @@ function EntityDetailBody({ entityId, loadRecord, saveRecord, loadCurations, nav
     }
   }, [entityId, loadEntityCurations])
 
+  useEffect(() => {
+    let cancelled = false
+    loadEntityImage(entityId).then(
+      (page) => {
+        if (cancelled) return
+        // The gallery is ascending by rank, so the first row is the hero (rank 0)
+        // the rest of the Admin renders as the thumbnail.
+        setImage({ status: 'ready', image: page.items[0] ?? null })
+      },
+      (cause: unknown) => {
+        if (cancelled) return
+        // No source configured is not a failure: the Entity simply has no image,
+        // and the section says that instead of showing an error.
+        if (isAdminRequestFailure(cause) && cause.status === 404) {
+          setImage({ status: 'ready', image: null })
+          return
+        }
+        setImage({ status: 'error', error: humanError(cause) })
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [entityId, loadEntityImage])
+
   /** Retry from the error surface: reset every read/edit state and read again. */
   function retryLoad() {
     setPhase('loading')
@@ -243,6 +272,7 @@ function EntityDetailBody({ entityId, loadRecord, saveRecord, loadCurations, nav
     setNotice(null)
     setSaveError(null)
     setConflict(false)
+    setImage({ status: 'loading' })
     setReloadToken((token) => token + 1)
   }
 
@@ -503,7 +533,11 @@ function EntityDetailBody({ entityId, loadRecord, saveRecord, loadCurations, nav
             )}
       </AdminSection>
 
-      <AdminSection title="Media" description="Read from this Entity's data blob: photos, logos and galleries.">
+      <AdminSection
+        title="Media"
+        description="The image the domain resolves from this Entity's website or Place, plus the media its data blob stores."
+      >
+        <EntityImageThumbnail state={image} />
         {mediaNodes.length > 0
           ? (
               <EntityFieldSection
