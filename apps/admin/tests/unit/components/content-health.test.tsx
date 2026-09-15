@@ -60,9 +60,10 @@ test('every filtering card links to a query the Curations list honours', async (
   // list and its title says exactly that.
   expect(link('125 Updated today')).toHaveAttribute('href', '/admin/curations?sort=updated_at_desc')
   expect(link('125 Updated today')).toHaveAttribute('title', expect.stringContaining('no updated-after parameter'))
-  // The Collection-side join is not addressable from the list: the card keeps
-  // the plain list and says the count comes from the membership ledger.
-  expect(link(/Without Collections/)).toHaveAttribute('href', '/admin/curations')
+  // The "without Collections" view is a query the list honours: the card opens
+  // exactly the set it counted (same membership-ledger predicate).
+  expect(link(/Without Collections/)).toHaveAttribute('href', '/admin/curations?without_collections=true')
+  expect(link(/Without Collections/)).toHaveAttribute('title', expect.stringContaining('membership ledger'))
 })
 
 test('the two is_empty cards decode back to the frozen where clause', async () => {

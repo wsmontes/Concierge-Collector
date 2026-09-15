@@ -164,10 +164,7 @@ export function CurationsWorkspace({
   // the mode is on. A counter the boundary did not report stays null: unknown,
   // never invented from the page that happens to be loaded.
   useEffect(() => {
-    if (!without_collections) {
-      setWithoutCollectionsCount(null)
-      return
-    }
+    if (!without_collections) return
     let active = true
     void loadWithoutCollectionsCount().then(
       (count) => { if (active) setWithoutCollectionsCount(count) },
@@ -208,6 +205,10 @@ export function CurationsWorkspace({
 
   function applyFilters(next: CurationFilters = draft) {
     const normalized = normalizeCurationFilters(next)
+    // Ligar/desligar o modo "sem Collections" recomeça o contador em
+    // desconhecido ("—") até o boundary responder, em vez de exibir o número
+    // do modo anterior.
+    if ((normalized.without_collections === true) !== without_collections) setWithoutCollectionsCount(null)
     resetSelection()
     setDraft(normalized)
     setState((current) => ({ ...current, ...filtersPatch(normalized), cursor: null }))

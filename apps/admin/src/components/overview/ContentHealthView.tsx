@@ -132,8 +132,8 @@ const CARD_LINK: Record<HealthCardId, HealthCardLink> = {
       'Counts Curations updated in the last 24 hours. The list has no updated-after parameter yet: this opens every Curation newest-first, so the most recently updated are at the top.',
   },
   without_collections: {
-    href: CURATIONS_PATH,
-    title: 'The list cannot filter by Collection membership yet: this opens every Curation, unfiltered.',
+    href: `${CURATIONS_PATH}?without_collections=true`,
+    title: 'Curations the CMS membership ledger does not track in any Collection.',
   },
 }
 
@@ -247,7 +247,7 @@ export function ContentHealthView({ loadHealth = loadContentHealth }: ContentHea
                 <span className="content-health__label">{CARD_LABEL[id]}</span>
                 {id === 'without_collections' && (
                   <span className="content-health__note">
-                    {`Counted from the CMS membership ledger, which tracks ${countText(health.collections_members_tracked)} Curations. The list has no Collection-membership filter yet, so this opens every Curation.`}
+                    {`Counted from the CMS membership ledger, which tracks ${countText(health.collections_members_tracked)} Curations. The list applies the same predicate.`}
                   </span>
                 )}
               </Link>
