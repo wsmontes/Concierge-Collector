@@ -1,0 +1,60 @@
+/* Login do Admin.
+   A página roda no template mínimo do Payload, FORA da casca: nada do que
+   admin.css/curations-admin.css estiliza vale ali (medido: a rota respondia
+   HTML sem nenhuma regra aplicada, porque `.cms-login` não existia em CSS
+   nenhum). Este arquivo é o recorte do login e usa só o vocabulário de tokens
+   (`--theme-*` mapeados em admin.css + a rampa `--cms-*` do design-tokens),
+   nunca cor literal. */
+
+/* `:has()` é o único jeito de pintar o documento inteiro sem classe de rota no
+   body: o login é a única página que renderiza `.cms-login`. */
+body:has(.cms-login) {
+  background: var(--theme-elevation-50);
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+}
+
+.cms-login {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  max-width: 30rem;
+  padding: clamp(1.5rem, 5vw, 2.5rem);
+  width: min(30rem, calc(100vw - 2.5rem));
+}
+
+.cms-login h1 {
+  color: var(--cms-olive-900);
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.cms-login p {
+  color: var(--cms-olive-600);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.cms-login a {
+  align-self: flex-start;
+  background: var(--cms-olive-800);
+  border-radius: 6px;
+  color: var(--cms-limestone-50);
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-top: 0.5rem;
+  padding: 0.6rem 1.1rem;
+  text-decoration: none;
+}
+
+.cms-login a:hover,
+.cms-login a:focus-visible {
+  background: var(--cms-olive-900);
+}
