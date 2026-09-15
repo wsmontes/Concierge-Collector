@@ -315,6 +315,13 @@ async function commitDraftTransaction(
     if (!current) throw new TerminalOperationError('conflicted', 'draft_revision_changed')
     const applied = await items.find({ operationId: operation.id, status: 'applied' }).session(session).lean()
     const curationIds = applied.map((item) => String(item.curationId))
+    // `applied` items are exactly the memberships this operation changes, in
+    // both modes: staging skips a curation that is already a member (or already
+    // absent), so the delta is the same whether the ids came from an explicit
+    // selection or a materialized all-matching one. Keeping the counter for the
+    // selection mode only left every explicit add/remove with a stale header
+    // count ("0 selected" with Curations in the draft).
+    const draftDelta = operation.action === 'add' ? curationIds.length : -curationIds.length
     const advanced = await collections.updateOne(
       {
         _id: operation.collectionId,
@@ -323,12 +330,10 @@ async function commitDraftTransaction(
         draftState: { $ne: 'publishing' },
         lifecycle: { $ne: 'archived' },
       },
-      operation.mode === 'selection'
-        ? {
-          $set: { draftState: 'dirty', updatedAt: new Date() },
-          $inc: { draftRevision: 1, draftSelectedCount: operation.action === 'add' ? curationIds.length : -curationIds.length },
-        }
-        : { $set: { draftState: 'dirty', updatedAt: new Date() }, $inc: { draftRevision: 1 } },
+      {
+        $set: { draftState: 'dirty', updatedAt: new Date() },
+        $inc: { draftRevision: 1, draftSelectedCount: draftDelta },
+      },
       { session },
     )
     if (advanced.modifiedCount !== 1) throw new TerminalOperationError('conflicted', 'draft_revision_changed')

@@ -112,12 +112,16 @@ integrationSuite('draft operation worker', () => {
       curationIds: ['c1'], idempotencyKey: 'liquid-add', actorId: 'admin-1', requestId: 'liquid-add-request',
     }, dependencies)
     await applyDraftOperation(payload, added.id, 'worker-a', resolver)
+    // Explicit-mode operations maintain the draft count exactly like the
+    // selection path: it has to describe the membership the editor sees.
+    expect(await repository.getCollection(collection.id)).toMatchObject({ draftSelectedCount: 1 })
 
     const removed = await enqueueDraftOperation(payload, {
       collectionId: collection.id, action: 'remove', baseDraftRevision: 1,
       curationIds: ['c1'], idempotencyKey: 'liquid-remove', actorId: 'admin-1', requestId: 'liquid-remove-request',
     }, dependencies)
     await applyDraftOperation(payload, removed.id, 'worker-a', resolver)
+    expect(await repository.getCollection(collection.id)).toMatchObject({ draftSelectedCount: 0 })
 
     const { visibleDraftChanges } = await import('../support/collection-fixtures')
     const database = payload.db.connection.db
@@ -133,6 +137,7 @@ integrationSuite('draft operation worker', () => {
     }, dependencies)
     await applyDraftOperation(payload, readded.id, 'worker-a', resolver)
     expect(await visibleDraftChanges(database, collection.id)).toMatchObject([{ operationId: readded.id, desiredState: 'add' }])
+    expect(await repository.getCollection(collection.id)).toMatchObject({ draftSelectedCount: 1 })
   })
 
   test('does not let authorization-revoked staging alter a later committed operation', async () => {
