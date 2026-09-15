@@ -11,6 +11,9 @@ export function authzClient(): FastApiAuthzClient {
   return new FastApiAuthzClient(env.fastApiBaseUrl, env.cmsServiceKey)
 }
 
+/** Quanto tempo um espelho sem mudanças continua válido sem nova escrita. */
+const MIRROR_REFRESH_MS = 60_000
+
 export async function mirrorCmsUser(payload: Payload, identity: CmsIdentity): Promise<CmsUser> {
   const existing = await payload.find({
     collection: 'cms-users',
@@ -18,7 +21,8 @@ export async function mirrorCmsUser(payload: Payload, identity: CmsIdentity): Pr
     limit: 1,
     overrideAccess: true,
   })
-  const data = {
+  const current = existing.docs[0]
+  const fields = {
     fastapiUserId: identity.user_id,
     email: identity.email,
     name: identity.name,
@@ -26,9 +30,26 @@ export async function mirrorCmsUser(payload: Payload, identity: CmsIdentity): Pr
     role: identity.role,
     authorized: identity.authorized,
     authzRevision: identity.authz_revision,
-    lastIntrospectedAt: new Date().toISOString(),
   }
-  const current = existing.docs[0]
+  const fresh = current?.lastIntrospectedAt
+    ? Date.now() - Date.parse(String(current.lastIntrospectedAt)) < MIRROR_REFRESH_MS
+    : false
+  const unchanged = Boolean(current)
+    && String(current.fastapiUserId) === fields.fastapiUserId
+    && String(current.email) === fields.email
+    && String(current.name) === fields.name
+    && (current.picture ?? null) === fields.picture
+    && String(current.role) === fields.role
+    && current.authorized === fields.authorized
+    && String(current.authzRevision) === fields.authzRevision
+  // O carimbo `lastIntrospectedAt` mudava a cada request, então TODO request
+  // autenticado gravava esta linha — e requisições concorrentes da mesma sessão
+  // colidiam na transação do Payload ("Write conflict during plan execution and
+  // yielding is disabled", medido em produção), derrubando leituras com 503. Só
+  // escreve quando a identidade mudou de fato ou quando o carimbo venceu.
+  if (current && unchanged && fresh) return current
+
+  const data = { ...fields, lastIntrospectedAt: new Date().toISOString() }
   if (current) {
     return payload.update({
       collection: 'cms-users',
@@ -48,17 +69,42 @@ export const cmsSessionStrategy: AuthStrategy = {
     if (!session) return { user: null }
     if (!isTrustedCmsSessionRequest(headers)) return { user: null }
 
+    let identity: CmsIdentity
     try {
-      const identity = await authzClient().introspectSubject(session.subject)
-      if (!identity.authorized || identity.role !== 'admin') {
+      identity = await authzClient().introspectSubject(session.subject)
+    } catch (error) {
+      // An unavailable authorization authority must never leave a CMS session trusted.
+      console.warn('[cms-session] cms authorization introspection failed', error)
+      return { user: null }
+    }
+    if (!identity.authorized || identity.role !== 'admin') {
+      try {
         await revokeCmsSession(payload, session.id)
-        return { user: null }
+      } catch (error) {
+        console.warn('[cms-session] cms session revocation failed', error)
       }
+      return { user: null }
+    }
+    try {
       const user = await mirrorCmsUser(payload, identity)
       return { user: { ...user, collection: 'cms-users' } }
-    } catch {
-      // An unavailable authorization authority must never leave a CMS session trusted.
-      return { user: null }
+    } catch (error) {
+      // Uma colisão de escrita no espelho não pode deslogar quem o FastAPI
+      // acabou de autorizar (era o sintoma: o Admin devolvia o curador para o
+      // login no meio da sessão). Se a linha já existe, ela serve — um papel
+      // velho no pior caso NEGA, que é fail-closed; sem linha nenhuma (primeiro
+      // acesso) a sessão continua recusada.
+      console.warn('[cms-session] cms-users mirror failed', error)
+      const mirrored = await payload
+        .find({
+          collection: 'cms-users',
+          where: { fastapiUserId: { equals: identity.user_id } },
+          limit: 1,
+          overrideAccess: true,
+        })
+        .catch(() => null)
+      const existing = mirrored?.docs[0]
+      return existing ? { user: { ...existing, collection: 'cms-users' } } : { user: null }
     }
   },
 }
