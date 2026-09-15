@@ -1,4 +1,4 @@
-import type { Model } from 'mongoose'
+import type { ClientSession, Model } from 'mongoose'
 
 type DocumentModel = Model<Record<string, unknown>>
 type StreamDocument = Record<string, unknown>
@@ -11,33 +11,44 @@ async function next<T>(iterator: AsyncIterator<T>): Promise<IteratorResult<T>> {
   return iterator.next()
 }
 
-/**
- * Produces the frozen draft selection in technical curationId order without
- * materializing all selected IDs.  It merges published intervals with the
- * latest visible liquid delta for each Curation.
- */
-export async function* streamDraftMembershipIds(input: {
+/** Entrada compartilhada pelas leituras da membership do draft. */
+export interface DraftMembershipQuery {
   memberships: DocumentModel
   changes: DocumentModel
   collectionId: string
   baseVersion: number | null
   draftEpoch: string
   draftRevision: number
-}): AsyncGenerator<string> {
-  const membershipCursor = input.baseVersion === null
-    ? (async function* () {})()
-    : asCursor(input.memberships.find({
-      collectionId: input.collectionId,
-      addedInVersion: { $lte: input.baseVersion },
-      $or: [{ removedInVersion: null }, { removedInVersion: { $gt: input.baseVersion } }],
-    }).sort({ curationId: 1 }).cursor())
-  const changeCursor = asCursor(input.changes.find({
+  /** Dentro de uma transação as leituras precisam enxergar as escritas dela. */
+  session?: ClientSession
+}
+
+/**
+ * Produces the frozen draft selection in technical curationId order without
+ * materializing all selected IDs.  It merges published intervals with the
+ * latest visible liquid delta for each Curation.
+ */
+export async function* streamDraftMembershipIds(input: DraftMembershipQuery): AsyncGenerator<string> {
+  const membershipQuery = input.memberships.find({
+    collectionId: input.collectionId,
+    addedInVersion: { $lte: input.baseVersion },
+    $or: [{ removedInVersion: null }, { removedInVersion: { $gt: input.baseVersion } }],
+  }).sort({ curationId: 1 })
+  const changeQuery = input.changes.find({
     collectionId: input.collectionId,
     draftEpoch: input.draftEpoch,
     stageState: 'committed',
     targetDraftRevision: { $lte: input.draftRevision },
     $or: [{ validUntilDraftRevision: null }, { validUntilDraftRevision: { $gte: input.draftRevision } }],
-  }).sort({ curationId: 1, targetDraftRevision: -1 }).cursor())
+  }).sort({ curationId: 1, targetDraftRevision: -1 })
+  if (input.session) {
+    membershipQuery.session(input.session)
+    changeQuery.session(input.session)
+  }
+  const membershipCursor = input.baseVersion === null
+    ? (async function* () {})()
+    : asCursor(membershipQuery.cursor())
+  const changeCursor = asCursor(changeQuery.cursor())
 
   const memberIterator = membershipCursor[Symbol.asyncIterator]()
   const changeIterator = changeCursor[Symbol.asyncIterator]()
@@ -69,6 +80,17 @@ export async function* streamDraftMembershipIds(input: {
     member = await next(memberIterator)
     change = await next(changeIterator)
   }
+}
+
+/**
+ * Só o tamanho da seleção do draft, pela MESMA definição de
+ * `streamDraftMembershipIds` e sem materializar os ids.
+ */
+export async function countDraftMembership(input: DraftMembershipQuery): Promise<number> {
+  const iterator = streamDraftMembershipIds(input)
+  let count = 0
+  while (!(await iterator.next()).done) count += 1
+  return count
 }
 
 export async function* streamMembershipAtVersion(input: {

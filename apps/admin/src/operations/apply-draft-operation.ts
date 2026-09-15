@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import { appendAuditEvent } from '../audit/append-event'
 import { convergeDraftDelta } from '../collections/draft-delta'
 import { AdminHttpError } from '../http/errors'
+import { countDraftMembership } from '../publishing/membership-stream'
 import { FastApiCatalogClient } from './catalog-client'
 import type { CatalogResolver, DraftOperationRecord, OperationLease } from './types'
 
@@ -300,7 +301,7 @@ async function commitDraftTransaction(
   lease: OperationLease,
   collection: Record<string, unknown>,
 ): Promise<void> {
-  const { operations, collections, changes, items, audit } = models
+  const { operations, collections, changes, items, memberships, audit } = models
   const draftRevision = Number(collection.draftRevision)
   const draftEpoch = String(collection.draftEpoch)
   await inTransaction(payload, async (session) => {
@@ -313,15 +314,15 @@ async function commitDraftTransaction(
       lifecycle: { $ne: 'archived' },
     }).session(session).lean()
     if (!current) throw new TerminalOperationError('conflicted', 'draft_revision_changed')
-    const applied = await items.find({ operationId: operation.id, status: 'applied' }).session(session).lean()
-    const curationIds = applied.map((item) => String(item.curationId))
-    // `applied` items are exactly the memberships this operation changes, in
-    // both modes: staging skips a curation that is already a member (or already
-    // absent), so the delta is the same whether the ids came from an explicit
-    // selection or a materialized all-matching one. Keeping the counter for the
-    // selection mode only left every explicit add/remove with a stale header
-    // count ("0 selected" with Curations in the draft).
-    const draftDelta = operation.action === 'add' ? curationIds.length : -curationIds.length
+    // A invalidação das linhas vivas vale para toda curadoria que esta operação
+    // DECIDIU — inclusive o no-op (`desired === null`), cujo efeito é justamente
+    // cancelar a linha anterior e voltar ao estado publicado. Itens recusados
+    // pelo resolver (`skipped` com outro reasonCode) não decidem nada.
+    const decided = await items.find({
+      operationId: operation.id,
+      $or: [{ status: 'applied' }, { status: 'skipped', reasonCode: 'no_op' }],
+    }).session(session).lean()
+    const curationIds = decided.map((item) => String(item.curationId))
     const advanced = await collections.updateOne(
       {
         _id: operation.collectionId,
@@ -332,7 +333,7 @@ async function commitDraftTransaction(
       },
       {
         $set: { draftState: 'dirty', updatedAt: new Date() },
-        $inc: { draftRevision: 1, draftSelectedCount: draftDelta },
+        $inc: { draftRevision: 1 },
       },
       { session },
     )
@@ -355,6 +356,27 @@ async function commitDraftTransaction(
       { $set: { stageState: 'committed', updatedAt: new Date() } },
       { session },
     )
+    // O contador é o TAMANHO da membership do draft, não a soma dos itens desta
+    // operação: `streamDraftMembershipIds` é a mesma definição que o preview de
+    // publish usa. Somar `applied` contava duas vezes uma curadoria que já
+    // estava no draft (e descontava o remove de quem não era membro), deixando
+    // o cabeçalho anunciar uma seleção que o draft não tem. Recontar também
+    // conserta contadores já inflados por operações anteriores.
+    const draftSelectedCount = await countDraftMembership({
+      memberships,
+      changes,
+      collectionId: operation.collectionId,
+      baseVersion: typeof current.currentPublishedVersion === 'number' ? current.currentPublishedVersion : null,
+      draftEpoch,
+      draftRevision: draftRevision + 1,
+      session,
+    })
+    const counted = await collections.updateOne(
+      { _id: operation.collectionId, draftRevision: draftRevision + 1 },
+      { $set: { draftSelectedCount } },
+      { session },
+    )
+    if (counted.modifiedCount !== 1) throw new TerminalOperationError('conflicted', 'draft_revision_changed')
     const committed = await operations.updateOne(
       { _id: operation.id, status: 'committing', leaseOwner: lease.owner, fencingToken: lease.fencingToken },
       { $set: { status: 'committed', checkpoint: 'committed', leaseExpiresAt: null, updatedAt: new Date() } }, { session },
@@ -454,7 +476,14 @@ export async function applyDraftOperation(
       } else {
         await changes.deleteOne({ operationId, curationId, stageState: 'staged' })
       }
-      await items.updateOne({ operationId, curationId, status: 'pending' }, { $set: { status: 'applied', targetDraftRevision } })
+      // Mesma semântica do caminho `selection`: um item sem mudança efetiva de
+      // membership é `skipped/no_op`. O status diz o que a operação DECIDIU — é
+      // dele que o commit tira as curadorias cujas linhas vivas do draft
+      // precisam ser invalidadas.
+      await items.updateOne(
+        { operationId, curationId, status: 'pending' },
+        { $set: desired ? { status: 'applied', targetDraftRevision } : { status: 'skipped', reasonCode: 'no_op', targetDraftRevision } },
+      )
     }
     await resolver.introspectAdmin(operation.actorId)
     await assertFence(operations, operation, lease)

@@ -140,6 +140,87 @@ integrationSuite('draft operation worker', () => {
     expect(await repository.getCollection(collection.id)).toMatchObject({ draftSelectedCount: 1 })
   })
 
+  test('an explicit add of an existing member does not inflate the draft counter', async () => {
+    const collection = await repository.createCollection({ slug: 'explicit-add-noop', title: 'Explicit add no-op' }, audit)
+    const dependencies = { resolve: resolver }
+    const first = await enqueueDraftOperation(payload, {
+      collectionId: collection.id, action: 'add', baseDraftRevision: 0,
+      curationIds: ['c1'], idempotencyKey: 'add-noop-first', actorId: 'admin-1', requestId: 'add-noop-first-request',
+    }, dependencies)
+    await applyDraftOperation(payload, first.id, 'worker-a', resolver)
+    expect(await repository.getCollection(collection.id)).toMatchObject({ draftSelectedCount: 1 })
+
+    // `add` de quem já é membro não muda o draft: o contador do cabeçalho
+    // continua descrevendo a membership que o editor mostra.
+    const again = await enqueueDraftOperation(payload, {
+      collectionId: collection.id, action: 'add', baseDraftRevision: 1,
+      curationIds: ['c1'], idempotencyKey: 'add-noop-again', actorId: 'admin-1', requestId: 'add-noop-again-request',
+    }, dependencies)
+    await applyDraftOperation(payload, again.id, 'worker-a', resolver)
+
+    const database = payload.db.connection.db
+    if (!database) throw new Error('Mongo database unavailable')
+    const { visibleDraftChanges } = await import('../support/collection-fixtures')
+    expect(await repository.getCollection(collection.id)).toMatchObject({ draftSelectedCount: 1 })
+    expect(await visibleDraftChanges(database, collection.id)).toMatchObject([{ curationId: 'c1', desiredState: 'add' }])
+  })
+
+  test('an explicit remove of a non-member does not deflate the draft counter', async () => {
+    const collection = await repository.createCollection({ slug: 'explicit-remove-noop', title: 'Explicit remove no-op' }, audit)
+    const dependencies = { resolve: resolver }
+    const added = await enqueueDraftOperation(payload, {
+      collectionId: collection.id, action: 'add', baseDraftRevision: 0,
+      curationIds: ['c1'], idempotencyKey: 'remove-noop-add', actorId: 'admin-1', requestId: 'remove-noop-add-request',
+    }, dependencies)
+    await applyDraftOperation(payload, added.id, 'worker-a', resolver)
+    expect(await repository.getCollection(collection.id)).toMatchObject({ draftSelectedCount: 1 })
+
+    // `remove` de quem nunca foi membro também é no-op: o contador não pode
+    // caminhar para negativo nem descrever um draft diferente do que está lá.
+    const noop = await enqueueDraftOperation(payload, {
+      collectionId: collection.id, action: 'remove', baseDraftRevision: 1,
+      curationIds: ['c2'], idempotencyKey: 'remove-noop-run', actorId: 'admin-1', requestId: 'remove-noop-run-request',
+    }, dependencies)
+    await applyDraftOperation(payload, noop.id, 'worker-a', resolver)
+
+    const database = payload.db.connection.db
+    if (!database) throw new Error('Mongo database unavailable')
+    const { visibleDraftChanges } = await import('../support/collection-fixtures')
+    expect(await repository.getCollection(collection.id)).toMatchObject({ draftSelectedCount: 1 })
+    expect(await visibleDraftChanges(database, collection.id)).toMatchObject([{ curationId: 'c1', desiredState: 'add' }])
+  })
+
+  test('a curation the resolver refuses does not lose its live draft change', async () => {
+    const collection = await repository.createCollection({ slug: 'rejected-keeps-change', title: 'Rejected keeps change' }, audit)
+    const added = await enqueueDraftOperation(payload, {
+      collectionId: collection.id, action: 'add', baseDraftRevision: 0,
+      curationIds: ['c1'], idempotencyKey: 'rejected-add', actorId: 'admin-1', requestId: 'rejected-add-request',
+    }, { resolve: resolver })
+    await applyDraftOperation(payload, added.id, 'worker-a', resolver)
+
+    // O resolver recusa c1 e libera c2: só c2 é decidido — a linha viva de c1
+    // não pode ser invalidada por uma operação que não decidiu nada sobre ela.
+    const refusing = {
+      introspectAdmin: async () => undefined,
+      resolveCurations: async (ids: string[]) => ({
+        eligibleIds: ids.filter((id) => id !== 'c1'),
+        rejected: [{ curationId: 'c1', reason: 'not_found' }],
+      }),
+    }
+    const mixed = await enqueueDraftOperation(payload, {
+      collectionId: collection.id, action: 'remove', baseDraftRevision: 1,
+      curationIds: ['c1', 'c2'], idempotencyKey: 'rejected-mixed', actorId: 'admin-1', requestId: 'rejected-mixed-request',
+    }, { resolve: refusing })
+    await applyDraftOperation(payload, mixed.id, 'worker-a', refusing)
+
+    const database = payload.db.connection.db
+    if (!database) throw new Error('Mongo database unavailable')
+    const { visibleDraftChanges } = await import('../support/collection-fixtures')
+    expect(await repository.getCollection(collection.id)).toMatchObject({ draftSelectedCount: 1 })
+    expect(await visibleDraftChanges(database, collection.id)).toMatchObject([{ curationId: 'c1', desiredState: 'add' }])
+    await expect(items.findOne({ operationId: mixed.id, curationId: 'c1' }).lean()).resolves.toMatchObject({ status: 'skipped', reasonCode: 'not_found' })
+  })
+
   test('does not let authorization-revoked staging alter a later committed operation', async () => {
     const collection = await repository.createCollection({ slug: 'isolated-staging', title: 'Isolated staging' }, audit)
     let introspections = 0
