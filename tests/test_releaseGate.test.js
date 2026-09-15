@@ -12,6 +12,7 @@ describe('Local release gate', () => {
       'Collector unit tests',
       'Admin unit tests',
       'Admin typecheck',
+      'Admin lint',
       'Admin build',
       'API unit tests',
       'API formatting',

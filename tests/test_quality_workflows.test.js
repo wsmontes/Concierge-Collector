@@ -10,7 +10,7 @@ test('quality always aggregates Collector, Admin, API and generated contracts', 
   const gate = readFileSync('scripts/release/release-gate.mjs', 'utf8')
   for (const step of [
     "'build:collector:check'", "'lint:collector'", "'test:collector'",
-    "'test:admin'", "'typecheck:admin'", "'build:admin'",
+    "'test:admin'", "'typecheck:admin'", "'lint:admin'", "'build:admin'",
     "'pytest'", "'black'", "'flake8'",
     "'check:contracts'",
   ]) expect(gate).toContain(step)

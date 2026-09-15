@@ -75,6 +75,9 @@ export function createReleasePlan(mode = 'standard', { env = process.env } = {})
     npmStep('Collector unit tests', 'test:collector', { env: adminEnv }),
     npmStep('Admin unit tests', 'test:admin', { env: adminEnv }),
     npmStep('Admin typecheck', 'typecheck:admin', { env: adminEnv }),
+    // O lint do Admin estava fora do gate e por isso passou meses vermelho sem
+    // ninguém notar (o `eslint .` do workspace não é executado por mais nada).
+    npmStep('Admin lint', 'lint:admin', { env: adminEnv }),
     npmStep('Admin build', 'build:admin', { env: adminEnv }),
     pythonStep('API unit tests', ['-m', 'pytest', '-m', 'not integration and not external_api and not mongo and not openai', '-q']),
     pythonStep('API formatting', ['-m', 'black', '--check', 'app', 'tests']),

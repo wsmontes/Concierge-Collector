@@ -15,11 +15,12 @@ O gate padrão executa, em ordem e com fail-fast:
 3. Collector unit tests
 4. Admin unit tests
 5. Admin typecheck
-6. Admin production build com variáveis de teste seguras
-7. API unit tests, excluindo integrações, Mongo e APIs externas
-8. API formatting (`black --check`)
-9. API lint (`flake8`)
-10. Generated contract checks
+6. Admin lint
+7. Admin production build com variáveis de teste seguras
+8. API unit tests, excluindo integrações, Mongo e APIs externas
+9. API formatting (`black --check`)
+10. API lint (`flake8`)
+11. Generated contract checks
 
 Esse é o comando recomendado antes de push, merge e deploy normal.
 
