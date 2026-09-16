@@ -368,6 +368,41 @@ roda — o mesmo pipeline que aparece na conta de memória do container.
   com foto fica para sempre — correto enquanto a foto não subir (é a única cópia), mas significa que
   captura abandonada acumula. Decisão de produto, não bug.
 
+## Lote de padronização e performance — 2026-09-16 (parte 2)
+
+Tudo abaixo foi **medido**, não estimado; quando a medição não sustentou a hipótese, a hipótese saiu.
+
+### O que entrou
+
+|Mudança|Antes → depois (medido)|
+|---|---|
+|Cache da mídia no BFF (`private, no-store` forçado sobre o `private, max-age` do FastAPI)|cada visita re-baixava cada thumbnail e re-executava o pipeline de fetch+reencode no upstream → preservado|
+|Prefetch do Collector cancela → **adia**|carga fria: 236 req/0 fotos → **108 req/39 fotos**; com o rearme, 122 req/40 fotos e a página 2 aquecida depois|
+|Escala compartilhada em px no Admin (root do Payload é 13px, `rem` dava 19% menor)|`--cms-text-sm` 11.375px → **14px**; `xs` 9.75 → **12px**; `radius-lg` 6.5 → **8px**|
+|Raios: 82 literais → escala|0 literais; 10px (4 painéis) → `xl`, 7px (2 blocos internos) → `lg`|
+|Espaçamento: 15+ valores ad-hoc em 415 declarações → escala por proximidade de pixel renderizado|desvio ≤1px; Collections 64 → **63px**; cartão mobile 178 → 181px|
+|Lista de Collections no mobile (tabela rolava 396px de lado, 1 de 5 colunas visível)|cartões com rótulos: **396 → 0px** de rolagem lateral|
+|Thumbnail da Entity na lista (virtualizada: linha fora da tela não pede imagem)|3 linhas → 3 requisições; 404 local → 0 molduras quebradas|
+|CSS morto do Explorer (`curation-explorer*`, `explorer-filter-form*`)|131 linhas removidas (0 referências em tsx/ts)|
+
+### Hipóteses que a medição derrubou (não viraram mudança)
+
+- **"Cadeia serial de chamadas no BFF"** — medido: 3-4 chamadas `/api/admin` por página, TTFB 162-309ms no dev.
+  Não há cadeia para paralelizar.
+- **"Projeção pesada (`transcript`) no registro"** — a tentativa de medir bytes por `resp.body()` voltou 0
+  (a API não expõe o tamanho pelo evento) e não localizei nenhuma projeção incluindo `transcript` nos
+  caminhos que o Admin lê. Sem evidência, retirado.
+- **Latência da página em `next dev`** não serve como número de produto (Turbopack compila por rota). O
+  que existe, medido: o boot do serviço do Admin leva ~90s em produção (janela de 502 logo após o deploy),
+  e isso é infraestrutura — não uma mudança de código.
+
+### Flake conhecido (não investigado até o fim)
+
+`tests/unit/payload/security-config.test.ts > allows CSRF and CORS only from the Admin and explicit Collector origins`
+falhou em 2 execuções do gate e passou em 7 (isolado, suíte completa, com env do gate e sem). Não é
+reproduzível sob controle; arquivo não relacionado a CSS. Registrado aqui porque um gate que falha 1 em N
+sem causa conhecida é pior que um gate vermelho.
+
 ## Regra de trabalho — sobrescrever arquivo existente
 
 Em 2026-09-16 eu sobrescrevi `apps/admin/tests/unit/http/with-admin.test.ts` com `write`, apagando 16

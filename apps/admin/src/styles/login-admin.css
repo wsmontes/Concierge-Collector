@@ -21,10 +21,10 @@ body:has(.cms-login) {
   border-radius: var(--cms-radius-xl);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--cms-spacing-2-5);
   margin: 0;
   max-width: 30rem;
-  padding: clamp(1.5rem, 5vw, 2.5rem);
+  padding: clamp(var(--cms-spacing-5), 5vw, var(--cms-spacing-8));
   width: min(30rem, calc(100vw - 2.5rem));
 }
 
@@ -49,8 +49,8 @@ body:has(.cms-login) {
   color: var(--cms-limestone-50);
   font-size: var(--cms-text-sm);
   font-weight: 600;
-  margin-top: 0.5rem;
-  padding: 0.6rem 1.1rem;
+  margin-top: var(--cms-spacing-1-5);
+  padding: var(--cms-spacing-2) var(--cms-spacing-3-5);
   text-decoration: none;
 }
 

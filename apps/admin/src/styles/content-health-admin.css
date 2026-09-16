@@ -5,7 +5,7 @@
 
 .content-health__cards {
   display: grid;
-  gap: 0.85rem;
+  gap: var(--cms-spacing-3);
   /* Collapses on its own down to one column; the mobile query below pins the
      single-column layout instead of leaving it to the available width. */
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
@@ -25,8 +25,8 @@
   border-radius: var(--cms-radius-lg);
   color: var(--theme-text);
   display: grid;
-  gap: 0.3rem;
-  padding: 1rem;
+  gap: var(--cms-spacing-1);
+  padding: var(--cms-spacing-3);
   text-decoration: none;
   width: 100%;
 }

@@ -166,3 +166,34 @@ describe('raios — só a escala, nunca um literal', () => {
     expect(fora).toEqual([]);
   });
 });
+
+describe('espaçamento — a escala, não rem literal', () => {
+  test('nenhuma propriedade de espaçamento do Admin usa rem', () => {
+    // Eram 415 declarações e 15+ valores distintos (0.75rem, 0.35rem, 0.65rem…).
+    // Além do vocabulário ad-hoc, cada uma computava 19% menor que a intenção,
+    // porque o root do Payload é 13px. Mapeadas para a escala por proximidade de
+    // pixel renderizado — desvio máximo de 1px, medido: linha de Collections 64 →
+    // 63px, cartão mobile 178 → 181px, sem overflow.
+    const props = '(gap|row-gap|column-gap|padding|padding-top|padding-right|padding-bottom|padding-left|margin|margin-top|margin-right|margin-bottom|margin-left)';
+    const arquivos = [];
+    const varrer = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const alvo = path.join(dir, e.name);
+        if (e.isDirectory()) varrer(alvo);
+        else if (e.name.endsWith('.css') && e.name !== 'tokens.generated.css') arquivos.push(alvo);
+      }
+    };
+    varrer(path.join(RAIZ, 'apps/admin/src'));
+    const comRem = [];
+    for (const arquivo of arquivos) {
+      const css = fs.readFileSync(arquivo, 'utf8');
+      for (const m of css.matchAll(new RegExp(`${props}\\s*:\\s*[^;{}]*\\d\\.?\\d*rem`, 'g'))) {
+        // `clamp()` é fluido por intenção (o teto acompanha a viewport), então
+        // não é um passo da escala fixa — é a única exceção, e é explícita.
+        if (m[0].includes('clamp(')) continue;
+        comRem.push(`${path.basename(arquivo)}: ${m[0].slice(0, 40)}`);
+      }
+    }
+    expect(comRem).toEqual([]);
+  });
+});
