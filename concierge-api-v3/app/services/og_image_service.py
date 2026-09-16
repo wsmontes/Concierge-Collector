@@ -57,14 +57,24 @@ RETRY_BACKOFF_SECONDS = 0.4
 
 OG_IMAGE_MAX_DIM = 768
 OG_IMAGE_QUALITY = 82
-OG_BYTES_CACHE_MAX_ENTRIES = 300
+# Este cache guarda BYTES de JPEG (até 768px, ~50-200 KB cada), não metadados:
+# 300 entradas podiam significar ~60 MB residentes num container de 512 MB que
+# roda API + Next + worker + nginx e vive a ~450 MB (medido em 2026-09-16, pico
+# por minuto via API de métricas do Render: regime 445-451 MB, folga de ~61 MB).
+# 100 cobre o conjunto quente; o resto o navegador já persiste para sempre no
+# Cache Storage, então o cache do servidor não precisa ser generoso.
+OG_BYTES_CACHE_MAX_ENTRIES = 100
 CARD_IMAGE_MIN_DIM = 100
 CARD_IMAGE_MAX_ASPECT = 3.5
 
 COLLECTOR_MAX_IMAGES = 8
 COLLECTOR_WEBSITE_CANDIDATES = 8
 COLLECTOR_PLACES_CANDIDATES = 5
-COLLECTOR_MAX_CONCURRENCY = 4
+# Cada download concorrente segura o HTML da página (até MAX_HTML_BYTES) mais o
+# custo do parse — o pico transitório é o que estoura a folga do container.
+# 2 em vez de 4 corta esse pico pela metade; a percepção não muda porque o
+# cliente prioriza os cards do viewport e persiste o resultado.
+COLLECTOR_MAX_CONCURRENCY = 2
 COLLECTOR_CACHE_MAX_ENTRIES = 300
 SITE_HERO_CONFIDENCE_SCORE = 55.0
 
