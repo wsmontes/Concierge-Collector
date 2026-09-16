@@ -2,9 +2,6 @@
    the side preview. Only the Concierge brand tokens and Payload's --theme-*
    mapping carry colour; no palette value is hardcoded here. */
 
-.entities-workspace {
-  max-width: 1320px;
-}
 
 /* Higher specificity than admin.css' legacy `.curation-explorer form` rule, so
    the filter grid keeps its own layout on every surface. */

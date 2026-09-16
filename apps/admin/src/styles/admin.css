@@ -9,8 +9,48 @@
   --theme-elevation-100: var(--cms-limestone-200);
   --theme-text: var(--cms-olive-900);
   --theme-elevation-900: var(--cms-olive-900);
-  --theme-success-500: var(--cms-olive-700);
+  --theme-success-500: var(--cms-success);
   --theme-border-color: var(--cms-limestone-400);
+
+  /* Cores semânticas: até aqui só `success` era mapeado (e apontava para oliva,
+     não para o verde-garrafa da marca), enquanto erro/alerta/info ficavam com os
+     tons default do Payload — azul, vermelho e laranja fora da paleta. Agora as
+     quatro vêm da escala compartilhada, iguais às do Collector. */
+  --theme-error-500: var(--cms-error);
+  --theme-warning-500: var(--cms-warning);
+  --cms-info-bg: var(--cms-info-light);
+  --cms-error-bg: var(--cms-error-light);
+  --cms-success-bg: var(--cms-success-light);
+  --cms-warning-bg: var(--cms-warning-light);
+
+  /* Tipografia: as famílias carregadas pelo `next/font` no layout (mesmos pesos
+     do Collector) entram na frente das pilhas da escala compartilhada. Sem isto
+     o Admin renderiza tudo na pilha do sistema e os títulos perdem a serifada
+     da marca. */
+  --cms-font-sans: var(--font-sans-loaded), 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --cms-font-display: var(--font-display-loaded), 'Cormorant Garamond', 'Times New Roman', Georgia, serif;
+  --cms-font-mono: var(--font-mono-loaded), 'JetBrains Mono', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
+
+  /* O corpo do Admin usa DM Sans (o texto do Collector também). O Payload define
+     a fonte em `--font-body`; apontamos para a escala compartilhada em vez de
+     deixar a pilha do sistema. */
+  --font-body: var(--cms-font-sans);
+}
+
+/* Títulos de página e de seção falam a serifada da marca — o MESMO par
+   tipográfico que o Collector usa em "Collector"/nomes de restaurante. É o que
+   dá identidade ao Admin em vez de cara de painel genérico. */
+body {
+  font-family: var(--cms-font-sans);
+}
+
+.admin-page__title,
+.collection-views__title,
+.cms-brand,
+h1 {
+  font-family: var(--cms-font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .cms-brand {
@@ -46,9 +86,15 @@
   display: grid;
   gap: 1.5rem;
   margin: 0 auto;
-  max-width: 1280px;
+  /* Antes: 1280px fixos. Duas consequências medidas: a 1440 o conteúdo deixava
+     ~8% da largura sem uso, e a lista de Curations — cujas trilhas somam ~1436px
+     — transbordava SEMPRE, porque o container era mais estreito que a própria
+     tabela. O teto agora acompanha a tela até 1760 (acima disso a linha de
+     leitura fica longa demais para uma tabela de dados) e o padding cresce um
+     pouco em telas largas. */
+  max-width: min(1760px, 100%);
   min-width: 0;
-  padding: clamp(1rem, 2vw, 2rem);
+  padding: clamp(1rem, 2vw, 2.5rem);
   width: 100%;
 }
 
@@ -234,7 +280,10 @@
   display: grid;
   gap: 1rem;
   margin: 0 auto;
-  max-width: 1100px;
+  /* 1400 (era 1100): a revisão de Collection tem member list, diff de draft e
+     versões — três listas que ganham com a largura e não sofrem com linha longa,
+     diferente de um parágrafo corrido. */
+  max-width: min(1400px, 100%);
   padding: 1.5rem;
 }
 
@@ -275,13 +324,9 @@
   padding: 1rem;
 }
 
-.application-views {
-  display: grid;
-  gap: 1.5rem;
-  margin: 0 auto;
-  max-width: 1100px;
-  padding: 1.5rem;
-}
+/* `.application-views` NÃO declara moldura: display/gap/largura/padding vêm de
+   `.admin-page` (regra única). Havia duas molduras concorrentes aqui — 1100px
+   nesta regra e 1280px em distribution-admin.css — sobre o MESMO elemento. */
 
 .application-views header h1,
 .application-views header p,

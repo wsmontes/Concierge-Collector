@@ -2,9 +2,6 @@
    Visual language shared with the other admin surfaces: theme custom properties
    from admin.css, limestone/olive accents from @concierge/design-tokens. */
 
-.curations-workspace {
-  max-width: 1320px;
-}
 
 .curations-workspace__workspace {
   display: grid;

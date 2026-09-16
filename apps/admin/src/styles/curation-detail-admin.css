@@ -5,9 +5,6 @@
    Concierge brand tokens and Payload's --theme-* mapping; no palette value is
    hardcoded here. */
 
-.curation-detail {
-  max-width: 1240px;
-}
 
 .curation-detail__notices {
   display: grid;

@@ -1,8 +1,3 @@
-.admin-page.application-views {
-  gap: 1.5rem;
-  max-width: 1280px;
-  padding: clamp(1rem, 2vw, 2rem);
-}
 
 /* Higher specificity is intentional while the legacy global
    `.application-views form` rule still exists in admin.css. */
