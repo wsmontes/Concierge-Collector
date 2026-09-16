@@ -89,6 +89,17 @@ class TokenRefreshRequest(BaseModel):
     refresh_token: str = Field(..., description="Refresh token")
 
 
+class OpsLoginRequest(BaseModel):
+    """Acesso de operação sem Google (qualificação em produção).
+
+    A chave viaja no CORPO, nunca em query string: o Render registra a request
+    line inteira, então uma chave em URL viraria segredo em log.
+    """
+
+    key: str = Field("", description="OPS_LOGIN_KEY")
+    redirect: bool = Field(False, description="Devolver 303 para o Collector com a sessão no fragmento")
+
+
 class UserAuthResponse(BaseModel):
     """Authenticated user response"""
 

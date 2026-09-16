@@ -96,6 +96,13 @@ class Settings(BaseSettings):
     # API key, JWT ou credencial de serviço para expô-las.
     metrics_key: str = ""
 
+    # Acesso de operação sem Google, para qualificação das jornadas em produção
+    # (POST /api/v3/auth/ops-login). Substitui a PROVA de identidade, nunca a
+    # autorização: o sujeito precisa já existir autorizado como admin no banco.
+    # Sem as duas variáveis a rota responde 404, como se não existisse.
+    ops_login_key: str = ""
+    ops_login_subject: str = ""
+
     # JWT Token Settings
     access_token_expire_minutes: int = 60  # 1 hour
     refresh_token_expire_days: int = 30  # 30 days for refresh token

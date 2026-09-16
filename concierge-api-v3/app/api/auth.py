@@ -18,7 +18,7 @@ from typing import Optional
 from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 import httpx
 from jose import jwt
 from pymongo.database import Database
@@ -27,7 +27,7 @@ from pymongo.errors import DuplicateKeyError
 from app.core.config import settings
 from app.core.database import get_database
 from app.core.security import create_access_token, verify_auth
-from app.models.user import TokenRefreshRequest, User, UserAuthResponse, UserInDB
+from app.models.user import OpsLoginRequest, TokenRefreshRequest, User, UserAuthResponse, UserInDB
 from app.services.oauth_state_service import (
     OAUTH_STATE_TTL_SECONDS,
     consume_oauth_state,
@@ -609,6 +609,102 @@ def logout(
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/")
     return {"message": "Logged out successfully"}
+
+
+@router.post("/ops-login")
+def ops_login(
+    payload: OpsLoginRequest,
+    request: Request,
+    db: Database = Depends(get_database),
+):
+    """Acesso de operação sem Google, para qualificação em produção.
+
+    Substitui a PROVA de identidade (o Google), nunca a autorização: o sujeito
+    configurado precisa já existir em `users` com `authorized: true` e
+    `role: "admin"` — este endpoint não cria nem promove ninguém. Emite
+    exatamente os mesmos tokens e cookies do callback OAuth, então o handoff do
+    Admin e o bootstrap do Collector consomem o resultado sem nenhum caminho
+    novo no cliente.
+
+    Fail-closed: sem `OPS_LOGIN_KEY`/`OPS_LOGIN_SUBJECT` responde 404, e uma
+    chave errada recebe a MESMA resposta (nada distingue "não configurado" de
+    "chave inválida" para quem sonda). A chave nunca entra em log.
+    """
+    expected_key = settings.ops_login_key
+    subject_email = settings.ops_login_subject
+    if not expected_key or not subject_email:
+        logger.warning("[OpsLogin] Unavailable: OPS_LOGIN_KEY/OPS_LOGIN_SUBJECT not configured")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+
+    # Em bytes: `compare_digest` com str não-ASCII levanta TypeError, e uma
+    # chave malformada não pode virar 500 (a rota tem de fechar sempre igual).
+    if not secrets.compare_digest(payload.key.encode("utf-8"), expected_key.encode("utf-8")):
+        logger.warning("[OpsLogin] Rejected an invalid key")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+
+    user = get_user_by_email(db, subject_email)
+    if not user or not user.authorized or getattr(user, "role", "curator") != "admin":
+        logger.warning("[OpsLogin] Refused: subject is not an authorized admin")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ops subject is not an authorized admin",
+        )
+
+    now = datetime.now(timezone.utc)
+    db.users.update_one({"email": user.email}, {"$set": {"last_login": now}})
+    # Paridade com o callback OAuth: um usuário autorizado tem linha de curador.
+    db.curators.update_one(
+        {"curator_id": user.email},
+        {
+            "$set": {
+                "curator_id": user.email,
+                "name": user.name,
+                "email": user.email,
+                "picture": user.picture,
+                "google_id": user.google_id,
+                "updatedAt": now,
+            },
+            "$setOnInsert": {"createdAt": now},
+        },
+        upsert=True,
+    )
+
+    access_token = create_access_token(
+        data={"sub": user.email, "google_id": user.google_id, "role": "admin"},
+        expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
+    )
+    refresh_token = _issue_refresh(db, user.email)
+    logger.warning("[OpsLogin] Session issued for %s", user.email)
+
+    if payload.redirect:
+        response: Response = RedirectResponse(
+            url=_build_auth_redirect_url(
+                frontend_url=_default_frontend_url(),
+                access_token=access_token,
+                refresh_token=refresh_token,
+                user_email=user.email,
+                user_name=user.name,
+                same_site=False,
+            ),
+            # 303: o POST vira GET na raiz do Collector, que consome a sessão no
+            # fragmento exatamente como faz depois do callback do Google.
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    else:
+        response = JSONResponse(
+            {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "expires_in": settings.access_token_expire_minutes * 60,
+                "token_type": "bearer",
+                "user_email": user.email,
+                "user_name": user.name,
+            }
+        )
+
+    _set_access_cookie(response, access_token)
+    _set_refresh_cookie(response, refresh_token)
+    return response
 
 
 @router.get("/dev-login")
