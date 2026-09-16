@@ -315,6 +315,10 @@ class InMemoryCursor(list):
         del self[amount:]
         return self
 
+    def allow_disk_use(self, enabled: bool):
+        """`Cursor.allow_disk_use` do pymongo; o fake não ordena em disco."""
+        return self
+
 
 class InMemoryDatabase:
     """Collections criadas sob demanda para dependências FastAPI unitárias."""

@@ -430,8 +430,20 @@ def _position_cursor(payload: dict, sort: str, item: dict, secret: str) -> str |
 
 
 def _admin_rows(db: Database, clauses: list[dict], sort: str, limit: int) -> list[dict]:
-    """The single row query shared by the live list and the frozen scan."""
-    return list(db.curations.find({"$and": clauses}, _ADMIN_ROW_PROJECTION).sort(sort_order(sort)).limit(limit + 1))
+    """The single row query shared by the live list and the frozen scan.
+
+    ``allowDiskUse`` é rede de segurança, não a correção: os índices de
+    `index_specs` servem cada ordenação do allowlist, mas uma combinação de
+    filtros pode levar o planner a ordenar em memória — e um sort acima de
+    32 MB ABORTA (medido em produção: a lista do Admin caiu inteira com
+    `Sort exceeded memory limit`). Com a permissão, ele derrama em disco.
+    """
+    return list(
+        db.curations.find({"$and": clauses}, _ADMIN_ROW_PROJECTION)
+        .sort(sort_order(sort))
+        .limit(limit + 1)
+        .allow_disk_use(True)
+    )
 
 
 def reserve_catalog_sequences(db: Database, count: int) -> range:

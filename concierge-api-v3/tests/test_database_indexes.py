@@ -172,3 +172,34 @@ def test_ensure_indexes_records_state_and_logs_error(monkeypatch, caplog):
     assert state["created"] == sum(_SPEC_COUNTS.values()) - 1
     assert any("externalId" in str(d["keys"]) for d in state["failed_details"])
     assert any("externalId" in r.getMessage() for r in caplog.records)
+
+
+def test_every_curation_sort_is_served_by_a_declared_index():
+    """Contrato entre a ordenação da lista e os índices declarados.
+
+    A lista do Admin ordena por `sort_order()`: campo do allowlist + desempate
+    por `curation_id`. Sem um índice com ESSE desempate o Mongo materializa os
+    documentos projetados só para ordenar, e a projeção carrega `transcript` —
+    o acervo passou do limite de 32 MB de sort em memória e a lista caiu
+    inteira em produção (2026-09-16, `OperationFailure: Sort exceeded memory
+    limit` traduzido em 503 pelo BFF). A direção não entra na checagem: o Mongo
+    percorre um índice nos dois sentidos, então um índice por campo cobre
+    asc e desc.
+    """
+    from app.services.catalog_service import CURATION_SORT_SPECS
+
+    declared: list[list[tuple[str, int]]] = []
+    for spec in INDEX_SPECS:
+        if spec[0] != "curations":
+            continue
+        keys = spec[1] if isinstance(spec[1], list) else [(spec[1], 1)]
+        declared.append([(key, direction) for key, direction in keys])
+
+    def serves(field: str, keys: list[tuple[str, int]]) -> bool:
+        return len(keys) >= 2 and keys[0][0] == field and keys[1][0] == "curation_id"
+
+    for name, (field, _direction) in CURATION_SORT_SPECS.items():
+        assert any(serves(field, keys) for keys in declared), (
+            f"nenhum índice de `curations` serve o sort `{name}` ({field} + curation_id): "
+            "a lista do Admin volta a ordenar em memória e pode abortar por limite de 32 MB"
+        )

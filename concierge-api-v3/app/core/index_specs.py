@@ -55,6 +55,18 @@ INDEX_SPECS = [
     ("curations", [("curator.id", 1), ("status", 1)], {}),
     # Supports: stable cursor-based pagination on large collections
     ("curations", [("updatedAt", -1), ("_id", 1)], {}),
+    # ── Sort indexes da lista do Admin (catalog_service.sort_order) ─────────
+    # O desempate é `curation_id` (string, total order), NÃO `_id`: os índices
+    # acima não servem a ordenação, então o Mongo materializava os documentos
+    # projetados (a projeção carrega `transcript`) só para ordenar — e o
+    # acervo de produção cruzou o limite de 32 MB de sort em memória em
+    # 2026-09-16, derrubando a lista com `OperationFailure: Sort exceeded
+    # memory limit`. Cada campo do allowlist tem índice com o mesmo desempate;
+    # o Mongo percorre o índice em qualquer direção, então um índice por campo
+    # cobre os dois sentidos.
+    ("curations", [("updatedAt", 1), ("curation_id", 1)], {}),
+    ("curations", [("createdAt", 1), ("curation_id", 1)], {}),
+    ("curations", [("restaurant_name", 1), ("curation_id", 1)], {}),
     # Server-owned watermark used by the CMS Explorer scan.  The unique
     # partial index permits legacy documents only during the backfill window.
     (
