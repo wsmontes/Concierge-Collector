@@ -161,10 +161,20 @@ código desta sessão — não é vazamento introduzido, é ausência de folga.
 `catalog_service.py:62` e `:139`. Medido no acervo de produção: média de **4,3 KB por linha**, ou seja
 **~2 MB por página de 500 linhas**, por request, de IO e alocação transitória. É desperdício real, mas
 **não é o vetor do OOM**: 2 MB é ~0,4% de um container de 512 MB, contra os ~50-100 MB por página de SSR
-do Next (que é o que domina, e é o que satura quando duas páginas do Admin carregam juntas). Removê-lo com
-`aggregate` + `$strLenCP` quebraria o duble de teste (que só implementa `find` com projeção de inclusão) e
-um campo materializado exigiria mantê-lo em sincronia a cada escrita. Fica como melhoria de IO/latência,
-não como correção de memória — quem for fazer, meça a latência antes/depois, não a memória.
+do Next (que é o que domina, e é o que satura quando duas páginas do Admin carregam juntas). Fica como melhoria de IO/latência,
+**não** como correção de memória — quem for fazer, meça a latência antes/depois, não a memória.
+
+Duas armadilhas medidas para quem implementar (verificadas no código, 2026-09-16):
+
+1. **`$strLenCP` estoura em documento sem transcrição** — a maioria do acervo é `null`/ausente, e a
+   agregação inteira falha (500 na lista). Precisa de guarda de tipo:
+   `{"has_transcript": {"$gt": [{"$strLenCP": {"$cond": [{"$isString": "$transcript"}, "$transcript", ""]}}, 0]}}`.
+2. **O duble dos unitários não avalia expressão** — `InMemoryCollection._project` (conftest.py:155) trata
+   QUALQUER valor truthy como "incluir esta chave", então uma projeção com expressão é lida como inclusão
+   simples, o campo sai ausente e o `admin_curation_row` cai no fallback `False`: a suíte unitária passa
+   verde com o comportamento errado. E o `aggregate` do fake só implementa `$match`/`$group`/`$count`/
+   `$facet` — trocar `find` por agregação devolve página vazia e quebra tudo. A validação tem de ser
+   contra Mongo real (`verify:full`: API integration + Mongo integration), não no unitário.
 
 Duas medidas, e o que cada uma resolve:
 
