@@ -74,7 +74,7 @@ test('an empty filtered page shows the empty state instead of an empty table', a
   })
 
   expect(await screen.findByText('No Curations without Collections')).toBeInTheDocument()
-  expect(screen.getByText('Every stored Curation is currently held by a Collection.')).toBeInTheDocument()
+  expect(screen.getByText('No stored Curation in this view is missing from a Collection.')).toBeInTheDocument()
 })
 
 test('an unknown counter stays unknown rather than being invented', async () => {

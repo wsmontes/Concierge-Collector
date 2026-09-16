@@ -1,6 +1,7 @@
 """Payload-only, bounded catalog selection endpoints."""
 
 import json
+import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -27,6 +28,7 @@ from app.models.catalog import (
 )
 from app.services.catalog_service import (
     CatalogCursorError,
+    CatalogScanUnavailable,
     catalog_scan_page,
     catalog_search_page,
     resolve_curations,
@@ -34,6 +36,8 @@ from app.services.catalog_service import (
 )
 
 router = APIRouter(prefix="/catalog", tags=["cms-catalog"])
+
+logger = logging.getLogger(__name__)
 
 # Concepts reach the list as repeated dynamic query keys (`concept.Mood=Casual`),
 # so the parameter cannot be declared as a typed one; see `_query_concepts`.
@@ -187,6 +191,11 @@ def search_curations(
                 settings.catalog_cursor_secret_value,
             )
         )
+    except CatalogScanUnavailable as exc:
+        # A window this scan cannot describe is a data problem, not an empty
+        # catalog: surface it (and log it) instead of serving a page of nothing.
+        logger.error("[catalog] scan unavailable: %s", exc)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except CatalogCursorError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Invalid catalog cursor") from exc
 
@@ -206,11 +215,18 @@ def start_scan(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"At most {EXCLUDE_CURATION_IDS_MAX} excluded curation ids are accepted",
         )
-    return CatalogScanStart(
-        **start_catalog_scan(
-            db, _actor(actor_id), request.filters.model_dump(mode="json"), settings.catalog_cursor_secret_value
+    try:
+        return CatalogScanStart(
+            **start_catalog_scan(
+                db, _actor(actor_id), request.filters.model_dump(mode="json"), settings.catalog_cursor_secret_value
+            )
         )
-    )
+    except CatalogScanUnavailable as exc:
+        # A window this scan cannot describe is a data problem, not an empty
+        # catalog: surface it (and log it) instead of minting a token that can
+        # only yield empty pages.
+        logger.error("[catalog] scan unavailable: %s", exc)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 
 
 @router.post("/curations/scan/page", response_model=CatalogScanPage)

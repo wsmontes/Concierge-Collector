@@ -471,6 +471,18 @@ class CatalogCursorError(ValueError):
     """A scan or page cursor is malformed, expired or bound to another actor."""
 
 
+class CatalogScanUnavailable(RuntimeError):
+    """The scan window cannot be described, so it must fail loudly.
+
+    The window is frozen from the highest ``catalog_sequence``; a collection with
+    rows and no sequenced document yields ``max = 0``, and every page would come
+    back empty. That is a data-invariant violation — every Curation is written
+    through :func:`ensure_catalog_sequence` — not an empty catalog. Returning the
+    empty list is what hid it: the Admin rendered "no Curations" over 1057 stored
+    rows (production, 2026-09-15).
+    """
+
+
 def _encode_token(value: dict, secret: str) -> str:
     body = json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8")
     signature = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).digest()
@@ -545,6 +557,11 @@ def start_catalog_scan(db: Database, actor_id: str, filters: dict, secret: str) 
         sort=[("catalog_sequence", -1)],
     )
     maximum = int((highest or {}).get("catalog_sequence", 0))
+    if maximum == 0 and db.curations.find_one({}, projection={"_id": 1}) is not None:
+        raise CatalogScanUnavailable(
+            "no Curation carries catalog_sequence; the catalog scan window would be empty. "
+            "Run scripts/python-tools/backfill_catalog_sequence.py"
+        )
     expires = int((datetime.now(timezone.utc) + timedelta(minutes=15)).timestamp())
     token = _encode_token(
         {"kind": "catalog-scan", "actor": actor_id, "filters": normalized, "max": maximum, "exp": expires}, secret
@@ -619,6 +636,20 @@ def catalog_search_page(
     if position is not None:
         clauses.append(_position_clause(sort, position))
     rows = _admin_rows(db, clauses, sort, limit)
+    if (
+        not rows
+        and db.curations.find_one({}, projection={"_id": 1}) is not None
+        and db.curations.find_one({"catalog_sequence": {"$type": "number"}}, projection={"_id": 1}) is None
+    ):
+        # Uma página vazia aqui é ambígua: pode ser filtro sem resultado ou a
+        # coleção inteira sem `catalog_sequence` — este caminho pagina por esse
+        # campo, então sem ele NADA casa e a tela diz "não há Curadorias" sobre
+        # milhares de linhas (produção, 2026-09-15). O custo da checagem só
+        # existe no caso vazio.
+        raise CatalogScanUnavailable(
+            "no Curation carries catalog_sequence, so this listing can only be empty. "
+            "Run scripts/python-tools/backfill_catalog_sequence.py"
+        )
     page, more = rows[:limit], len(rows) > limit
     items = admin_curation_rows(page)
     next_cursor = None

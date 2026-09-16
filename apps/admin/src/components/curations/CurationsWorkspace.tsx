@@ -419,8 +419,12 @@ export function CurationsWorkspace({
         {pageLoaded && page.items.length === 0 ? (
           <EmptyState
             title={without_collections ? 'No Curations without Collections' : 'No Curations'}
+            // Uma página vazia não prova que TODA Curation está numa Collection:
+            // só diz que esta view não tem o que paginar (o scan pode não
+            // alcançar linhas sem `catalog_sequence`). O texto carrega o
+            // qualificador em vez de afirmar o inverso do acervo.
             description={without_collections
-              ? 'Every stored Curation is currently held by a Collection.'
+              ? 'No stored Curation in this view is missing from a Collection.'
               : 'No stored Curation matches these filters.'}
           />
         ) : (

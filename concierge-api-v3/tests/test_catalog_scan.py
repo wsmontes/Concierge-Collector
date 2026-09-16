@@ -1,5 +1,6 @@
 """Security and high-water tests for the internal CMS catalog scan."""
 
+import logging
 from datetime import datetime, timezone
 import json
 
@@ -377,3 +378,62 @@ async def test_scan_refuses_an_exclusion_above_its_ceiling(async_client, in_memo
     # Same bound and same status as the ``/content-health`` member set.
     assert over_ceiling.status_code == 413
     assert str(EXCLUDE_CURATION_IDS_MAX) in over_ceiling.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_scan_start_refuses_a_collection_nobody_sequenced(async_client, in_memory_db, monkeypatch, caplog):
+    """Coleção com linhas e nenhuma sequência: erro explícito, não página vazia.
+
+    Produção (2026-09-15): 1057 curadorias sem `catalog_sequence` fizeram o scan
+    congelar `max=0` e devolver página vazia — a tela anunciava "nenhuma
+    Curation" sobre milhares de linhas, sem nenhum sinal.
+    """
+    in_memory_db._collections.clear()
+    monkeypatch.setattr(settings, "catalog_cursor_secret", "catalog-test-secret")
+    _seed_admin(in_memory_db)
+    legacy = active_curation(curation_id="legacy-sem-sequencia")
+    legacy.pop("catalog_sequence", None)
+    in_memory_db.curations.insert_one(legacy)
+
+    with caplog.at_level(logging.ERROR):
+        started = await async_client.post(
+            "/api/v3/catalog/curations/scan/start", headers=_headers(), json={"filters": {}}
+        )
+
+    # O cliente recebe 503 (o `main.py` redige detalhe de 5xx de propósito); o
+    # operador é quem recebe o motivo e o remédio, no log.
+    assert started.status_code == 503
+    assert "backfill_catalog_sequence" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_listing_refuses_the_empty_page_it_cannot_explain(async_client, in_memory_db, monkeypatch, caplog):
+    """A lista sem filtro também pagina por `catalog_sequence`: mesma causa, mesmo erro."""
+    in_memory_db._collections.clear()
+    monkeypatch.setattr(settings, "catalog_cursor_secret", "catalog-test-secret")
+    _seed_admin(in_memory_db)
+    legacy = active_curation(curation_id="legacy-sem-sequencia")
+    legacy.pop("catalog_sequence", None)
+    in_memory_db.curations.insert_one(legacy)
+
+    with caplog.at_level(logging.ERROR):
+        listed = await async_client.get("/api/v3/catalog/curations", headers=_headers())
+
+    assert listed.status_code == 503
+    assert "backfill_catalog_sequence" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_empty_page_stays_empty_when_the_collection_is_sequenced(async_client, in_memory_db, monkeypatch):
+    """O caso negativo: filtro sem resultado em acervo são continua 200/vazio."""
+    in_memory_db._collections.clear()
+    monkeypatch.setattr(settings, "catalog_cursor_secret", "catalog-test-secret")
+    _seed_admin(in_memory_db)
+    in_memory_db.curations.insert_one(active_curation(curation_id="tem-sequencia", catalog_sequence=7, city="Curitiba"))
+
+    listed = await async_client.get(
+        "/api/v3/catalog/curations", headers=_headers(), params={"city": "Cidade-que-nao-existe"}
+    )
+
+    assert listed.status_code == 200
+    assert listed.json()["items"] == []
