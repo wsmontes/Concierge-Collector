@@ -2964,11 +2964,18 @@
 /* Thumbnail explícita: 110px mobile, 96px em telas muito estreitas,
    150px ≥640. object-fit: cover + fallback de gradiente pedra com
    ícone do tipo (card nunca fica com mídia vazia). */
+/* A CAIXA manda na proporção, não a linha. Antes era `align-self: stretch` +
+   `min-height`, então a altura vinha do conteúdo do card e a mesma página
+   exibia 150x190, 150x206 e 150x208 (medido em produção, 2026-09-16) — o
+   quadro da imagem mudava de linha para linha. `aspect-ratio` fixa a razão
+   (retrato 3/4, que é o que a maioria dos cards já mostrava) e o `<img>`
+   absoluto com `object-fit: cover` enquadra qualquer imagem nela; a imagem se
+   ajusta à caixa, nunca o contrário. */
 .collection-card__media {
   position: relative;
   flex: 0 0 6.875rem;
-  align-self: stretch;
-  min-height: 6.875rem;
+  align-self: flex-start;
+  aspect-ratio: 3 / 4;
   border-radius: var(--radius-card-inner);
   overflow: hidden;
   background: var(--color-neutral-100);
@@ -2977,14 +2984,12 @@
 @media (max-width: 359px) {
   .collection-card__media {
     flex-basis: 6rem;
-    min-height: 6rem;
   }
 }
 
 @media (min-width: 640px) {
   .collection-card__media {
     flex-basis: 9.375rem;
-    min-height: 9.375rem;
   }
 }
 

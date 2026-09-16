@@ -58,6 +58,19 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         // ainda expiram em 24h uma última vez. Tudo que este código grava
         // recebe policy=persistent e NÃO expira automaticamente.
         this._legacyCacheTtlMs = 24 * 3600 * 1000;
+        // Negativo definitivo (404/400 do servidor: ele já avaliou as fontes)
+        // ganha TTL em vez de valer para sempre: sem isto o card ficava sem
+        // foto PARA SEMPRE neste browser quando o servidor só não tinha imagem
+        // naquele momento (site cadastrado depois, Places que passou a
+        // responder, hero escolhido mais tarde) — a única saída era "Refresh
+        // photos" ou hard reset, que ninguém descobre. Uma semana mantém o
+        // ganho (não re-pergunta a cada load) e deixa o card se curar.
+        this._noImageTtlMs = 7 * 24 * 3600 * 1000;
+        // Falha transitória (rede/timeout/5xx) NÃO é "sem imagem": memoriza
+        // por minutos, e só com o navegador online — o objetivo é não repetir
+        // a busca inteira do servidor a cada reload numa conexão ruim, sem
+        // congelar o card de quem está offline de verdade.
+        this._transientNegativeTtlMs = 10 * 60 * 1000;
         // prefetch da próxima página (padrão ImagePrefetcher do feedmine)
         this._prefetchedPages = new Set();
         this._prefetchTimer = null;
@@ -345,7 +358,14 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         if (!url && !placeId) {
             // servidor sem imagem E sem fonte legada → negativo persistido
             // (o reload não re-dispareava mais o 404 desta chave)
-            if (entityDefinitive) await this._writeNoImage(key);
+            if (entityDefinitive) {
+                await this._writeNoImage(key);
+            } else if (this._isOnline()) {
+                // Nem o servidor respondeu (rede/5xx) e não há fonte legada para
+                // tentar: memoriza curto para o reload não repetir a mesma
+                // tentativa falha em cima dos mesmos cards.
+                await this._writeNoImage(key, this._transientNegativeTtlMs);
+            }
             return null;
         }
 
@@ -422,7 +442,13 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                     const url = d.contact?.website || d.contacts?.website || d.website || item.website || '';
                     const placeId = d.place_id || d.google_place_id || item.place_id || '';
                     const entityId = item.entity_id || d.entity_id || '';
-                    const key = entityId ? `entity:${entityId}:rank:0` : (url || (placeId ? `place:${placeId}` : ''));
+                    // Mesmo rank que o CARD vai usar: o hero escolhido pelo
+                    // concierge (data.image_rank ≥ 1) tem chave própria, então
+                    // prefetch fixo em rank:0 aquecia uma chave que o card nunca
+                    // lê — e o card pagava a rede inteira mesmo com a próxima
+                    // página "preparada".
+                    const rank = Number(d.image_rank) || 0;
+                    const key = entityId ? `entity:${entityId}:rank:${rank}` : (url || (placeId ? `place:${placeId}` : ''));
                     if (key && !this._pending.has(key) && !this._waiting.some((w) => w.key === key)) {
                         // Prefetch entra no escalonador na prioridade MAIS
                         // baixa — nunca disputa conexão com a página atual
@@ -433,7 +459,7 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                                 let promise = this._pending.get(key);
                                 if (!promise) {
                                     promise = entityId
-                                        ? this._resolveEntityImage(entityId, 0, url, placeId, key)
+                                        ? this._resolveEntityImage(entityId, rank, url, placeId, key)
                                         : this._resolve(url, placeId, key);
                                     this._pending.set(key, promise);
                                 }
@@ -497,7 +523,19 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             await this._writeCache(key, blob);
             return this._freshObjectUrl(key, blob);
         } catch (error) {
-            // erro de REDE não é definitivo — não grava negativo
+            // `ApiService.request` LANÇA em 4xx/5xx — o ramo `!response.ok` acima
+            // só cobre um 2xx que não serve. Sem tratar o throw aqui, um 404 do
+            // og-image NUNCA virava negativo: cada load repetia a pergunta, e o
+            // servidor refazia a busca inteira (download da página + Places)
+            // para o mesmo card, em toda visita.
+            const status = error && error.status;
+            if (status === 400 || status === 404) {
+                await this._writeNoImage(key); // definitivo: o servidor já avaliou
+                return null;
+            }
+            // Falha transitória (rede/timeout/5xx): memoriza CURTO e só online,
+            // para um reload em conexão ruim não repetir 30 buscas no servidor.
+            if (this._isOnline()) await this._writeNoImage(key, this._transientNegativeTtlMs);
             this.log.debug(`og-image falhou para ${key}:`, error);
             throw error;
         }
@@ -557,7 +595,18 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             const policy = headers && headers.get ? headers.get('x-cache-policy') : null;
             const cachedAt = Number(headers && headers.get ? headers.get('x-cached-at') : 0) || 0;
             if (policy !== 'persistent' && cachedAt && Date.now() - cachedAt > this._legacyCacheTtlMs) {
-                await cache.delete(key);
+                // `cacheKey`, não `key`: a chave lógica (entity:/place:) não é
+                // uma Request válida, então o delete com ela falhava em
+                // silêncio e a entrada vencida voltava a ser lida a cada load.
+                await cache.delete(cacheKey);
+                return null;
+            }
+            // Expiração explícita (negativos: definitivo em 7 dias, transitório
+            // em 10 min). Vencida = miss de verdade: apaga e deixa re-resolver,
+            // que é como um card sem foto se cura sozinho.
+            const expiresAt = Number(headers && headers.get ? headers.get('x-cache-expires') : 0) || 0;
+            if (expiresAt && Date.now() > expiresAt) {
+                await cache.delete(cacheKey);
                 return null;
             }
             // Negativo persistido (404/400 já visto nesta chave): false
@@ -601,30 +650,48 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
     }
 
     /**
-     * Persiste um NEGATIVO no Cache Storage: esta chave já foi resolvida
-     * e NÃO tem imagem (404/400 definitivo do servidor). O próximo load
-     * pula a rede até um hard reset/Refresh photos explícito. Falha de rede
-     * NÃO grava negativo: offline não pode congelar o card como "sem foto".
+     * Persiste um NEGATIVO no Cache Storage: esta chave foi resolvida e NÃO
+     * tem imagem (404/400 definitivo do servidor). O próximo load pula a rede
+     * até a validade vencer — 7 dias por padrão, para o card poder se curar
+     * sozinho — ou um hard reset/Refresh photos explícito. Falha de rede NÃO
+     * usa isto por padrão: offline não pode congelar o card como "sem foto";
+     * quando o chamador passa um TTL curto, é porque o navegador está online.
      * @param {string} key - chave lógica do cache
+     * @param {number} [ttlMs] - validade em ms (padrão: negativo definitivo)
      */
-    async _writeNoImage(key) {
+    async _writeNoImage(key, ttlMs = this._noImageTtlMs) {
         if (!window.caches) return;
         try {
             const cache = await caches.open(this._cacheName);
             const cacheKey = this._cacheRequestKey(key);
+            const now = Date.now();
             await cache.put(
                 cacheKey,
                 new Response('', {
                     headers: {
                         'Content-Type': 'text/plain',
                         'x-no-image': '1',
-                        'x-cached-at': String(Date.now()),
+                        'x-cached-at': String(now),
+                        'x-cache-expires': String(now + ttlMs),
                         'x-cache-policy': 'persistent'
                     }
                 })
             );
         } catch (error) {
             this.log.debug('escrita do negativo no Cache Storage falhou:', error);
+        }
+    }
+
+    /**
+     * O navegador está online? Só com rede presumida vale memorizar uma falha
+     * transitória — offline é uma condição normal, não um "sem imagem".
+     * @returns {boolean}
+     */
+    _isOnline() {
+        try {
+            return typeof navigator === 'undefined' || navigator.onLine !== false;
+        } catch (error) {
+            return true;
         }
     }
 

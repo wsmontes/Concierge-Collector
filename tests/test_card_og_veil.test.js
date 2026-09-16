@@ -674,7 +674,9 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     const module = new OgImageModuleClass();
     const url = await module._readCache('entity:e1:rank:0');
     expect(url).toBeNull();
-    expect(fakeCache.delete).toHaveBeenCalledWith('entity:e1:rank:0');
+    // A chave do delete é a do Cache API (URL sintética), não a lógica:
+    // `cache.delete('entity:...')` não é Request válida e falhava em silêncio.
+    expect(fakeCache.delete).toHaveBeenCalledWith(module._cacheRequestKey('entity:e1:rank:0'));
   });
 
   test('entrada de cache FRESCA (com x-cached-at recente) é reusada', async () => {
@@ -887,7 +889,7 @@ describe('OgImageModule — negativo em cache (2026-08-16)', () => {
     const module = new OgImageModuleClass();
     const result = await module._readCache('entity:e1:rank:0');
     expect(result).toBeNull();
-    expect(fakeCache.delete).toHaveBeenCalledWith('entity:e1:rank:0');
+    expect(fakeCache.delete).toHaveBeenCalledWith(module._cacheRequestKey('entity:e1:rank:0'));
   });
 
   test('404 grava negativo no Cache Storage', async () => {
@@ -928,18 +930,28 @@ describe('OgImageModule — negativo em cache (2026-08-16)', () => {
     expect(window.ApiService.request).not.toHaveBeenCalled();
   });
 
-  test('erro de rede NÃO grava negativo', async () => {
+  test('falha de rede online memoriza CURTO; offline não grava nada', async () => {
     const OgImageModuleClass = loadOgImageModule();
-    const fakeCache = {
-      match: vi.fn().mockResolvedValue(undefined),
-      put: vi.fn().mockResolvedValue(undefined)
-    };
-    window.caches = { open: vi.fn().mockResolvedValue(fakeCache) };
+    const put = vi.fn().mockResolvedValue(undefined);
+    window.caches = { open: vi.fn().mockResolvedValue({ match: vi.fn().mockResolvedValue(undefined), put, delete: vi.fn() }) };
     window.ApiService = { request: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) };
 
-    const module = new OgImageModuleClass();
-    await expect(module._resolve('https://offline.example.com', '', 'url:off')).rejects.toBeTruthy();
-    expect(fakeCache.put).not.toHaveBeenCalled();
+    // Online: grava um negativo de validade curta — o reload numa conexão ruim
+    // não repete a busca inteira do servidor para os mesmos cards.
+    const online = new OgImageModuleClass();
+    await expect(online._resolve('https://flaky.example.com', '', 'url:flaky')).rejects.toBeTruthy();
+    expect(put).toHaveBeenCalledTimes(1);
+    const response = put.mock.calls[0][1];
+    const expiresIn = Number(response.headers.get('x-cache-expires')) - Date.now();
+    expect(expiresIn).toBeGreaterThan(0);
+    expect(expiresIn).toBeLessThan(60 * 60 * 1000); // minutos, não a semana do definitivo
+
+    // Offline: nada é memorizado — estar sem rede não é "este card não tem foto".
+    put.mockClear();
+    vi.stubGlobal('navigator', { onLine: false });
+    const offline = new OgImageModuleClass();
+    await expect(offline._resolve('https://offline.example.com', '', 'url:off')).rejects.toBeTruthy();
+    expect(put).not.toHaveBeenCalled();
   });
 
   test('resolução por entity chama o ApiService com silent:true', async () => {
