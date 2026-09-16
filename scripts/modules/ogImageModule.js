@@ -285,6 +285,16 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                 .finally(() => {
                     this._active--;
                     this._drain();
+                    // Fila assentada = hora de aquecer a próxima página. O gate do
+                    // prefetch ADIA sob carga; sem este rearme ele simplesmente
+                    // nunca dispararia numa carga fria (o timer só é armado dentro
+                    // do _queue) e o aquecimento da página 2 se perderia na visita
+                    // em que ele mais importa. `_prefetchedPages` impede repetir a
+                    // mesma página, então o ciclo termina sozinho.
+                    if (this._active === 0 && this._waiting.length === 0) {
+                        clearTimeout(this._prefetchTimer);
+                        this._prefetchTimer = setTimeout(() => this._prefetchNextPage(), 1500);
+                    }
                 });
         }
     }

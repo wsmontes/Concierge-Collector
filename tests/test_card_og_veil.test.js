@@ -1234,6 +1234,29 @@ describe('OgImageModule — não repete a busca que o servidor já fez (2026-09-
     expect(calls).toHaveLength(2); // entity + legado
   });
 
+  test('o prefetch é ADIADO, não cancelado: rearma quando a fila esvazia', async () => {
+    // Sem o rearme no dreno, uma carga fria (fila cheia no disparo do timer)
+    // simplesmente perdia o aquecimento da próxima página nesta visita — o gate
+    // virava cancelamento e a promessa do comentário era falsa.
+    vi.useFakeTimers();
+    try {
+      const OgImageModuleClass = loadOgImageModule();
+      const peekPage = vi.fn().mockResolvedValue([]);
+      window.CurationBrowser = { peekPage };
+      window.EntityBrowser = { peekPage };
+      window.uiManager = { curationPagination: { currentPage: 1 }, entityPagination: { currentPage: 1 } };
+
+      const module = new OgImageModuleClass();
+      module._waiting.push({ card: null, key: 'entity:x:rank:0', start: () => Promise.resolve(null) });
+      module._drain();
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(peekPage).toHaveBeenCalled(); // a fila esvaziou → o prefetch aconteceu
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('a página ainda resolvendo NÃO dispara o prefetch da próxima', async () => {
     // O prefetch é otimização: quando a página atual ainda tem itens na fila ou
     // em voo, aquecer a próxima só dobra o volume contra um servidor sem folga.
