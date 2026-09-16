@@ -189,6 +189,12 @@ instância ✓). Mesma coisa para `cpu`.
 | **min** | 404 | 2 | 3 | 445 | 445 | 447 | 448 | 442 | 450 | 399 | 397 | 288 | 3 | 411 | 3 |
 | **max** | 406 | 500 | 479 | 451 | 447 | 448 | 449 | 450 | 451 | 452 | 400 | 474 | 452 | 415 | 434 |
 
+**Atenção à resolução (importante para não descartar o achado):** a série entrega **~1 amostra por
+minuto** (60 pontos por hora ✓). O kernel mata pelo valor **instantâneo**, não pela média do minuto — então
+o máximo por hora aparecer em 474 MB (< 512) nas horas de OOM é ESPERADO e não significa que o container
+morreu abaixo do limite: o pico entre duas amostras é invisível aqui. Este endpoint serve para ver regime e
+tendência (vazamento × orçamento), **não** para medir o pico real.
+
 **Conclusão: não é vazamento.** Das 08h às 13h (sem tráfego, sem deploy) a memória ficou **plana** em
 445-451 MB — não subiu. E a CPU está ociosa (pico 0.01-0.22 de 0.5 núcleo, e só nas horas de OOM). O
 container simplesmente vive a **~88% de 512 MB** e tem **~61 MB de folga**: qualquer rajada maior que isso
