@@ -176,6 +176,41 @@ Duas armadilhas medidas para quem implementar (verificadas no código, 2026-09-1
    `$facet` — trocar `find` por agregação devolve página vazia e quebra tudo. A validação tem de ser
    contra Mongo real (`verify:full`: API integration + Mongo integration), não no unitário.
 
+**Investigação com medição real (2026-09-16, API de métricas do Render).** As tentativas anteriores
+liam eventos; agora há série de memória por minuto. Endpoint correto (o path leva o NOME da métrica, não o
+id do serviço): `GET /v1/metrics/memory?resource=<serviceId>&startTime=&endTime=` — devolve
+`{unit: bytes, values: [{timestamp, value}]}` (e a resposta pode vir como LISTA de séries, uma por
+instância ✓). Mesma coisa para `cpu`.
+
+14 horas de série, regime por hora (min/max, MB):
+
+| hora (UTC) | 05 | 06 | 07 | 08 | 09 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **min** | 404 | 2 | 3 | 445 | 445 | 447 | 448 | 442 | 450 | 399 | 397 | 288 | 3 | 411 | 3 |
+| **max** | 406 | 500 | 479 | 451 | 447 | 448 | 449 | 450 | 451 | 452 | 400 | 474 | 452 | 415 | 434 |
+
+**Conclusão: não é vazamento.** Das 08h às 13h (sem tráfego, sem deploy) a memória ficou **plana** em
+445-451 MB — não subiu. E a CPU está ociosa (pico 0.01-0.22 de 0.5 núcleo, e só nas horas de OOM). O
+container simplesmente vive a **~88% de 512 MB** e tem **~61 MB de folga**: qualquer rajada maior que isso
+mata. Os `min = 2-3 MB` são os minutos de reinício.
+
+Carga controlada para separar "caminho específico" de "orçamento": UMA navegação completa da lista do
+Collector (30 cards, ~30 requisições de imagem) levou o container de 397 → 397 MB, **sem OOM**. Ou seja,
+o gatilho são rajadas pontuais — Next SSR de uma página do Admin, pipelines de imagem simultâneos, jobs
+agendados — contra folga pequena.
+
+Alavancas NOSSAS, aplicadas (medidas no código, não estimadas):
+
+- `OG_BYTES_CACHE_MAX_ENTRIES` 300 → **100**: `_og_bytes_cache` guarda **bytes de JPEG** (50-200 KB cada),
+  então 300 entradas podiam ser ~60 MB residentes (`og_image_service.py:159`). O navegador já persiste a
+  imagem para sempre no Cache Storage, então o cache do servidor não precisa ser generoso.
+- `COLLECTOR_MAX_CONCURRENCY` 4 → **2**: cada download concorrente segura o HTML da página (até
+  `MAX_HTML_BYTES` = 400 KB) mais o custo do parse; o pico transitório é o que cruza a folga.
+
+**Isto devolve parte da folga, não cria folga.** Com regime de ~450 MB, a correção robusta continua sendo
+mais memória (`standard`, 2 GB) ou menos processos no mesmo container — decisão de custo do usuário.
+Ordem de grandeza dos quatro processos: Next ~200 MB, runner de jobs ~150 MB, uvicorn ~100 MB, nginx ~10 MB.
+
 Duas medidas, e o que cada uma resolve:
 
 - **Aplicado**: teto de heap V8 nos dois processos Node (`NODE_OPTIONS=--max-old-space-size`, 200 MiB
