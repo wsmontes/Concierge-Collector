@@ -13,6 +13,17 @@ interface WithAdminDependencies {
 }
 
 /**
+ * True only for a policy that is `private` AND carries nothing aimed at shared
+ * caches: `s-maxage` exists only for shared caches, and `public` contradicts
+ * `private`. A contradictory value is malformed — it must not ride the
+ * exemption into a proxy on the strength of the word "private".
+ */
+function isPrivateOnly(value: string): boolean {
+  if (!/(^|[\s,])private([\s,]|$)/.test(value)) return false
+  return !/(^|[\s,])(public|s-maxage)([\s,=]|$)/.test(value)
+}
+
+/**
  * Authenticated admin responses are never SHARABLE: a proxy must not hold them.
  * `private` is the line — a value without it (or any failure) is overwritten.
  *
@@ -25,7 +36,7 @@ interface WithAdminDependencies {
 function noStore(response: Response, allowPrivateHandlerPolicy = false): Response {
   if (allowPrivateHandlerPolicy) {
     const declared = response.headers.get('Cache-Control')
-    if (declared && /(^|[\s,])private([\s,]|$)/.test(declared)) return response
+    if (declared && isPrivateOnly(declared)) return response
   }
   response.headers.set('Cache-Control', 'private, no-store')
   return response

@@ -385,6 +385,30 @@ Tudo abaixo foi **medido**, não estimado; quando a medição não sustentou a h
 |Thumbnail da Entity na lista (virtualizada: linha fora da tela não pede imagem)|3 linhas → 3 requisições; 404 local → 0 molduras quebradas|
 |CSS morto do Explorer (`curation-explorer*`, `explorer-filter-form*`)|131 linhas removidas (0 referências em tsx/ts)|
 
+### Exceção de cache do BFF: o limite é `private`, e nada além
+
+O `withAdmin` preserva a frescura declarada pelo handler **somente** dentro de `private`, e agora rejeita
+também valor contraditório: `public` ou `s-maxage` junto de `private` é sobrescrito. `s-maxage` existe só
+para cache compartilhado e `public` contradiz `private` — nenhum dos dois pode pegar carona na exceção e
+levar uma resposta autenticada para um cache de proxy. 9 casos no arquivo dedicado
+(`with-admin-cache-policy.test.ts`); sem a checagem de `private` falham 7, sem o aperto novo falham 2.
+
+O elo de cima da cadeia também já está pinado por teste existente: `concierge-api-v3/tests/test_catalog_media.py`
+afirma o `private, max-age={ENTITY_IMAGE_CACHE_TTL_SECONDS}` que `catalog_media.py:150` emite. Ou seja:
+upstream emite `private` + wrapper preserva `private` — não é preciso curl em produção para provar.
+
+### Thumbnail na lista de Entities: o limite medido
+
+O `EntityTable` é virtualizado com altura **fixa** (`estimateSize: () => rowHeight`, sem `measureElement`),
+então um filho maior que a linha desalinha a lista. Medido: a identidade (nome + `entity_id`) ocupa **41px**
+e o thumbnail **34px** — a imagem é o filho **menor**, com `width/height` fixos no CSS. A linha de 48px não
+cresce e não há reflow ao carregar.
+
+O fan-out é limitado por três coisas: linha fora da tela é desmontada (virtualização), `loading="lazy"`
+segura as montadas mas fora da viewport (o overscan), e o TTL no browser evita repetir. Medido: 3 linhas →
+3 requisições. Se a pressão no container fusionado aumentar, a alternativa é um campo de thumbnail na
+resposta de lista (uma chamada em lote) em vez de uma por linha.
+
 ### Hipóteses que a medição derrubou (não viraram mudança)
 
 - **"Cadeia serial de chamadas no BFF"** — medido: 3-4 chamadas `/api/admin` por página, TTFB 162-309ms no dev.
@@ -400,14 +424,18 @@ Tudo abaixo foi **medido**, não estimado; quando a medição não sustentou a h
 
 `tests/unit/payload/security-config.test.ts > allows CSRF and CORS only from the Admin and explicit Collector origins`.
 
-Placar medido em 2026-09-16: **2 falhas, 8 aprovações**. Isolado passa sempre (6/6) — inclusive com o env
-exato do gate (`withAdminTestEnv`) e na suíte completa (5/5). A correlação que sobrou: as **duas** falhas
-foram em invocações com a saída canalizada para `grep` (`npm run verify | grep …`) e as **oito** aprovações
-com a saída redirecionada para arquivo ou sem pipe. Não sei a causa — o teste faz `await import()' do
-`payload.config` dentro do caso, e um atraso de I/O mudaria o que ele lê. Fica registrado com o placar e a
-correlação: **rode o gate redirecionando a saída**, e se o gate falhar nesse arquivo, repita antes de
-investigar.
+Placar em 2026-09-16: **2 falhas, 10 aprovações**. Duas hipóteses foram testadas e **derrubadas**:
 
+|Hipótese|Teste|Resultado|
+|---|---|---|
+|Depende do env do gate (`withAdminTestEnv`, release-gate.mjs:29)|suíte completa com o env exato do gate, 2×|2 aprovações|
+|Depende de pipe na saída (`npm run verify \| grep …`)|2 execuções do gate canalizadas|2 aprovações|
+
+Também passou isolado 6/6, na suíte completa 5/5 e no gate redirecionado 3/3. Não há gatilho
+estabelecido: é um flake de baixa frequência e sem causa conhecida. O teste faz `await import()` de
+`payload.config` dentro do caso, então o suspeito é timing de I/O naquele import — mas isso é suspeita,
+não diagnóstico. **Trate um gate vermelho nesse arquivo como rerun-antes-de-investigar, não como falha de
+release.**
 
 ## Regra de trabalho — sobrescrever arquivo existente
 
