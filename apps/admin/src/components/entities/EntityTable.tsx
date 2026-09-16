@@ -56,12 +56,42 @@ function timestampCell(value: string | null): ReactNode {
   return <time dateTime={value} title={absolute ?? undefined}>{formatRelativeDate(value)}</time>
 }
 
+/**
+ * The Entity's top-ranked image, at list size.
+ *
+ * A row without an image renders nothing rather than a frame: the list is for
+ * scanning, and a broken/empty box per row would be noise. The image comes from
+ * the Admin BFF (session cookie in, service key never out) and the route
+ * defaults to the hero, so the list does not need to know a rank.
+ *
+ * No request is made for a row that is not rendered: the table is virtualized,
+ * so off-screen rows are unmounted — and `loading="lazy"` covers the few that
+ * are mounted just below the fold.
+ */
+function EntityRowThumb({ entityId }: { entityId: string }): ReactNode {
+  const [failed, setFailed] = useState(false)
+  if (failed) return null
+  return (
+    <img
+      className="entity-table__thumb"
+      src={`/api/admin/v1/records/entities/${encodeURIComponent(entityId)}/image`}
+      alt=""
+      decoding="async"
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
 /** Name is the editorial identity; `entity_id` follows as secondary technical text. */
 function identityCell(row: EntityRow): ReactNode {
   return (
     <span className="entity-table__identity">
-      <span className="entity-table__name">{row.name}</span>
-      {row.entity_id && <span className="entity-table__technical">{row.entity_id}</span>}
+      {row.entity_id && <EntityRowThumb entityId={row.entity_id} />}
+      <span className="entity-table__text">
+        <span className="entity-table__name">{row.name}</span>
+        {row.entity_id && <span className="entity-table__technical">{row.entity_id}</span>}
+      </span>
     </span>
   )
 }

@@ -119,10 +119,28 @@
   white-space: nowrap;
 }
 
+/* Thumb + texto lado a lado. A imagem é opcional (nem toda Entity tem), então o
+   slot só existe quando ela resolve — sem moldura vazia por linha. */
 .entity-table__identity {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.entity-table__text {
   display: grid;
   gap: 0.1rem;
   min-width: 0;
+}
+
+.entity-table__thumb {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: var(--cms-radius-md);
+  background: var(--cms-limestone-200);
 }
 
 .entity-table__name {
