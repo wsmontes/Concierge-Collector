@@ -39,7 +39,7 @@
 
 .content-health__count {
   color: var(--cms-olive-900);
-  font-size: clamp(1.35rem, 2.2vw, 1.8rem);
+  font-size: var(--cms-text-3xl);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   letter-spacing: -0.02em;

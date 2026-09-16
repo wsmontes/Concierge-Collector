@@ -217,7 +217,10 @@ h1 {
 }
 
 .admin-page__heading h1 {
-  font-size: clamp(1.65rem, 2.4vw, 2.25rem);
+  /* O Collector (produto de referência) declara `h1 { font-size: var(--text-4xl) }`
+     — 36px, o mesmo passo desta escala. O clamp em rem rendia 29.25px aqui: além
+     de fora da escala, 19% menor que a intenção, porque o root do Payload é 13px. */
+  font-size: var(--cms-text-4xl);
   letter-spacing: -0.025em;
   line-height: 1.08;
 }

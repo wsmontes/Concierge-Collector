@@ -398,10 +398,16 @@ Tudo abaixo foi **medido**, não estimado; quando a medição não sustentou a h
 
 ### Flake conhecido (não investigado até o fim)
 
-`tests/unit/payload/security-config.test.ts > allows CSRF and CORS only from the Admin and explicit Collector origins`
-falhou em 2 execuções do gate e passou em 7 (isolado, suíte completa, com env do gate e sem). Não é
-reproduzível sob controle; arquivo não relacionado a CSS. Registrado aqui porque um gate que falha 1 em N
-sem causa conhecida é pior que um gate vermelho.
+`tests/unit/payload/security-config.test.ts > allows CSRF and CORS only from the Admin and explicit Collector origins`.
+
+Placar medido em 2026-09-16: **2 falhas, 8 aprovações**. Isolado passa sempre (6/6) — inclusive com o env
+exato do gate (`withAdminTestEnv`) e na suíte completa (5/5). A correlação que sobrou: as **duas** falhas
+foram em invocações com a saída canalizada para `grep` (`npm run verify | grep …`) e as **oito** aprovações
+com a saída redirecionada para arquivo ou sem pipe. Não sei a causa — o teste faz `await import()' do
+`payload.config` dentro do caso, e um atraso de I/O mudaria o que ele lê. Fica registrado com o placar e a
+correlação: **rode o gate redirecionando a saída**, e se o gate falhar nesse arquivo, repita antes de
+investigar.
+
 
 ## Regra de trabalho — sobrescrever arquivo existente
 
