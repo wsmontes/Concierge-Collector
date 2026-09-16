@@ -368,6 +368,14 @@ roda — o mesmo pipeline que aparece na conta de memória do container.
   com foto fica para sempre — correto enquanto a foto não subir (é a única cópia), mas significa que
   captura abandonada acumula. Decisão de produto, não bug.
 
+## Regra de trabalho — sobrescrever arquivo existente
+
+Em 2026-09-16 eu sobrescrevi `apps/admin/tests/unit/http/with-admin.test.ts` com `write`, apagando 16
+casos de teste que já existiam (a suíte caiu de 621 para 611 e eu só percebi porque comparei as duas
+contagens). Restaurado do git e fundido com o bloco novo (627 = 621 + 6). **Antes de `write` num arquivo,
+`read` primeiro** — a checagem que eu fiz (`grep` por `withAdmin` em `--include=*.test.ts*`) listou o
+arquivo, mas eu li só o começo da saída e assumi que não existia.
+
 ## Design/UX do Admin — 2026-09-16
 
 Trabalho em lotes medidos, com o Collector como superfície de referência. Entregue até aqui: escala
