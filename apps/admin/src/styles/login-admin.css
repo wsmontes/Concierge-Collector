@@ -18,7 +18,7 @@ body:has(.cms-login) {
 .cms-login {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 10px;
+  border-radius: var(--cms-radius-xl);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -45,7 +45,7 @@ body:has(.cms-login) {
 .cms-login a {
   align-self: flex-start;
   background: var(--cms-olive-800);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   color: var(--cms-limestone-50);
   font-size: var(--cms-text-sm);
   font-weight: 600;

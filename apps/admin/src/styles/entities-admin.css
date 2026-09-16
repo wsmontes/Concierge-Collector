@@ -11,7 +11,7 @@
 
 .entities-filter-form {
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   gap: 0.85rem;
   padding: 0.9rem;
 }
@@ -48,7 +48,7 @@
 .entities-filter-form select {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   color: var(--theme-text);
   padding: 0.55rem 0.65rem;
 }
@@ -67,7 +67,7 @@
 .entity-table {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   overflow: hidden;
 }
 
@@ -153,7 +153,7 @@
 .entity-drawer {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: grid;
   gap: 0.85rem;
   grid-template-rows: auto 1fr auto;
@@ -186,7 +186,7 @@
 .entity-drawer__close {
   background: none;
   border: 1px solid var(--theme-border-color);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   color: var(--theme-text);
   cursor: pointer;
   padding: 0.3rem 0.6rem;

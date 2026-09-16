@@ -14,6 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
 const RAIZ = path.resolve(__dirname, '..');
 const PACOTE = path.join(RAIZ, 'packages/design-tokens/src/tokens.css');
@@ -99,5 +100,69 @@ describe('linguagem compartilhada — pacote × Collector', () => {
     // Os dois passos sem sufixo, que o filtro antigo silenciava.
     expect(nomes).toContain('--cms-radius');
     expect(nomes).toContain('--cms-shadow');
+  });
+});
+
+describe('cópia do Admin — a mesma escala, em px', () => {
+  const ADMIN = path.join(RAIZ, 'apps/admin/src/styles/tokens.generated.css');
+
+  test('cada passo em rem vira o px que a escala pretende (rem × 16)', async () => {
+    // A razão da cópia existir: Payload declara `html { font-size: 13px }` e rem
+    // resolve contra o root, então um passo em rem no Admin computa 19% menor que
+    // a intenção — e diferente do mesmo token no Collector (root 16px).
+    const { renderAdminTokens } = await import(pathToFileURL(path.join(RAIZ, 'scripts/design-tokens.mjs')).href)
+    const admin = declaracoes(ADMIN);
+    const pacote = declaracoes(PACOTE);
+    const emRem = [...pacote.entries()].filter(([, v]) => /(^|[^a-z])-?\d*\.?\d+rem/.test(v));
+    expect(emRem.length).toBeGreaterThan(20);
+    for (const [nome, valor] of emRem) {
+      const pxIntendido = valor.replace(/(-?\d*\.?\d+)rem\b/g, (_, v) => `${Math.round(Number(v) * 16 * 10000) / 10000}px`);
+      expect(admin.get(nome), `o Admin não declara ${nome}`).toBe(pxIntendido);
+    }
+  });
+
+  test('a cópia commitada é exatamente a projeção do pacote', async () => {
+    const { renderAdminTokens } = await import(pathToFileURL(path.join(RAIZ, 'scripts/design-tokens.mjs')).href)
+    expect(fs.readFileSync(ADMIN, 'utf8')).toBe(renderAdminTokens(fs.readFileSync(PACOTE, 'utf8')));
+  });
+
+  test('nenhum token do pacote some na projeção', async () => {
+    const admin = declaracoes(ADMIN);
+    for (const nome of declaracoes(PACOTE).keys()) {
+      expect(admin.has(nome), `o Admin perdeu ${nome}`).toBe(true);
+    }
+  });
+
+  test('a cópia do Admin é importada DEPOIS do pacote', () => {
+    // Sem a ordem, os passos em rem do pacote venceriam os em px.
+    const css = fs.readFileSync(path.join(RAIZ, 'apps/admin/src/styles/admin.css'), 'utf8');
+    expect(css.indexOf("@concierge/design-tokens/css")).toBeLessThan(css.indexOf("'./tokens.generated.css'"));
+  });
+});
+
+describe('raios — só a escala, nunca um literal', () => {
+  test('nenhum border-radius do Admin escapa da escala compartilhada', () => {
+    // Havia 82 literais e ZERO tokens: 8px aparecia 30×, 6px 26×, e dois valores
+    // fora da escala (10px em painéis, 7px em blocos internos). Com a escala em
+    // px, o mapeamento é visualmente neutro — e este teste impede que um valor
+    // novo entre sem passar por ela.
+    const arquivos = [];
+    const varrer = (dir) => {
+      for (const entrada of fs.readdirSync(dir, { withFileTypes: true })) {
+        const alvo = path.join(dir, entrada.name);
+        if (entrada.isDirectory()) varrer(alvo);
+        else if (entrada.name.endsWith('.css') && entrada.name !== 'tokens.generated.css') arquivos.push(alvo);
+      }
+    };
+    varrer(path.join(RAIZ, 'apps/admin/src'));
+    expect(arquivos.length).toBeGreaterThan(8);
+
+    const fora = [];
+    for (const arquivo of arquivos) {
+      for (const m of fs.readFileSync(arquivo, 'utf8').matchAll(/border-radius\s*:\s*([^;]+);/g)) {
+        if (!m[1].includes('var(--cms-radius')) fora.push(`${path.basename(arquivo)}: ${m[1].trim()}`);
+      }
+    }
+    expect(fora).toEqual([]);
   });
 });

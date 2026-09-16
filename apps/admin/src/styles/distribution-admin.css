@@ -23,7 +23,7 @@
 .application-views__identity-fields input {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   color: var(--theme-text);
   min-width: 0;
   padding: 0.55rem 0.65rem;
@@ -47,7 +47,7 @@
   align-items: stretch;
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: grid;
   gap: 1rem;
   padding: 1rem;
@@ -101,7 +101,7 @@
 .application-card__credentials {
   background: var(--theme-elevation-50);
   border: 1px solid var(--cms-limestone-200);
-  border-radius: 7px;
+  border-radius: var(--cms-radius-lg);
   display: grid;
   gap: 0.75rem;
   padding: 0.85rem;
@@ -159,7 +159,7 @@
 .application-access-dialog input[type='number'] {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   color: var(--theme-text);
   padding: 0.55rem;
 }
@@ -167,7 +167,7 @@
 .collection-access-picker__list {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 7px;
+  border-radius: var(--cms-radius-lg);
   display: grid;
   gap: 0;
   list-style: none;
@@ -212,7 +212,7 @@
 .application-access-dialog {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 10px;
+  border-radius: var(--cms-radius-xl);
   box-shadow: 0 24px 64px rgb(24 38 24 / 18%);
   display: grid;
   gap: 1rem;

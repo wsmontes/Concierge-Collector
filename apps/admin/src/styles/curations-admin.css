@@ -44,7 +44,7 @@
 .curations-saved-views {
   background: var(--theme-elevation-0, #fff);
   border: 1px solid var(--theme-elevation-150, #d7d7d7);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: grid;
   gap: 0.9rem;
   margin: 0;
@@ -87,7 +87,7 @@
 .curation-sort-picker select {
   background: var(--theme-elevation-0, #fff);
   border: 1px solid var(--theme-elevation-250, #c7c7c7);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   color: inherit;
   min-height: 40px;
   padding: 0.5rem 0.65rem;
@@ -144,7 +144,7 @@
   align-items: center;
   background: var(--cms-limestone-100);
   border: 1px solid var(--theme-border-color);
-  border-radius: 999px;
+  border-radius: var(--cms-radius-full);
   display: inline-flex;
   font-size: var(--cms-text-xs);
   gap: 0.35rem;
@@ -155,7 +155,7 @@
   align-items: center;
   background: none;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--cms-radius-full);
   color: var(--cms-olive-700);
   cursor: pointer;
   display: inline-flex;
@@ -217,7 +217,7 @@
 .curation-column-picker fieldset {
   background: var(--theme-elevation-0, #fff);
   border: 1px solid var(--theme-elevation-150, #d7d7d7);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: grid;
   gap: 0.35rem;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -248,7 +248,7 @@
   align-items: center;
   background: var(--cms-limestone-100);
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
@@ -282,7 +282,7 @@
    surface adds the editorial cells. */
 .curation-table {
   background: var(--theme-elevation-0);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   overflow: hidden;
 }
 
@@ -337,7 +337,7 @@
 .curation-table__chip {
   background: var(--cms-limestone-100);
   border: 1px solid var(--theme-border-color);
-  border-radius: 999px;
+  border-radius: var(--cms-radius-full);
   font-size: var(--cms-text-xs);
   padding: 0.05rem 0.5rem;
   white-space: nowrap;
@@ -393,7 +393,7 @@
 .curation-drawer__close {
   background: none;
   border: 1px solid var(--theme-border-color);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   cursor: pointer;
   min-height: 32px;
   padding: 0.3rem 0.7rem;
@@ -510,7 +510,7 @@
 
 .curation-drawer__primary,
 .curation-drawer__secondary {
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   font-weight: 600;
   padding: 0.5rem 0.85rem;
   text-decoration: none;

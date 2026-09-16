@@ -2,6 +2,12 @@
    Collector can project the same values into styles/tokens.generated.css.
    Only Payload's --theme-* mapping stays product-specific. */
 @import '@concierge/design-tokens/css';
+/* Depois do pacote, de propósito: a cópia em px precisa vencer os passos em rem.
+   Payload declara `html { font-size: 13px }` e rem resolve contra o root, então
+   um passo em rem aqui computa 19% menor que a escala pretende — e diferente do
+   mesmo token no Collector (root 16px). Verificado no browser antes da mudança:
+   `--cms-text-sm` dava 11.375px no Admin contra 13px no Collector. */
+@import './tokens.generated.css';
 
 :root {
   --theme-elevation-0: var(--cms-limestone-50);
@@ -294,7 +300,7 @@ h1 {
   align-items: center;
   background: var(--theme-elevation-50);
   border: 1px dashed var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: flex;
   gap: 1.5rem;
   justify-content: space-between;
@@ -325,7 +331,7 @@ h1 {
   background: var(--theme-elevation-50);
   border: 1px solid var(--theme-border-color);
   border-left-width: 4px;
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   display: flex;
   gap: 1rem;
   justify-content: space-between;

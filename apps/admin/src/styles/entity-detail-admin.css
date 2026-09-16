@@ -12,7 +12,7 @@
 .entity-detail__retry {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 4px;
+  border-radius: var(--cms-radius);
   color: var(--theme-text);
   cursor: pointer;
   font-weight: 600;
@@ -29,7 +29,7 @@
   align-items: center;
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 4px;
+  border-radius: var(--cms-radius);
   color: var(--theme-text);
   display: inline-flex;
   font-weight: 600;
@@ -46,7 +46,7 @@
 .entity-detail__header {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   padding: 0.85rem 1rem;
 }
 
@@ -123,7 +123,7 @@
 .entity-field__hint,
 .entity-field__system {
   border: 1px solid var(--theme-border-color);
-  border-radius: 999px;
+  border-radius: var(--cms-radius-full);
   color: var(--theme-elevation-600);
   font-size: var(--cms-text-xs);
   padding: 0.1rem 0.5rem;
@@ -132,7 +132,7 @@
 .entity-field__edit {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 4px;
+  border-radius: var(--cms-radius);
   color: var(--theme-text);
   cursor: pointer;
   margin-inline-start: auto;
@@ -174,7 +174,7 @@
 .entity-curations__card {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: grid;
   gap: 0.4rem;
   padding: 0.75rem 0.9rem;
@@ -214,7 +214,7 @@
 
 .entity-curations__concept {
   background: var(--theme-elevation-100);
-  border-radius: 999px;
+  border-radius: var(--cms-radius-full);
   font-size: var(--cms-text-xs);
   padding: 0.15rem 0.6rem;
 }
@@ -252,7 +252,7 @@
 
 .entity-image__thumb {
   background: var(--theme-elevation-100);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   display: block;
   height: auto;
   max-height: 180px;

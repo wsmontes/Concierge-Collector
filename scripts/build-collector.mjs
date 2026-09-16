@@ -2,7 +2,7 @@ import { cp, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
-import { TOKENS_GENERATED_PATH, checkCollectorTokens, writeCollectorTokens } from './design-tokens.mjs'
+import { ADMIN_TOKENS_GENERATED_PATH, TOKENS_GENERATED_PATH, checkDesignTokens, writeDesignTokens } from './design-tokens.mjs'
 import {
   computeShellGeneration,
   stampLocalAssetVersions,
@@ -149,14 +149,18 @@ async function build(destination) {
 // into styles/tokens.generated.css, which the full build then treats as a
 // normal source file.
 if (process.argv.includes('--tokens-only')) {
-  const result = await writeCollectorTokens()
-  console.log(`${result.changed ? 'Regenerated' : 'Already current'}: ${relative(root, result.path)}`)
+  const result = await writeDesignTokens()
+  const paths = [TOKENS_GENERATED_PATH, ADMIN_TOKENS_GENERATED_PATH].map((p) => relative(root, p))
+  console.log(result.changed.length === 0
+    ? `Already current: ${paths.join(', ')}`
+    : `Regenerated: ${result.changed.join(', ')}`)
 } else if (process.argv.includes('--tokens-check')) {
-  await checkCollectorTokens()
-  console.log(`Already current: ${relative(root, TOKENS_GENERATED_PATH)}`)
+  await checkDesignTokens()
+  console.log(`Already current: ${relative(root, TOKENS_GENERATED_PATH)}, ${relative(root, ADMIN_TOKENS_GENERATED_PATH)}`)
 } else {
-  // A release must never ship a stale projection of the brand ramp.
-  await checkCollectorTokens()
+  // A release must never ship a stale projection of the brand ramp — neither the
+  // Collector's plain copy nor the Admin's pixel-resolved one.
+  await checkDesignTokens()
   const primary = await build(outputDir)
   if (process.argv.includes('--check')) {
     const temporary = await mkdtemp(join(tmpdir(), 'concierge-collector-build-'))

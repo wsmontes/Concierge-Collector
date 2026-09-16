@@ -22,7 +22,7 @@
 .content-health__card {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   color: var(--theme-text);
   display: grid;
   gap: 0.3rem;

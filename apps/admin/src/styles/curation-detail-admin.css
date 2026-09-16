@@ -16,7 +16,7 @@
 .curation-header__meta {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: grid;
   gap: 0.75rem 1.5rem;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
@@ -84,7 +84,7 @@
 .curation-field__json {
   background: var(--theme-elevation-50);
   border: 1px solid var(--theme-border-color);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   margin: 0;
   max-height: 22rem;
   overflow: auto;
@@ -102,7 +102,7 @@
 
 .curation-about__entity {
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: grid;
   gap: 0.35rem;
   padding: 0.9rem;
@@ -126,7 +126,7 @@
 
 .curation-derived {
   border: 1px dashed var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: grid;
   gap: 0.2rem;
   padding: 0.7rem 0.9rem;
@@ -186,7 +186,7 @@
 .curation-concept__chip {
   background: var(--cms-limestone-100);
   border: 1px solid var(--theme-border-color);
-  border-radius: 999px;
+  border-radius: var(--cms-radius-full);
   padding: 0.15rem 0.65rem;
 }
 
@@ -203,7 +203,7 @@
 
 .curation-concepts__editor {
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: grid;
   gap: 0.75rem;
   padding: 0.9rem;
@@ -234,7 +234,7 @@
 .curation-concepts__new input {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   color: var(--theme-text);
   flex: 1;
   min-width: 8rem;
@@ -263,7 +263,7 @@
 
 .curation-source {
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: grid;
   gap: 0.5rem;
   padding: 0.9rem;
@@ -297,7 +297,7 @@
 
 .curation-source__entry {
   background: var(--theme-elevation-50);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   display: grid;
   gap: 0.35rem;
   padding: 0.65rem 0.75rem;
@@ -354,7 +354,7 @@
 .curation-source__transcription pre {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   margin: 0.4rem 0 0;
   max-height: 18rem;
   overflow: auto;
@@ -366,7 +366,7 @@
 
 .curation-transcript {
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: grid;
   gap: 0.5rem;
   padding: 0.9rem;
@@ -381,7 +381,7 @@
 .curation-field__transcript {
   background: var(--theme-elevation-0);
   border: 1px solid var(--cms-limestone-200);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   font-family: inherit;
   line-height: 1.65;
   margin: 0;
@@ -442,7 +442,7 @@
 .curation-history__stored pre {
   background: var(--theme-elevation-50);
   border: 1px solid var(--theme-border-color);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   margin: 0;
   max-height: 18rem;
   overflow: auto;
@@ -473,7 +473,7 @@
 .curation-raw__json {
   background: var(--theme-elevation-50);
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   margin: 0;
   max-height: 30rem;
   overflow: auto;
@@ -499,7 +499,7 @@
 .curation-conflict__side pre {
   background: var(--theme-elevation-0);
   border: 1px solid var(--theme-border-color);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   margin: 0;
   max-height: 12rem;
   overflow: auto;

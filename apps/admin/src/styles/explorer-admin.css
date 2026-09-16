@@ -43,7 +43,7 @@
 .explorer-saved-views {
   background: var(--theme-elevation-0, #fff);
   border: 1px solid var(--theme-elevation-150, #d7d7d7);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   margin: 0;
   padding: 1rem;
 }
@@ -82,7 +82,7 @@
 .explorer-saved-views select {
   background: var(--theme-elevation-0, #fff);
   border: 1px solid var(--theme-elevation-250, #c7c7c7);
-  border-radius: 6px;
+  border-radius: var(--cms-radius-md);
   color: inherit;
   min-height: 40px;
   padding: 0.5rem 0.65rem;
@@ -161,7 +161,7 @@
   align-items: center;
   background: var(--cms-limestone-100);
   border: 1px solid var(--theme-border-color);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
@@ -193,7 +193,7 @@
 
 .curation-table {
   background: var(--theme-elevation-0);
-  border-radius: 8px;
+  border-radius: var(--cms-radius-lg);
   overflow: hidden;
 }
 

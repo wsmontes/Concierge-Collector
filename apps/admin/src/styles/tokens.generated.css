@@ -5,8 +5,11 @@
  * Regenerate: npm run generate:design-tokens
  * Verify:     npm run check:design-tokens
  *
- * The Collector loads this copy with a plain <link> because it has no
- * bundler to resolve the package export the Admin uses.
+ * Same names and same intent as the package, with every rem step resolved to
+ * pixels. Payload's admin declares `html { font-size: 13px }`, and rem
+ * resolves against the root, so a rem step here computed 19% smaller than the
+ * scale intends — and different from the same token in the Collector, whose
+ * root is 16px. The scale is authored against a 16px root, hence rem × 16.
  */
 
 /**
@@ -82,53 +85,53 @@
   --cms-font-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
 
   /* Type scale */
-  --cms-text-xs: 0.75rem;
-  --cms-text-sm: 0.875rem;
-  --cms-text-base: 1rem;
-  --cms-text-lg: 1.125rem;
-  --cms-text-xl: 1.25rem;
-  --cms-text-2xl: 1.5rem;
-  --cms-text-3xl: 1.875rem;
-  --cms-text-4xl: 2.25rem;
-  --cms-text-5xl: 3rem;
+  --cms-text-xs: 12px;
+  --cms-text-sm: 14px;
+  --cms-text-base: 16px;
+  --cms-text-lg: 18px;
+  --cms-text-xl: 20px;
+  --cms-text-2xl: 24px;
+  --cms-text-3xl: 30px;
+  --cms-text-4xl: 36px;
+  --cms-text-5xl: 48px;
 
   /* Spacing (4px base) */
   --cms-spacing-px: 1px;
-  --cms-spacing-0-5: 0.125rem;
-  --cms-spacing-1: 0.25rem;
-  --cms-spacing-1-5: 0.375rem;
-  --cms-spacing-2: 0.5rem;
-  --cms-spacing-2-5: 0.625rem;
-  --cms-spacing-3: 0.75rem;
-  --cms-spacing-3-5: 0.875rem;
-  --cms-spacing-4: 1rem;
-  --cms-spacing-5: 1.25rem;
-  --cms-spacing-6: 1.5rem;
-  --cms-spacing-7: 1.75rem;
-  --cms-spacing-8: 2rem;
-  --cms-spacing-9: 2.25rem;
-  --cms-spacing-10: 2.5rem;
-  --cms-spacing-11: 2.75rem;
-  --cms-spacing-12: 3rem;
-  --cms-spacing-14: 3.5rem;
-  --cms-spacing-16: 4rem;
-  --cms-spacing-20: 5rem;
-  --cms-spacing-24: 6rem;
-  --cms-spacing-32: 8rem;
+  --cms-spacing-0-5: 2px;
+  --cms-spacing-1: 4px;
+  --cms-spacing-1-5: 6px;
+  --cms-spacing-2: 8px;
+  --cms-spacing-2-5: 10px;
+  --cms-spacing-3: 12px;
+  --cms-spacing-3-5: 14px;
+  --cms-spacing-4: 16px;
+  --cms-spacing-5: 20px;
+  --cms-spacing-6: 24px;
+  --cms-spacing-7: 28px;
+  --cms-spacing-8: 32px;
+  --cms-spacing-9: 36px;
+  --cms-spacing-10: 40px;
+  --cms-spacing-11: 44px;
+  --cms-spacing-12: 48px;
+  --cms-spacing-14: 56px;
+  --cms-spacing-16: 64px;
+  --cms-spacing-20: 80px;
+  --cms-spacing-24: 96px;
+  --cms-spacing-32: 128px;
 
   /* Radius — the steps plus the collection surfaces' semantic names. */
   --cms-radius-none: 0;
-  --cms-radius-sm: 0.125rem;
-  --cms-radius: 0.25rem;
-  --cms-radius-md: 0.375rem;
-  --cms-radius-lg: 0.5rem;
-  --cms-radius-xl: 0.75rem;
-  --cms-radius-2xl: 1rem;
-  --cms-radius-3xl: 1.5rem;
+  --cms-radius-sm: 2px;
+  --cms-radius: 4px;
+  --cms-radius-md: 6px;
+  --cms-radius-lg: 8px;
+  --cms-radius-xl: 12px;
+  --cms-radius-2xl: 16px;
+  --cms-radius-3xl: 24px;
   --cms-radius-full: 9999px;
-  --cms-radius-card: 0.875rem;
-  --cms-radius-card-inner: 0.75rem;
-  --cms-radius-input: 0.75rem;
+  --cms-radius-card: 14px;
+  --cms-radius-card-inner: 12px;
+  --cms-radius-input: 12px;
 
   /* Shadows */
   --cms-shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
