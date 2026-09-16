@@ -369,6 +369,21 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             return null;
         }
 
+        // O endpoint por entity não respondeu (rede/timeout/5xx — sem status
+        // definitivo): repetir a MESMA busca pela rota legada não traz fonte
+        // nova. `url`/`place_id` saíram do mesmo documento da entity e o
+        // servidor é o mesmo, então a segunda chamada só duplica um pipeline
+        // caro (download da página + parse + Places). Medido numa carga fria em
+        // produção: 120 chamadas por entity + 116 do legado para a MESMA página,
+        // com 0 cards resolvidos em 25s. Memoriza curto e deixa a próxima
+        // resolução tentar de novo — a rota legada continua valendo para o caso
+        // que ela existe para cobrir: entity que o servidor não conhece ainda
+        // (404 "not found", tratado acima como definitivo).
+        if (!entityDefinitive) {
+            if (this._isOnline()) await this._writeNoImage(key, this._transientNegativeTtlMs);
+            return null;
+        }
+
         // Pula o fallback quando o servidor já avaliou as MESMAS fontes: o
         // website/place_id vieram do próprio servidor, então repetir a busca
         // aqui só duplica trabalho. Exceção: edição local ainda não enviada

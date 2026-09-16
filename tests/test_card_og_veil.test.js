@@ -1213,18 +1213,38 @@ describe('OgImageModule — não repete a busca que o servidor já fez (2026-09-
     expect(calls).toHaveLength(2);
   });
 
-  test('erro de REDE (sem status) continua tentando o fallback', async () => {
+  test('erro de REDE (sem status) NÃO repete a mesma busca pela rota legada', async () => {
+    // Decisão de 2026-09-12 revista em 2026-09-16, com medição: a rota legada usa
+    // as MESMAS fontes (url/place_id saem do mesmo documento da entity) contra o
+    // MESMO servidor, então numa falha transitória ela duplica um pipeline caro
+    // em vez de resgatar o card. Carga fria em produção: 120 chamadas por entity
+    // + 116 duplicadas do legado, e 0 cards resolvidos em 25s. O card fica com o
+    // placeholder e a próxima resolução tenta de novo (memo curto).
     const OgImageModuleClass = loadOgImageModule();
-    const { calls } = stubFetch({
-      entity: () => { throw new TypeError('Failed to fetch'); },
-      legacy: () => ({ ok: false, status: 404 })
-    });
+    const { calls } = stubFetch({ entity: () => { throw new TypeError('Failed to fetch'); } });
     window.DataStore = { getEntity: vi.fn().mockResolvedValue({ entity_id: 'e4', sync: { status: 'synced' } }) };
 
     const module = new OgImageModuleClass();
-    await module._resolveEntityImage('e4', 0, 'http://site.com.br', '', 'entity:e4:rank:0');
+    const url = await module._resolveEntityImage('e4', 0, 'http://site.com.br', '', 'entity:e4:rank:0');
 
-    expect(calls).toHaveLength(2);
+    expect(url).toBeNull();
+    expect(calls).toHaveLength(1); // só o endpoint por entity
+  });
+
+  test('404 "not found" (entity que o servidor não conhece) AINDA tenta a rota legada', async () => {
+    // É exatamente para isto que a exceção existe: o servidor nunca avaliou as
+    // fontes desta entity (registro local/pending ainda não sincronizado).
+    const OgImageModuleClass = loadOgImageModule();
+    const { calls } = stubFetch({
+      entity: () => { throw httpError(404, 'Entity e9 not found'); },
+      legacy: () => ({ ok: false, status: 404 })
+    });
+    window.DataStore = { getEntity: vi.fn().mockResolvedValue({ entity_id: 'e9', sync: { status: 'synced' } }) };
+
+    const module = new OgImageModuleClass();
+    await module._resolveEntityImage('e9', 0, 'http://site.com.br', '', 'entity:e9:rank:0');
+
+    expect(calls).toHaveLength(2); // entity + legado
   });
 
   test('imagem encontrada no endpoint por entity: uma única chamada', async () => {
