@@ -12,7 +12,7 @@
 }
 
 .content-inspector__heading {
-  font-size: 1.05rem;
+  font-size: var(--cms-text-base);
   margin: 0;
 }
 
@@ -72,7 +72,7 @@
 
 .content-inspector__declared h3 {
   color: var(--cms-olive-700);
-  font-size: 0.72rem;
+  font-size: var(--cms-text-xs);
   font-weight: 700;
   letter-spacing: 0.09em;
   margin: 0;
@@ -101,11 +101,11 @@
 .content-field__path {
   color: var(--cms-olive-600);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
 }
 
 .content-field__value {
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -115,7 +115,7 @@
   border: 1px solid var(--theme-border-color);
   border-radius: 999px;
   color: var(--cms-olive-700);
-  font-size: 0.6875rem;
+  font-size: var(--cms-text-xs);
   font-weight: 700;
   letter-spacing: 0.06em;
   padding: 0.05rem 0.45rem;
@@ -130,14 +130,14 @@
 .content-field__derived,
 .content-field__system {
   color: var(--cms-olive-600);
-  font-size: 0.75rem;
+  font-size: var(--cms-text-xs);
   font-style: italic;
 }
 
 /* A field the registry has never heard of: shown, explained, never flagged. */
 .content-field__hint {
   color: var(--cms-olive-600);
-  font-size: 0.75rem;
+  font-size: var(--cms-text-xs);
 }
 
 .content-field__actions {
@@ -198,13 +198,13 @@ p.content-editor__input {
 
 .content-editor__hint {
   color: var(--cms-olive-600);
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
   margin: 0;
 }
 
 .content-editor__error {
   color: var(--theme-error-500, var(--cms-olive-900));
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
   margin: 0;
 }
 

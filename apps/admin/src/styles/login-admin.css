@@ -30,14 +30,14 @@ body:has(.cms-login) {
 
 .cms-login h1 {
   color: var(--cms-olive-900);
-  font-size: 1.5rem;
+  font-size: var(--cms-text-2xl);
   letter-spacing: -0.02em;
   margin: 0;
 }
 
 .cms-login p {
   color: var(--cms-olive-600);
-  font-size: 0.95rem;
+  font-size: var(--cms-text-sm);
   line-height: 1.5;
   margin: 0;
 }
@@ -47,7 +47,7 @@ body:has(.cms-login) {
   background: var(--cms-olive-800);
   border-radius: 6px;
   color: var(--cms-limestone-50);
-  font-size: 0.95rem;
+  font-size: var(--cms-text-sm);
   font-weight: 600;
   margin-top: 0.5rem;
   padding: 0.6rem 1.1rem;

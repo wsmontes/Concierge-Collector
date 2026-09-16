@@ -22,12 +22,12 @@
 }
 
 .entities-filter-form__header h2 {
-  font-size: 1rem;
+  font-size: var(--cms-text-base);
 }
 
 .entities-filter-form__header p {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   margin-top: 0.2rem;
 }
 
@@ -39,7 +39,7 @@
 
 .entities-filter-form label {
   display: grid;
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   font-weight: 600;
   gap: 0.35rem;
 }
@@ -88,7 +88,7 @@
   background: var(--cms-limestone-100);
   border-bottom: 1px solid var(--theme-border-color);
   color: var(--cms-olive-800);
-  font-size: 0.72rem;
+  font-size: var(--cms-text-xs);
   letter-spacing: 0.06em;
   min-height: 2.5rem;
   position: sticky;
@@ -133,7 +133,7 @@
 .entity-table__technical {
   color: var(--cms-olive-600);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.72rem;
+  font-size: var(--cms-text-xs);
 }
 
 .entity-table__link {
@@ -175,7 +175,7 @@
 }
 
 .entity-drawer__heading h2 {
-  font-size: 1.05rem;
+  font-size: var(--cms-text-base);
   margin: 0;
 }
 
@@ -225,7 +225,7 @@
 
 .entity-drawer__facts dt {
   color: var(--cms-olive-600);
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
 }
 
 .entity-drawer__facts dd {

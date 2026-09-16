@@ -45,12 +45,16 @@
   --cms-surface: #ffffff;
   --cms-success: #4a7c59;
   --cms-success-light: #e3ede5;
+  --cms-success-dark: #2f5239;
   --cms-error: #b0433b;
   --cms-error-light: #f6e2df;
+  --cms-error-dark: #7e2f29;
   --cms-warning: #9a5b1f;
   --cms-warning-light: #f5e8d5;
+  --cms-warning-dark: #6e3f14;
   --cms-info: #3d5a80;
   --cms-info-light: #e3eaf2;
+  --cms-info-dark: #27405f;
 
   /* Typography: families are self-hosted by each app (next/font in the Admin,
      the Collector's own <link>), so these are the stacks, not the loading. */

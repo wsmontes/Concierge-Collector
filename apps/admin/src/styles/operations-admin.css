@@ -46,14 +46,14 @@
 .operations-workspace__card-header time {
   color: var(--cms-olive-600);
   flex: 0 0 auto;
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
 }
 
 .operations-workspace__metrics {
   color: var(--cms-olive-600);
   display: flex;
   flex-wrap: wrap;
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   gap: 0.4rem 1rem;
 }
 
@@ -67,7 +67,7 @@
   background: var(--cms-limestone-100);
   border: 1px solid var(--theme-border-color);
   border-radius: 999px;
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
   padding: 0.3rem 0.55rem;
   text-decoration: none;
 }
@@ -87,7 +87,7 @@
 
 .operations-workspace__checkpoint {
   color: var(--cms-olive-700);
-  font-size: 0.8rem;
+  font-size: var(--cms-text-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   margin: 0;
@@ -96,7 +96,7 @@
 
 .operations-workspace__summary {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   margin: 0;
 }
 

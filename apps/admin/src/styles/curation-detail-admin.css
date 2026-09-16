@@ -26,7 +26,7 @@
 
 .curation-header__item dt {
   color: var(--cms-olive-800);
-  font-size: 0.72rem;
+  font-size: var(--cms-text-xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -37,7 +37,7 @@
 
 .curation-header__id {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85rem;
+  font-size: var(--cms-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -63,7 +63,7 @@
 }
 
 .curation-field__label {
-  font-size: 0.95rem;
+  font-size: var(--cms-text-sm);
   margin: 0;
 }
 
@@ -117,7 +117,7 @@
 .curation-about__secondary {
   color: var(--cms-olive-600);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85rem;
+  font-size: var(--cms-text-sm);
 }
 
 .curation-about__facts {
@@ -133,7 +133,7 @@
 }
 
 .curation-derived__label {
-  font-size: 0.72rem;
+  font-size: var(--cms-text-xs);
   letter-spacing: 0.06em;
   margin: 0;
   text-transform: uppercase;
@@ -146,7 +146,7 @@
 
 .curation-derived__source {
   color: var(--cms-olive-600);
-  font-size: 0.85rem;
+  font-size: var(--cms-text-sm);
 }
 
 /* Concepts ---------------------------------------------------------------- */
@@ -162,7 +162,7 @@
 }
 
 .curation-concept__category {
-  font-size: 0.78rem;
+  font-size: var(--cms-text-xs);
   letter-spacing: 0.06em;
   margin: 0;
   text-transform: uppercase;
@@ -191,7 +191,7 @@
 }
 
 .curation-concept__link {
-  font-size: 0.85rem;
+  font-size: var(--cms-text-sm);
 }
 
 .curation-concepts__empty,
@@ -276,14 +276,14 @@
 
 .curation-source__bucket-title {
   color: var(--cms-olive-800);
-  font-size: 0.78rem;
+  font-size: var(--cms-text-xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .curation-source__count {
   color: var(--cms-olive-600);
-  font-size: 0.85rem;
+  font-size: var(--cms-text-sm);
   margin: 0;
 }
 
@@ -311,7 +311,7 @@
 
 .curation-source__note {
   color: var(--cms-olive-600);
-  font-size: 0.85rem;
+  font-size: var(--cms-text-sm);
 }
 
 .curation-source__links {
@@ -343,7 +343,7 @@
 
 .curation-source__meta-row dt {
   color: var(--cms-olive-600);
-  font-size: 0.8rem;
+  font-size: var(--cms-text-xs);
 }
 
 .curation-source__meta-row dd {
@@ -374,7 +374,7 @@
 
 .curation-transcript__availability {
   color: var(--cms-olive-600);
-  font-size: 0.85rem;
+  font-size: var(--cms-text-sm);
   margin: 0;
 }
 
@@ -416,7 +416,7 @@
 
 .curation-collections__version {
   color: var(--cms-olive-600);
-  font-size: 0.85rem;
+  font-size: var(--cms-text-sm);
 }
 
 /* History (plan §46) ------------------------------------------------------ */
@@ -430,7 +430,7 @@
 
 .curation-history__row dt {
   color: var(--cms-olive-800);
-  font-size: 0.72rem;
+  font-size: var(--cms-text-xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -490,7 +490,7 @@
 }
 
 .curation-conflict__side h3 {
-  font-size: 0.78rem;
+  font-size: var(--cms-text-xs);
   letter-spacing: 0.06em;
   margin: 0 0 0.25rem;
   text-transform: uppercase;

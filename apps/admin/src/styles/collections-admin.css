@@ -14,7 +14,7 @@
 .collections-workspace__filters label,
 .collection-dialog form label {
   display: grid;
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   font-weight: 600;
   gap: 0.35rem;
 }
@@ -54,7 +54,7 @@
 .collections-workspace__table th {
   background: var(--cms-limestone-100);
   color: var(--cms-olive-800);
-  font-size: 0.72rem;
+  font-size: var(--cms-text-xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -83,7 +83,7 @@
 .collections-workspace__slug {
   color: var(--cms-olive-600);
   display: block;
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
   margin-top: 0.2rem;
 }
 
@@ -102,7 +102,7 @@
   color: var(--cms-olive-600);
   display: flex;
   flex-wrap: wrap;
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   gap: 0.5rem;
 }
 
@@ -197,7 +197,7 @@
 .overview-view__meta,
 .overview-view__empty {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
 }
 
 .overview-view__list {
@@ -264,7 +264,7 @@
 }
 
 .collection-dialog__version {
-  font-size: 1.1rem;
+  font-size: var(--cms-text-lg);
   font-weight: 700;
   margin: 0;
 }
@@ -287,7 +287,7 @@
 
 .collection-dialog__summary dt {
   color: var(--cms-olive-600);
-  font-size: 0.75rem;
+  font-size: var(--cms-text-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -314,7 +314,7 @@
 
 .collection-dialog__hint {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   margin: 0;
 }
 
@@ -425,7 +425,7 @@
 }
 
 .collection-relationships h2 {
-  font-size: 1rem;
+  font-size: var(--cms-text-base);
 }
 
 .collection-relationships__facts {
@@ -446,21 +446,21 @@
 
 .collection-relationships__facts dt {
   color: var(--cms-olive-600);
-  font-size: 0.75rem;
+  font-size: var(--cms-text-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .collection-relationships__facts dd {
-  font-size: 1.25rem;
+  font-size: var(--cms-text-xl);
   margin: 0;
 }
 
 .collection-relationships__note,
 .collection-relationships__empty {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
 }
 
 .collection-curation {
@@ -486,7 +486,7 @@
 .collection-curation__place,
 .collection-curation__missing {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
 }
 
 .collection-curation__missing {
@@ -495,7 +495,7 @@
 
 .collection-curation__id,
 .collection-technical code {
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
 }
 
 .collection-curation__concepts {
@@ -511,13 +511,13 @@
   background: var(--cms-limestone-100);
   border: 1px solid var(--theme-border-color);
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: var(--cms-text-xs);
   padding: 0.1rem 0.6rem;
 }
 
 .collection-technical {
   color: var(--cms-olive-600);
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
 }
 
 .collection-technical summary {
@@ -573,7 +573,7 @@
 .collection-members__updated,
 .collection-members__unknown {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   margin: 0;
 }
 
@@ -595,7 +595,7 @@
 .collection-members__empty,
 .collection-draft-diff__empty {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
 }
 
 .collection-draft-diff {
@@ -615,7 +615,7 @@
 .collection-draft-diff__heading {
   align-items: baseline;
   display: flex;
-  font-size: 0.8rem;
+  font-size: var(--cms-text-xs);
   gap: 0.5rem;
   letter-spacing: 0.06em;
   margin: 0;
@@ -650,7 +650,7 @@
 
 .collection-draft-diff__sign {
   color: var(--cms-olive-800);
-  font-size: 1.1rem;
+  font-size: var(--cms-text-lg);
   font-weight: 700;
   line-height: 1;
   padding-top: 0.15rem;

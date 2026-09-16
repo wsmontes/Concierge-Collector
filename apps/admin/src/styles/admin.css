@@ -12,6 +12,98 @@
   --theme-success-500: var(--cms-success);
   --theme-border-color: var(--cms-limestone-400);
 
+  /* Rampas semânticas do Payload. Ele declara os degraus 25..1000 de CADA tom
+     (success/error/warning/info) com a paleta default — azul para success, que é
+     o que fazia o chip "Active" das listas aparecer azul mesmo depois de mapear
+     o passo 500. Aqui cada degrau resolve para uma das três âncoras da marca
+     (light/base/dark, as mesmas do Collector); as gradações finas não aparecem
+     em pill/badge/toast, então três tons dão coerência sem inventar 20 valores
+     por tom. */
+  --theme-success-25: var(--cms-success-light);
+  --theme-success-50: var(--cms-success-light);
+  --theme-success-100: var(--cms-success-light);
+  --theme-success-150: var(--cms-success-light);
+  --theme-success-200: var(--cms-success-light);
+  --theme-success-250: var(--cms-success-light);
+  --theme-success-300: var(--cms-success-light);
+  --theme-success-350: var(--cms-success-light);
+  --theme-success-400: var(--cms-success-light);
+  --theme-success-450: var(--cms-success-light);
+  --theme-success-500: var(--cms-success);
+  --theme-success-550: var(--cms-success);
+  --theme-success-600: var(--cms-success-dark);
+  --theme-success-650: var(--cms-success-dark);
+  --theme-success-700: var(--cms-success-dark);
+  --theme-success-750: var(--cms-success-dark);
+  --theme-success-800: var(--cms-success-dark);
+  --theme-success-850: var(--cms-success-dark);
+  --theme-success-900: var(--cms-success-dark);
+  --theme-success-950: var(--cms-success-dark);
+  --theme-success-1000: var(--cms-success-dark);
+  --theme-error-25: var(--cms-error-light);
+  --theme-error-50: var(--cms-error-light);
+  --theme-error-100: var(--cms-error-light);
+  --theme-error-150: var(--cms-error-light);
+  --theme-error-200: var(--cms-error-light);
+  --theme-error-250: var(--cms-error-light);
+  --theme-error-300: var(--cms-error-light);
+  --theme-error-350: var(--cms-error-light);
+  --theme-error-400: var(--cms-error-light);
+  --theme-error-450: var(--cms-error-light);
+  --theme-error-500: var(--cms-error);
+  --theme-error-550: var(--cms-error);
+  --theme-error-600: var(--cms-error-dark);
+  --theme-error-650: var(--cms-error-dark);
+  --theme-error-700: var(--cms-error-dark);
+  --theme-error-750: var(--cms-error-dark);
+  --theme-error-800: var(--cms-error-dark);
+  --theme-error-850: var(--cms-error-dark);
+  --theme-error-900: var(--cms-error-dark);
+  --theme-error-950: var(--cms-error-dark);
+  --theme-error-1000: var(--cms-error-dark);
+  --theme-warning-25: var(--cms-warning-light);
+  --theme-warning-50: var(--cms-warning-light);
+  --theme-warning-100: var(--cms-warning-light);
+  --theme-warning-150: var(--cms-warning-light);
+  --theme-warning-200: var(--cms-warning-light);
+  --theme-warning-250: var(--cms-warning-light);
+  --theme-warning-300: var(--cms-warning-light);
+  --theme-warning-350: var(--cms-warning-light);
+  --theme-warning-400: var(--cms-warning-light);
+  --theme-warning-450: var(--cms-warning-light);
+  --theme-warning-500: var(--cms-warning);
+  --theme-warning-550: var(--cms-warning);
+  --theme-warning-600: var(--cms-warning-dark);
+  --theme-warning-650: var(--cms-warning-dark);
+  --theme-warning-700: var(--cms-warning-dark);
+  --theme-warning-750: var(--cms-warning-dark);
+  --theme-warning-800: var(--cms-warning-dark);
+  --theme-warning-850: var(--cms-warning-dark);
+  --theme-warning-900: var(--cms-warning-dark);
+  --theme-warning-950: var(--cms-warning-dark);
+  --theme-warning-1000: var(--cms-warning-dark);
+  --theme-info-25: var(--cms-info-light);
+  --theme-info-50: var(--cms-info-light);
+  --theme-info-100: var(--cms-info-light);
+  --theme-info-150: var(--cms-info-light);
+  --theme-info-200: var(--cms-info-light);
+  --theme-info-250: var(--cms-info-light);
+  --theme-info-300: var(--cms-info-light);
+  --theme-info-350: var(--cms-info-light);
+  --theme-info-400: var(--cms-info-light);
+  --theme-info-450: var(--cms-info-light);
+  --theme-info-500: var(--cms-info);
+  --theme-info-550: var(--cms-info);
+  --theme-info-600: var(--cms-info-dark);
+  --theme-info-650: var(--cms-info-dark);
+  --theme-info-700: var(--cms-info-dark);
+  --theme-info-750: var(--cms-info-dark);
+  --theme-info-800: var(--cms-info-dark);
+  --theme-info-850: var(--cms-info-dark);
+  --theme-info-900: var(--cms-info-dark);
+  --theme-info-950: var(--cms-info-dark);
+  --theme-info-1000: var(--cms-info-dark);
+
   /* Cores semânticas: até aqui só `success` era mapeado (e apontava para oliva,
      não para o verde-garrafa da marca), enquanto erro/alerta/info ficavam com os
      tons default do Payload — azul, vermelho e laranja fora da paleta. Agora as
@@ -74,7 +166,7 @@ h1 {
 
 .cms-nav-group h2 {
   color: var(--cms-olive-800);
-  font-size: 0.75rem;
+  font-size: var(--cms-text-xs);
   letter-spacing: 0.08em;
   margin: 0 0 0.5rem;
   text-transform: uppercase;
@@ -133,7 +225,7 @@ h1 {
 .admin-page__eyebrow,
 .collection-views__eyebrow {
   color: var(--cms-olive-700);
-  font-size: 0.72rem;
+  font-size: var(--cms-text-xs);
   font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -176,12 +268,12 @@ h1 {
 }
 
 .admin-section__header h2 {
-  font-size: 1.05rem;
+  font-size: var(--cms-text-base);
 }
 
 .admin-section__header p {
   color: var(--cms-olive-600);
-  font-size: 0.9rem;
+  font-size: var(--cms-text-sm);
   margin-top: 0.2rem;
 }
 
@@ -216,7 +308,7 @@ h1 {
 }
 
 .admin-empty-state h2 {
-  font-size: 1rem;
+  font-size: var(--cms-text-base);
 }
 
 .admin-empty-state p {
@@ -468,7 +560,7 @@ h1 {
 
 .selection-toolbar__hint {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
 }
 
 .curation-table {
@@ -486,7 +578,7 @@ h1 {
 
 .curation-table__header {
   background: var(--cms-limestone-100);
-  font-size: 0.75rem;
+  font-size: var(--cms-text-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   min-height: 40px;
@@ -592,7 +684,7 @@ h1 {
 .job-row__progress,
 .job-row__summary {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
 }
 
 .job-row__actions {
@@ -635,7 +727,7 @@ h1 {
 
 .bulk-dialog__hint {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   margin: 0;
 }
 
@@ -667,7 +759,7 @@ h1 {
 
 .bulk-dialog__collection-meta {
   color: var(--cms-olive-600);
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
   grid-column: 2;
 }
 

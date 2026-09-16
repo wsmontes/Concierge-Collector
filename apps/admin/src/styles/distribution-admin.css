@@ -16,7 +16,7 @@
 .application-views__identity-fields label {
   display: grid;
   gap: 0.35rem;
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   font-weight: 600;
 }
 
@@ -86,7 +86,7 @@
 .application-card__credentials-heading span,
 .application-credential__identity p {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
 }
 
 .application-card__actions,

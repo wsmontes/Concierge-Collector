@@ -48,14 +48,14 @@
 
 .content-health__label {
   color: var(--cms-olive-800);
-  font-size: 0.9rem;
+  font-size: var(--cms-text-sm);
   font-weight: 600;
 }
 
 .content-health__note,
 .content-health__loading {
   color: var(--cms-olive-600);
-  font-size: 0.78rem;
+  font-size: var(--cms-text-xs);
   line-height: 1.45;
   margin: 0;
 }

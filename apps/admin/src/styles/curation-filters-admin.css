@@ -10,13 +10,13 @@
 }
 
 .curation-filter-builder__title {
-  font-size: 0.9375rem;
+  font-size: var(--cms-text-sm);
   margin: 0;
 }
 
 .curation-filter-builder__help {
   color: var(--cms-olive-600);
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
   margin: 0;
 }
 
@@ -29,7 +29,7 @@
 
 .curation-filter-builder__control {
   display: grid;
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
   font-weight: 600;
   gap: 0.35rem;
   min-width: 0;
@@ -50,7 +50,7 @@
 .curation-filter-builder__novalue {
   align-self: center;
   color: var(--cms-olive-600);
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
   min-height: 40px;
   padding: 0.6rem 0;
 }
@@ -65,7 +65,7 @@
   border: 1px solid var(--theme-border-color);
   border-radius: 999px;
   display: inline-flex;
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
   gap: 0.35rem;
   padding: 0.15rem 0.3rem 0.15rem 0.6rem;
 }
@@ -78,7 +78,7 @@
   color: var(--cms-olive-700);
   cursor: pointer;
   display: inline-flex;
-  font-size: 1rem;
+  font-size: var(--cms-text-base);
   height: 1.25rem;
   justify-content: center;
   line-height: 1;

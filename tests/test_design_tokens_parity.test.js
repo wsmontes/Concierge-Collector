@@ -32,7 +32,7 @@ function declaracoes(arquivo) {
 /** Nome no Collector para um token `--cms-*` (as semânticas usam --color-*). */
 function nomeNoColetor(tokenCms) {
   const base = tokenCms.replace(/^--cms-/, '--');
-  const semanticas = ['--success', '--success-light', '--error', '--error-light', '--warning', '--warning-light', '--info', '--info-light'];
+  const semanticas = ['--success', '--success-light', '--success-dark', '--error', '--error-light', '--error-dark', '--warning', '--warning-light', '--warning-dark', '--info', '--info-light', '--info-dark'];
   return semanticas.includes(base) ? base.replace('--', '--color-') : base;
 }
 

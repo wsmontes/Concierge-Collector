@@ -57,12 +57,12 @@
 }
 
 .curations-filter-form__header h2 {
-  font-size: 1rem;
+  font-size: var(--cms-text-base);
 }
 
 .curations-filter-form__header p {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   margin-top: 0.2rem;
 }
 
@@ -76,7 +76,7 @@
 .curations-saved-views label,
 .curation-sort-picker {
   display: grid;
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   font-weight: 600;
   gap: 0.35rem;
 }
@@ -112,7 +112,7 @@
 
 .curations-filter-form__statuses legend,
 .curations-filter-form__collections legend {
-  font-size: 0.8rem;
+  font-size: var(--cms-text-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   margin-bottom: 0.4rem;
@@ -146,7 +146,7 @@
   border: 1px solid var(--theme-border-color);
   border-radius: 999px;
   display: inline-flex;
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
   gap: 0.35rem;
   padding: 0.15rem 0.3rem 0.15rem 0.6rem;
 }
@@ -159,7 +159,7 @@
   color: var(--cms-olive-700);
   cursor: pointer;
   display: inline-flex;
-  font-size: 1rem;
+  font-size: var(--cms-text-base);
   height: 1.25rem;
   justify-content: center;
   line-height: 1;
@@ -185,7 +185,7 @@
 }
 
 .curations-saved-views h2 {
-  font-size: 1rem;
+  font-size: var(--cms-text-base);
   margin: 0;
 }
 
@@ -210,7 +210,7 @@
 
 .curation-column-picker summary {
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   font-weight: 700;
 }
 
@@ -226,7 +226,7 @@
 }
 
 .curation-column-picker__legend {
-  font-size: 0.8rem;
+  font-size: var(--cms-text-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -235,7 +235,7 @@
 .curation-column-picker label {
   align-items: center;
   display: flex;
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   gap: 0.4rem;
 }
 
@@ -274,7 +274,7 @@
 .curations-selection-toolbar__hint {
   color: var(--cms-olive-600);
   flex-basis: 100%;
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
   margin: 0;
 }
 
@@ -338,7 +338,7 @@
   background: var(--cms-limestone-100);
   border: 1px solid var(--theme-border-color);
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: var(--cms-text-xs);
   padding: 0.05rem 0.5rem;
   white-space: nowrap;
 }
@@ -374,7 +374,9 @@
 }
 
 .curation-drawer__heading h2 {
-  font-size: 1.2rem;
+  font-family: var(--cms-font-display);
+  font-weight: 600;
+  font-size: var(--cms-text-lg);
   margin: 0;
 }
 
@@ -383,7 +385,7 @@
   color: var(--cms-olive-700);
   display: flex;
   flex-wrap: wrap;
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   gap: 0.25rem;
   margin: 0.25rem 0 0;
 }
@@ -426,7 +428,7 @@
 
 .curation-drawer__label {
   color: var(--cms-olive-700);
-  font-size: 0.75rem;
+  font-size: var(--cms-text-xs);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -434,7 +436,7 @@
 
 .curation-drawer__muted {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
 }
 
 .curation-drawer__link {
@@ -464,7 +466,7 @@
 
 .curation-drawer__concept dt {
   color: var(--cms-olive-700);
-  font-size: 0.75rem;
+  font-size: var(--cms-text-xs);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -476,7 +478,7 @@
 
 .curation-drawer__facts dt {
   color: var(--cms-olive-600);
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
 }
 
 .curation-drawer__facts dd {

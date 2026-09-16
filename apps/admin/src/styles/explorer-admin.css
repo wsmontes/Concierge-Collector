@@ -54,12 +54,12 @@
 }
 
 .explorer-filter-form__header h2 {
-  font-size: 1rem;
+  font-size: var(--cms-text-base);
 }
 
 .explorer-filter-form__header p {
   color: var(--cms-olive-600);
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   margin-top: 0.2rem;
 }
 
@@ -72,7 +72,7 @@
 .explorer-filter-form label,
 .explorer-saved-views label {
   display: grid;
-  font-size: 0.875rem;
+  font-size: var(--cms-text-sm);
   font-weight: 600;
   gap: 0.35rem;
 }
@@ -100,7 +100,7 @@
 }
 
 .explorer-filter-form__statuses legend {
-  font-size: 0.8rem;
+  font-size: var(--cms-text-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   margin-bottom: 0.4rem;
@@ -142,7 +142,7 @@
 }
 
 .explorer-saved-views h2 {
-  font-size: 1rem;
+  font-size: var(--cms-text-base);
   margin: 0;
 }
 
@@ -187,7 +187,7 @@
 .selection-toolbar__hint {
   color: var(--cms-olive-600);
   flex-basis: 100%;
-  font-size: 0.8125rem;
+  font-size: var(--cms-text-xs);
   margin: 0;
 }
 
