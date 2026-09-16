@@ -147,12 +147,14 @@ de imagem simultâneas, chamadas de IA com imagem/áudio em base64), o risco é 
 container → **exatamente o sintoma de 502 sem CORS** já observado. Referência de custo: 3 serviços
 `starter` custavam $21/mês; hoje é 1 por $7; se apertar, `standard` (1c-2g, $25) dá 2 GB.
 
-**O risco se materializou em 2026-09-16** (medido, não inferido): 3 eventos `server_failed` com
-`reason.oomKilled` em 4 dias, **todos no mesmo dia** e todos durante navegação real — 13 de 20 probes
-de `/api/v3/health` responderam 502 enquanto o container reiniciava (~30 s de indisponibilidade em
-TODAS as superfícies, porque API, Admin, runner e nginx são o mesmo processo pai). O gatilho não é
-tráfego anômalo: abrir a lista do Collector dispara 30 requisições de imagem, e navegar no Admin
-exercita SSR do Next; juntos estouram o teto.
+**O risco se materializou em 2026-09-16** (medido, não inferido): 4 eventos `server_failed` com
+`reason.oomKilled` em 4 dias — **todos no mesmo dia** (05:59, 06:36, 06:39, 06:46) e todos durante
+navegação real — 13 de 20 probes de `/api/v3/health` responderam 502 enquanto o container reiniciava
+(~30 s de indisponibilidade em TODAS as superfícies, porque API, Admin, runner e nginx são o mesmo
+processo pai). O gatilho não é tráfego anômalo: abrir a lista do Collector dispara ~30 requisições de
+imagem (cada uma faz o servidor buscar a página do site e/ou chamar o Places), e navegar no Admin
+exercita SSR do Next; juntos estouram o teto. O primeiro (05:59) é anterior a qualquer mudança de
+código desta sessão — não é vazamento introduzido, é ausência de folga.
 
 Duas medidas, e o que cada uma resolve:
 
@@ -302,10 +304,12 @@ desempate real + `allowDiskUse` + teste de contrato); **"Browse" do app de captu
 - [ ] **`draftSelectedCount` em operação `mode: 'explicit'`**: o item abaixo (contador só incrementava no
   caminho `selection`) **não se reproduz no banco** — medido em produção em 2026-09-16, um add explícito
   levou o campo de 0 para 2. Falta reconferir o *header* da UI, que é o sintoma que o item descreve.
-- [ ] **Teste vermelho escondido**: `tests/test_ai_orchestrate.py::test_orchestrate_sync_endpoint_compatibility`
-  falha na suíte completa (500) e **passa isolado** — é contaminação de ordem entre testes, não defeito de
-  produto (o endpoint é `async def` e o caminho síncrono não existe em produção). Fica fora do gate porque
-  a classe é marcada `openai`. Vale consertar o vazamento de estado entre testes.
+- [x] ~~Teste vermelho escondido em `test_ai_orchestrate.py`~~ ✓ — corrigido. A causa não era ordem
+  entre arquivos: `async_client` só troca o **banco**, então os testes async desse arquivo resolviam o
+  orquestrador REAL e o resultado dependia do ambiente (chave/quota/rede) — daí passar isolado e devolver
+  500 na suíte. Um fixture autouse no arquivo instala o mesmo stub que o fixture `client` do conftest já
+  usava; o que os testes medem passa a ser o endpoint (async/await, auth, validação). Suíte completa:
+  **675 passed, 0 failed** (era 674 + 1 falha).
 
 ## Cadência
 

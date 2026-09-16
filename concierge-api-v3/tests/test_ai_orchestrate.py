@@ -22,6 +22,31 @@ def _reset_limiter():
         limiter.reset()
 
 
+@pytest.fixture(autouse=True)
+def _unavailable_orchestrator():
+    """O mesmo seam que o fixture `client` do conftest instala.
+
+    `async_client` troca só o banco: sem este override, os testes async deste
+    arquivo resolvem o orquestrador REAL e o resultado passa a depender do
+    ambiente (chave, quota, rede, ordem de execução). Era exatamente isso que
+    fazia `test_orchestrate_endpoint_is_async` passar isolado e devolver 500 na
+    suíte completa. Com o stub, o que estes testes medem é o endpoint —
+    async/await, autenticação, validação —, não o provedor de IA.
+    """
+    from main import app
+    from app.api.ai import get_ai_orchestrator
+    from tests.conftest import UnavailableAIOrchestrator
+
+    sentinel = object()
+    previous = app.dependency_overrides.get(get_ai_orchestrator, sentinel)
+    app.dependency_overrides[get_ai_orchestrator] = UnavailableAIOrchestrator
+    yield
+    if previous is sentinel:
+        app.dependency_overrides.pop(get_ai_orchestrator, None)
+    else:
+        app.dependency_overrides[get_ai_orchestrator] = previous
+
+
 @pytest.mark.openai
 class TestAIOrchestrate:
     """Comprehensive tests for /api/v3/ai/orchestrate endpoint"""
