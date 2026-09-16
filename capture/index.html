@@ -77,11 +77,14 @@
     <button id="auth-save" class="auth-panel__btn">Salvar</button>
   </section>
 
-  <!-- Navigation: subtle link to legacy Collector -->
+  <!-- Navigation: link to the Collector app -->
   <nav class="bottom-nav">
-    <!-- O Collector legado é montado em /app/ no servidor da API; o "/"
-         absoluto caía no root da API, que redireciona de volta pro capture -->
-    <a href="../app/" class="bottom-nav__link">Browse</a>
+    <!-- O Collector vive na RAIZ do site estático (o serviço da API só serve
+         /api/v3, /capture e "/" → redirect para /capture/). O href relativo
+         `../app/` apontava para uma montagem inexistente e dava 404 nas duas
+         origens; o absoluto abaixo vale nos dois hosts e o JS o ajusta para o
+         servidor local em desenvolvimento (collectorAppUrl em app.js). -->
+    <a href="https://concierge-collector.com/" class="bottom-nav__link">Browse</a>
     <span class="bottom-nav__current">Capture</span>
     <!-- "Sair" fica FORA do auth-panel: o painel é ocultado quando
          autenticado, então um botão dentro dele seria UI morta -->
