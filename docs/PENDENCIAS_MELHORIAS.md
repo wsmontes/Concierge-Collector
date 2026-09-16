@@ -1,6 +1,6 @@
 # Pendências & Melhorias do Concierge Collector
 
-Lista viva de áreas, pendências e melhorias — atualizada em 2026-09-12.
+Lista viva de áreas, pendências e melhorias — atualizada em 2026-09-16.
 Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e estudo do feedmine.
 
 ## Áreas
@@ -147,6 +147,25 @@ de imagem simultâneas, chamadas de IA com imagem/áudio em base64), o risco é 
 container → **exatamente o sintoma de 502 sem CORS** já observado. Referência de custo: 3 serviços
 `starter` custavam $21/mês; hoje é 1 por $7; se apertar, `standard` (1c-2g, $25) dá 2 GB.
 
+**O risco se materializou em 2026-09-16** (medido, não inferido): 3 eventos `server_failed` com
+`reason.oomKilled` em 4 dias, **todos no mesmo dia** e todos durante navegação real — 13 de 20 probes
+de `/api/v3/health` responderam 502 enquanto o container reiniciava (~30 s de indisponibilidade em
+TODAS as superfícies, porque API, Admin, runner e nginx são o mesmo processo pai). O gatilho não é
+tráfego anômalo: abrir a lista do Collector dispara 30 requisições de imagem, e navegar no Admin
+exercita SSR do Next; juntos estouram o teto.
+
+Duas medidas, e o que cada uma resolve:
+
+- **Aplicado**: teto de heap V8 nos dois processos Node (`NODE_OPTIONS=--max-old-space-size`, 200 MiB
+  para o Next e 128 MiB para o runner, em `deploy/supervisord.conf`). O V8 dimensiona o heap pela RAM
+  do HOST, não pelo limite do cgroup — sem teto, cada Node cresce sem motivo até o kernel matar o
+  container inteiro. Com teto, no pior caso cai UM processo (o supervisord o reinicia) em vez de todos.
+  Isto **não** foi suficiente sozinho: houve OOM com os tetos no ar, porque parte do consumo está fora
+  do old space (Buffers, nativo, Python).
+- **Pendente (decisão de custo do usuário)**: subir a instância para `standard` (2 GB, $25/mês). Com
+  regime de 370-378 MB em 512 MB e picos acima disso, **não há folga para 4 processos** — a alternativa
+  seria separar o runner de jobs em outro serviço, que custa mais que o upgrade.
+
 ### Imagens dos cards (400 vs 404) — NÃO é bug
 Os erros de imagem no console têm dois significados distintos e ambos são o comportamento correto:
 - **400** = domínio do site **não resolve** (link morto). O guard SSRF (`_is_blocked_host`) bloqueia host que não resolve ("não dá para validar → bloqueia") e a rota converte em 400. Confirmado: `ipponsushi.com.br` não tem registro A. **Isto é sinal de qualidade de dado do acervo** (websites mortos vindos do scraping OSM/Overture), não defeito.
@@ -234,6 +253,59 @@ Entregue: Fase 0 (field registry/inspector/editors), Fase 1 (`/admin/curations` 
 - [ ] Admin: reatribuição de curador precisa de um endpoint de diretório de usuários; hoje `curator_id` é read-only com essa razão explícita.
 - [ ] Admin: coluna "Collections" na lista de Entities e o filtro "sem Collections" na lista de Curations precisam do join de membership do CMS exposto como consulta de lista (o contador do dashboard já existe via `POST /catalog/content-health`).
 - [ ] Admin: diff de versões no History precisa de snapshots — não existem para Curation; a tela diz isso. O lado de Collections tem versões e o draft diff já é humanizado.
+
+## Qualificação em produção — 2026-09-16
+
+Sessão de validação com o **modo de acesso de operação** (sem Google), criado para isto: o Collector e
+o Admin só aceitavam sessão nascida do OAuth, o que tornava impossível qualificar jornada em produção
+sem uma conta Google humana no browser. `POST /api/v3/auth/ops-login` substitui a PROVA de identidade e
+nunca a autorização (o sujeito precisa já existir `authorized` + `role: admin`); variáveis, properties
+de fail-closed e as duas formas de consumo (fragmento para o Collector, cookies para o handoff do
+Admin) estão no `CLAUDE.md`. Nada no cliente mudou para isso funcionar.
+
+**Jornadas exercitadas em produção (com o observável):**
+
+| Superfície | Jornada | Evidência |
+|---|---|---|
+| Admin | handoff completo (sem Google) → dashboard | `cms_session` no browser, `/admin` 200, **zero erro de console e zero resposta ≥400** |
+| Admin | lista de Curations, busca (`q=sushi`), filtro por status, ordenação (6 modos + teto `limit=500`), paginação | contagem e nomes conferem com o banco (`status=linked` → 1 linha, que é o que existe) |
+| Admin | detalhe de Curation e de Entity, paleta ⌘K (busca → clique → navega) | h1 correto, 10 resultados para "Adega", navegação para `/admin/entities/<id>` |
+| Admin | Collections: criar → metadados → operações de draft (add/remove) → preview → delete | `POST 201`, worker commitou (`draftSelectedCount 0→2`, `draftState clean→dirty`), `PATCH 200` (revisão 1→2), `DELETE 204`, CMS de volta a **0 collections** |
+| Admin | guards de publish/archive **sem** mudar estado | 400 sem idempotência, 412 sem `If-Match`, 400 com confirmação inválida, archive de draft → 409 (regra: só de `published`) |
+| Admin | Content Health, Operations, Applications, Consumer Credentials, Cms Users | 200, sem erro; contadores batem com o banco (1.053 = 1.052 drafts + 1 linked, excluindo 4 deletadas) |
+| Collector | sessão, shell, lista (1–30 de 1.053, 36 páginas), busca (persiste entre reloads), filtros+chips, sheet de filtros, entidades (632), detalhe com hero/mapa/contato, modal de Collections | contadores e conteúdo corretos; swipe-to-dismiss funciona (gesto no `.bottom-sheet-handle`) |
+| Collector | criar Curation (Manual Entry) → aparece no Admin → editar no Admin → apagar no Collector | `POST /curations/bulk 200`, visível no Admin, `PATCH` do BFF 200 (versão 1→2), soft-delete propagado (`PATCH` 06:51:50) |
+| Collector | shell offline (service worker), Places (`/places/nearby 200`), app de captura | SW controlando, navegação offline renderiza o shell |
+
+**Defeitos de produção corrigidos nesta sessão** (cada um com causa medida, não suposta):
+`CATALOG_CURSOR_SECRET` ausente → 503 na lista do Admin; 1.057 curadorias sem `catalog_sequence` →
+lista vazia em qualquer filtro (backfill + guard nos dois caminhos + testes); **sort do Admin ordenando
+em memória** → `OperationFailure: Sort exceeded memory limit` → 503 + lista vazia (índices que casam o
+desempate real + `allowDiskUse` + teste de contrato); **"Browse" do app de captura** apontando para
+`/app/` → 404 nas duas origens; **OOM do container** (ver a seção de memória acima).
+
+- [ ] **Ciclo de vida de credencial de consumidor não foi validado em produção** (issue/rotate/revoke).
+  Motivo: não existe DELETE de Application, então validar aqui deixa um aplicativo órfão no workspace do
+  usuário. Coberto no gate local (`credentials/lifecycle.spec.ts`, roda no `verify:full`). As superfícies
+  de leitura foram validadas (0 aplicações, 0 credenciais, empty state correto).
+- [ ] **Publish de Collection não foi exercitado em produção** — é porta de mão única: `DELETE` só
+  existe para nunca-publicada, então o teste deixaria uma coleção arquivada permanente no workspace que
+  hoje tem ZERO coleções. Os *guards* foram validados em produção (400/412/409, sem mudança de estado) e
+  o caminho feliz roda no gate local (`publish.spec.ts`). Quem quiser fechar isso: publicar uma coleção
+  descartável ciente do resíduo, ou aceitar a cobertura local.
+- [ ] **Jornadas que exigem hardware/pago não são exercitáveis headless**: gravação por microfone,
+  transcrição (Whisper) e extração de conceitos (IA), upload do app de captura. O que dá para validar sem
+  elas foi validado (painel de credencial, fila, botões, estado da sessão). O caminho de escrita da IA é
+  o único trecho do fluxo de captura sem prova em produção.
+- [ ] **"Export All Data" do Collector** não produz download observável em browser headless — é caminho
+  client-side (dump do IndexedDB), não uma jornada de servidor; não foi possível confirmar por observável.
+- [ ] **`draftSelectedCount` em operação `mode: 'explicit'`**: o item abaixo (contador só incrementava no
+  caminho `selection`) **não se reproduz no banco** — medido em produção em 2026-09-16, um add explícito
+  levou o campo de 0 para 2. Falta reconferir o *header* da UI, que é o sintoma que o item descreve.
+- [ ] **Teste vermelho escondido**: `tests/test_ai_orchestrate.py::test_orchestrate_sync_endpoint_compatibility`
+  falha na suíte completa (500) e **passa isolado** — é contaminação de ordem entre testes, não defeito de
+  produto (o endpoint é `async def` e o caminho síncrono não existe em produção). Fica fora do gate porque
+  a classe é marcada `openai`. Vale consertar o vazamento de estado entre testes.
 
 ## Cadência
 
