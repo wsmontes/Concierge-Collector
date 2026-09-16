@@ -16,6 +16,14 @@
  * Dependencies: none. This file is plain CSS so both a bundler (`@import
  * '@concierge/design-tokens/css'`) and a byte-for-byte generator can read it.
  *
+ * The Collector receives this whole file through the generated copy
+ * (`styles/tokens.generated.css`), including the scale it already declares
+ * unprefixed in `design-system.css`. That is deliberate and safe: the names here
+ * are namespaced (`--cms-*`) and never collide with the Collector's
+ * `--color-*`/`--radius-*`/`--text-*`; the duplication costs ~2 KB of CSS and
+ * buys one source of truth. The alternative — two hand-kept copies of the same
+ * scale — is what the 16 font sizes in the Admin were made of.
+ *
  * Consumers must not hand-edit the Collector's generated copy
  * (`styles/tokens.generated.css`); run `npm run generate:collector-tokens`.
  * `tests/test_design_tokens_parity.test.js` fails if a scale value here drifts

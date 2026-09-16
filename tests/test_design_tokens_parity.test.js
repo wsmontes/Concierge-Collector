@@ -1,15 +1,15 @@
 /**
- * Paridade da escala compartilhada entre o pacote de tokens e o design system
- * do Collector.
+ * Paridade da linguagem visual compartilhada entre o pacote de tokens e o
+ * design system do Collector.
  *
- * O pacote (`packages/design-tokens`) é a fonte da linguagem visual que o Admin
- * passou a consumir; o Collector declara a MESMA escala em
- * `styles/design-system.css` e é a superfície de referência do produto. Sem este
- * teste, mudar um lado (um raio, um passo de tipo) diverge do outro em silêncio
- * e a padronização que este trabalho fez desmancha na primeira edição.
+ * O pacote (`packages/design-tokens`) é a fonte da escala que o Admin consome; o
+ * Collector declara a MESMA escala em `styles/design-system.css` e é a superfície
+ * de referência do produto. Sem este teste, mudar um lado (um raio, um passo de
+ * tipo, um tom semântico) diverge do outro em silêncio e a padronização
+ * desmancha na primeira edição.
  *
- * O contrato é de VALOR, não de texto: o nome do token no Collector perde o
- * prefixo `cms-` (e as cores semânticas são `--color-*` lá, `--cms-*` aqui).
+ * O contrato é de VALOR, não de texto. O nome difere entre os dois lados: o
+ * Collector não usa o prefixo `cms-`, e as cores semânticas lá são `--color-*`.
  */
 
 const fs = require('fs');
@@ -29,44 +29,75 @@ function declaracoes(arquivo) {
   return mapa;
 }
 
-/** Nome no Collector para um token `--cms-*` (as semânticas usam --color-*). */
+/**
+ * Nome do token no Collector para um `--cms-*`.
+ *
+ * Três famílias: a ESCALA perde só o prefixo (`--cms-text-sm` → `--text-sm`), as
+ * rampas de marca não têm equivalente fora do pacote (o Collector as recebe pela
+ * cópia gerada, coberta pelo byte-check do gerador) e as SEMÂNTICAS viram
+ * `--color-*` no Collector.
+ */
+const SEMANTICAS = new Set([
+  'primary', 'secondary', 'bg', 'surface',
+  'success', 'success-light', 'success-dark',
+  'error', 'error-light', 'error-dark',
+  'warning', 'warning-light', 'warning-dark',
+  'info', 'info-light', 'info-dark',
+]);
+
 function nomeNoColetor(tokenCms) {
-  const base = tokenCms.replace(/^--cms-/, '--');
-  const semanticas = ['--success', '--success-light', '--success-dark', '--error', '--error-light', '--error-dark', '--warning', '--warning-light', '--warning-dark', '--info', '--info-light', '--info-dark'];
-  return semanticas.includes(base) ? base.replace('--', '--color-') : base;
+  const base = tokenCms.replace(/^--cms-/, '');
+  if (/^(limestone|olive)-/.test(base)) return null; // rampa: coberta pelo byte-check
+  if (SEMANTICAS.has(base)) return `--color-${base}`;
+  return `--${base}`;
 }
 
-describe('escala compartilhada — pacote × Collector', () => {
+describe('linguagem compartilhada — pacote × Collector', () => {
   const pacote = declaracoes(PACOTE);
   const coletor = declaracoes(COLETOR);
-  const escala = [...pacote.keys()].filter((t) => /^--cms-(text|spacing|radius|shadow|font)-/.test(t));
 
-  test('o pacote declara a escala inteira (não só cores)', () => {
-    // Guarda contra alguém "enxugar" o pacote de volta para cores: sem escala
+  // Inclui os passos SEM sufixo (`--cms-radius`, `--cms-shadow`), que o filtro
+  // anterior deixava de fora por exigir hífen depois do prefixo.
+  const compartilhados = [...pacote.keys()]
+    .filter((t) => /^--cms-(text|spacing|radius|shadow|font|primary|secondary|bg|surface|success|error|warning|info)/.test(t))
+    .map((t) => [t, nomeNoColetor(t)])
+    .filter(([, equivalente]) => equivalente !== null);
+
+  test('o pacote declara a escala inteira, não só cores', () => {
+    // Guarda contra "enxugar" o pacote de volta para cores: sem escala
     // compartilhada o Admin volta a inventar tamanho de fonte e raio.
+    const escala = [...pacote.keys()];
     expect(escala.filter((t) => t.startsWith('--cms-text-')).length).toBeGreaterThanOrEqual(7);
-    expect(escala.filter((t) => t.startsWith('--cms-radius-')).length).toBeGreaterThanOrEqual(8);
+    expect(escala.filter((t) => /^--cms-radius($|-)/.test(t)).length).toBeGreaterThanOrEqual(9);
     expect(escala.filter((t) => t.startsWith('--cms-spacing-')).length).toBeGreaterThanOrEqual(15);
-    expect(escala.filter((t) => t.startsWith('--cms-shadow-')).length).toBeGreaterThanOrEqual(6);
+    expect(escala.filter((t) => /^--cms-shadow($|-)/.test(t)).length).toBeGreaterThanOrEqual(7);
     expect(escala.filter((t) => t.startsWith('--cms-font-')).length).toBeGreaterThanOrEqual(3);
   });
 
-  test.each([...escala].map((t) => [t, nomeNoColetor(t)]))('%s tem o mesmo valor no Collector (%s)', (token, equivalente) => {
-    const noColetor = coletor.get(equivalente);
-    expect(noColetor, `o Collector não declara ${equivalente}`).toBeTruthy();
-    expect(pacote.get(token)).toBe(noColetor);
+  test('toda semântica tem equivalente no Collector (nenhuma escapou da guarda)', () => {
+    // Sem esta asserção um tom novo entraria no pacote sem par — e é justamente
+    // a classe que ficou fora da marca (error/warning/info) que divergiria
+    // primeiro.
+    const nomes = [...pacote.keys()].map((t) => t.replace(/^--cms-/, ''));
+    const semPar = [...SEMANTICAS].filter((s) => !nomes.includes(s));
+    expect(semPar).toEqual([]);
+    for (const s of SEMANTICAS) expect(coletor.has(`--color-${s}`), `o Collector não declara --color-${s}`).toBe(true);
   });
 
-  test('as cores de marca continuam em paridade', () => {
-    for (const [token, valor] of pacote) {
-      const equivalente = nomeNoColetor(token.includes('limestone') || token.includes('olive') ? token.replace(/^--cms-/, '--cms-') : token);
-      if (token.startsWith('--cms-limestone') || token.startsWith('--cms-olive')) {
-        // No Collector as duas rampas vivem em tokens.generated.css (cópia
-        // byte-idêntica do pacote), não em design-system.css — o byte-check do
-        // gerador cobre esse par, então aqui só garantimos que não sumiram.
-        expect(valor).toMatch(/^#[0-9a-f]{6}$/i);
-        void equivalente;
-      }
+  test.each(compartilhados)('%s tem o mesmo valor no Collector (%s)', (token, equivalente) => {
+    expect(coletor.get(equivalente), `o Collector não declara ${equivalente}`).toBeTruthy();
+    expect(pacote.get(token)).toBe(coletor.get(equivalente));
+  });
+
+  test('a guarda cobre os quatro tons semânticos e os passos-base da escala', () => {
+    const nomes = compartilhados.map(([t]) => t);
+    for (const hue of ['success', 'error', 'warning', 'info']) {
+      expect(nomes).toContain(`--cms-${hue}`);
+      expect(nomes).toContain(`--cms-${hue}-light`);
+      expect(nomes).toContain(`--cms-${hue}-dark`);
     }
+    // Os dois passos sem sufixo, que o filtro antigo silenciava.
+    expect(nomes).toContain('--cms-radius');
+    expect(nomes).toContain('--cms-shadow');
   });
 });

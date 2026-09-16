@@ -1213,22 +1213,44 @@ describe('OgImageModule — não repete a busca que o servidor já fez (2026-09-
     expect(calls).toHaveLength(2);
   });
 
-  test('erro de REDE (sem status) NÃO repete a mesma busca pela rota legada', async () => {
-    // Decisão de 2026-09-12 revista em 2026-09-16, com medição: a rota legada usa
-    // as MESMAS fontes (url/place_id saem do mesmo documento da entity) contra o
-    // MESMO servidor, então numa falha transitória ela duplica um pipeline caro
-    // em vez de resgatar o card. Carga fria em produção: 120 chamadas por entity
-    // + 116 duplicadas do legado, e 0 cards resolvidos em 25s. O card fica com o
-    // placeholder e a próxima resolução tenta de novo (memo curto).
+  test('erro de REDE (sem status) continua tentando o fallback legado', async () => {
+    // Mantido de propósito (decisão de 2026-09-12, revista em 2026-09-16): existe
+    // assimetria real entre as duas rotas — a legada é mais barata (não ranqueia
+    // a galeria e resolve só com `url`), então ela pode responder quando a rota
+    // por entity estoura ou demora. A medição de 2026-09-16 não mostrou timeout
+    // (116 chamadas legadas em 25s, antes do limite de 30s) e sim VOLUME na
+    // página inteira; o corte foi feito no prefetch (`_prefetchNextPage` só roda
+    // com a página assentada), não aqui.
     const OgImageModuleClass = loadOgImageModule();
-    const { calls } = stubFetch({ entity: () => { throw new TypeError('Failed to fetch'); } });
+    const { calls } = stubFetch({
+      entity: () => { throw new TypeError('Failed to fetch'); },
+      legacy: () => ({ ok: false, status: 404 })
+    });
     window.DataStore = { getEntity: vi.fn().mockResolvedValue({ entity_id: 'e4', sync: { status: 'synced' } }) };
 
     const module = new OgImageModuleClass();
-    const url = await module._resolveEntityImage('e4', 0, 'http://site.com.br', '', 'entity:e4:rank:0');
+    await module._resolveEntityImage('e4', 0, 'http://site.com.br', '', 'entity:e4:rank:0');
 
-    expect(url).toBeNull();
-    expect(calls).toHaveLength(1); // só o endpoint por entity
+    expect(calls).toHaveLength(2); // entity + legado
+  });
+
+  test('a página ainda resolvendo NÃO dispara o prefetch da próxima', async () => {
+    // O prefetch é otimização: quando a página atual ainda tem itens na fila ou
+    // em voo, aquecer a próxima só dobra o volume contra um servidor sem folga.
+    const OgImageModuleClass = loadOgImageModule();
+    const peekPage = vi.fn().mockResolvedValue([]);
+    window.CurationBrowser = { peekPage };
+    window.EntityBrowser = { peekPage };
+    window.uiManager = { curationPagination: { currentPage: 1 }, entityPagination: { currentPage: 1 } };
+
+    const module = new OgImageModuleClass();
+    module._waiting.push({ card: null, key: 'entity:x:rank:0', start: () => Promise.resolve(null) });
+    module._prefetchNextPage();
+    expect(peekPage).not.toHaveBeenCalled();
+
+    module._waiting.length = 0;
+    module._prefetchNextPage();
+    expect(peekPage).toHaveBeenCalled();
   });
 
   test('404 "not found" (entity que o servidor não conhece) AINDA tenta a rota legada', async () => {

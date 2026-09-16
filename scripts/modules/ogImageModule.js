@@ -350,7 +350,15 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                 const detail = String((error && error.detail) || '');
                 serverKnowsEntity = !/not\s*found/i.test(detail);
             }
-            // sem status (falha de rede/offline) → não definitivo, como antes
+            // Falha SEM status (rede/timeout/5xx) → não definitiva, e o fallback
+            // legado CONTINUA. Decisão de 2026-09-12, revista em 2026-09-16 e
+            // mantida por assimetria real: a rota legada é mais barata (não faz o
+            // ranking da galeria e pode resolver com `url` só), então tem valor
+            // justamente quando a rota por entity estoura ou demora. O que a
+            // medição de 2026-09-16 mostrou não foi timeout — foram 116 chamadas
+            // legadas dentro de 25s, antes de qualquer limite de 30s — e sim
+            // VOLUME: 236 pipelines numa única carga fria. O corte foi feito onde
+            // o volume nasce (`_prefetchNextPage` só roda com a página assentada).
             this.log.debug(`imagem por entity falhou para ${entityId}:`, error);
         }
 
@@ -366,21 +374,6 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                 // tentativa falha em cima dos mesmos cards.
                 await this._writeNoImage(key, this._transientNegativeTtlMs);
             }
-            return null;
-        }
-
-        // O endpoint por entity não respondeu (rede/timeout/5xx — sem status
-        // definitivo): repetir a MESMA busca pela rota legada não traz fonte
-        // nova. `url`/`place_id` saíram do mesmo documento da entity e o
-        // servidor é o mesmo, então a segunda chamada só duplica um pipeline
-        // caro (download da página + parse + Places). Medido numa carga fria em
-        // produção: 120 chamadas por entity + 116 do legado para a MESMA página,
-        // com 0 cards resolvidos em 25s. Memoriza curto e deixa a próxima
-        // resolução tentar de novo — a rota legada continua valendo para o caso
-        // que ela existe para cobrir: entity que o servidor não conhece ainda
-        // (404 "not found", tratado acima como definitivo).
-        if (!entityDefinitive) {
-            if (this._isOnline()) await this._writeNoImage(key, this._transientNegativeTtlMs);
             return null;
         }
 
@@ -431,6 +424,16 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
      * hero ranqueado da entity; sem entity_id, pelo caminho legado.
      */
     _prefetchNextPage() {
+        // Não aquece a PRÓXIMA página enquanto a atual ainda tem trabalho: numa
+        // carga fria isto dobrava o volume (60 cards + 60 do prefetch) e era
+        // exatamente o que estourava o servidor — medido em 2026-09-16: 120
+        // chamadas por entity + 116 do legado, nenhum card resolvido em 25s e o
+        // container reiniciando. Com o gate, a próxima página continua sendo
+        // aquecida, só não às custas da que o usuário está olhando.
+        if (this._waiting.length > 0 || this._active > 0) {
+            this.log.debug('prefetch adiado: a página atual ainda está resolvendo');
+            return;
+        }
         const targets = [
             {
                 browser: window.CurationBrowser,

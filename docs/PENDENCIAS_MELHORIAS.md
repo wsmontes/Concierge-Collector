@@ -368,6 +368,30 @@ roda — o mesmo pipeline que aparece na conta de memória do container.
   com foto fica para sempre — correto enquanto a foto não subir (é a única cópia), mas significa que
   captura abandonada acumula. Decisão de produto, não bug.
 
+## Design/UX do Admin — 2026-09-16
+
+Trabalho em lotes medidos, com o Collector como superfície de referência. Entregue até aqui: escala
+compartilhada no pacote de tokens (tipo/espaço/raio/sombra/semânticas), `next/font` com as três famílias
+da marca no Admin, cores semânticas alinhadas (a rampa INTEIRA do Payload, não só o degrau 500), tamanhos
+de fonte na escala (116 literais → 0; renderizados por página de 7-10 → 6) e moldura de página única
+(era declarada 7× com 5 valores).
+
+**Divergência de marca exposta e não resolvida (decisão de produto):** o pacote declara
+`--cms-olive-500: #596f42` e o Collector usa `--color-primary: #5c6b4a` — dois verdes de marca com valores
+diferentes. O Admin usa a rampa oliva em superfícies/elevações e `--cms-primary` (o valor do Collector)
+onde a cor de marca aparece de fato. Alinhar as duas rampas é uma decisão explícita de identidade, não um
+detalhe para empurrar pelo pacote.
+
+**Ordem imposta por medição (não inverter):** a lista de Entities não tem thumbnail, e o BFF de imagem já
+existe — mas cada thumbnail é um pipeline server-side pesado (download da página + Places) num container
+que vive a ~88% de memória. Sequência: (1) parar o `no-store` do `withAdmin` sobre a rota de mídia, que
+hoje mata o `max-age=300` e força re-download a cada visita; (2) lazy-load só das linhas visíveis;
+(3) só então as thumbnails.
+
+**Latência só se mede onde ela existe:** `next dev` (Turbopack) compila por rota na primeira visita e não
+tem o SSR de produção, então qualquer número de página medido ali é distorcido e não serve. Para latência,
+medir as rotas do FastAPI (mesmo código nos dois ambientes) ou o serviço fundido (`next start`).
+
 ## Qualificação em produção — 2026-09-16
 
 Sessão de validação com o **modo de acesso de operação** (sem Google), criado para isto: o Collector e
