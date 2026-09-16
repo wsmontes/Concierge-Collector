@@ -692,8 +692,12 @@
 /* Abaixo do min-width da tabela (760px) ela não cabe: medido a 390px, a lista
    rolava 396px de lado e mostrava 1 das 5 colunas. Em vez de rolagem horizontal,
    cada linha vira um cartão — os rótulos vêm de `data-label`, então a informação
-   continua legível sem esconder coluna nenhuma. */
-@media (max-width: 760px) {
+   continua legível sem esconder coluna nenhuma.
+
+   O limite é 900px, não 760: a tabela precisa de 760px de largura própria mais a
+   moldura, então a 768px (medido) ela ainda rolava 25px. Abaixo de 900 o cartão
+   entra e a rolagem some em qualquer largura. */
+@media (max-width: 900px) {
   .collections-workspace__table-wrap {
     border: 0;
     background: transparent;
