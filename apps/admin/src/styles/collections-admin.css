@@ -688,3 +688,66 @@
     justify-content: flex-start;
   }
 }
+
+/* Abaixo do min-width da tabela (760px) ela não cabe: medido a 390px, a lista
+   rolava 396px de lado e mostrava 1 das 5 colunas. Em vez de rolagem horizontal,
+   cada linha vira um cartão — os rótulos vêm de `data-label`, então a informação
+   continua legível sem esconder coluna nenhuma. */
+@media (max-width: 760px) {
+  .collections-workspace__table-wrap {
+    border: 0;
+    background: transparent;
+    overflow-x: visible;
+  }
+
+  .collections-workspace__table,
+  .collections-workspace__table tbody {
+    display: block;
+    min-width: 0;
+  }
+
+  .collections-workspace__table thead {
+    display: none;
+  }
+
+  .collections-workspace__table tr {
+    display: grid;
+    gap: 0.5rem;
+    padding: 0.85rem;
+    margin-bottom: 0.6rem;
+    background: var(--theme-elevation-0);
+    border: 1px solid var(--theme-border-color);
+    border-radius: var(--cms-radius-lg);
+  }
+
+  .collections-workspace__table td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-bottom: 0;
+    padding: 0;
+    text-align: right;
+  }
+
+  .collections-workspace__table td::before {
+    content: attr(data-label);
+    color: var(--cms-olive-600);
+    font-size: var(--cms-text-xs);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-align: left;
+  }
+
+  /* A primeira célula é o título do cartão: ocupa a linha inteira, à esquerda. */
+  .collections-workspace__table td:first-child {
+    display: block;
+    text-align: left;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--cms-limestone-200);
+  }
+
+  .collections-workspace__table td:first-child::before {
+    content: none;
+  }
+}

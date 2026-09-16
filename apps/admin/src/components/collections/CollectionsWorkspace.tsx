@@ -178,14 +178,14 @@ export function CollectionsWorkspace({
             <tbody>
               {visible.map((collection) => (
                 <tr key={collection.id}>
-                  <td>
+                  <td data-label="Collection">
                     <Link href={`/admin/collections/collections/${collection.id}`}>{collection.title}</Link>
                     <span className="collections-workspace__slug">/{collection.slug}</span>
                   </td>
-                  <td><StatusPill status={collection.lifecycle} label={collection.lifecycle} /></td>
-                  <td><StatusPill status={collection.draftState} label={collection.draftState} /></td>
-                  <td>{versionLabel(collection)}</td>
-                  <td>{collection.draftSelectedCount.toLocaleString('en-US')}</td>
+                  <td data-label="Lifecycle"><StatusPill status={collection.lifecycle} label={collection.lifecycle} /></td>
+                  <td data-label="Draft"><StatusPill status={collection.draftState} label={collection.draftState} /></td>
+                  <td data-label="Published">{versionLabel(collection)}</td>
+                  <td data-label="Selected">{collection.draftSelectedCount.toLocaleString('en-US')}</td>
                 </tr>
               ))}
             </tbody>
