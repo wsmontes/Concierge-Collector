@@ -653,7 +653,10 @@ function collectorAppUrl() {
 }
 
 function wireBrowseLink() {
-  const link = document.querySelector('.bottom-nav__link');
+  // `a[...]` e o href no seletor de propósito: `#auth-logout` também carrega a
+  // classe `.bottom-nav__link` (hoje é um <button hidden>, e o <a> vem antes no
+  // documento) — sem isto o link dependeria da ordem do markup.
+  const link = document.querySelector('a.bottom-nav__link[href]');
   if (link) link.href = collectorAppUrl();
 }
 

@@ -156,6 +156,16 @@ imagem (cada uma faz o servidor buscar a página do site e/ou chamar o Places), 
 exercita SSR do Next; juntos estouram o teto. O primeiro (05:59) é anterior a qualquer mudança de
 código desta sessão — não é vazamento introduzido, é ausência de folga.
 
+**Vetor de payload medido e descartado como causa** (2026-09-16): `_ADMIN_ROW_PROJECTION` inclui
+`transcript`, e o único uso do campo na listagem é calcular `has_transcript` (um booleano) —
+`catalog_service.py:62` e `:139`. Medido no acervo de produção: média de **4,3 KB por linha**, ou seja
+**~2 MB por página de 500 linhas**, por request, de IO e alocação transitória. É desperdício real, mas
+**não é o vetor do OOM**: 2 MB é ~0,4% de um container de 512 MB, contra os ~50-100 MB por página de SSR
+do Next (que é o que domina, e é o que satura quando duas páginas do Admin carregam juntas). Removê-lo com
+`aggregate` + `$strLenCP` quebraria o duble de teste (que só implementa `find` com projeção de inclusão) e
+um campo materializado exigiria mantê-lo em sincronia a cada escrita. Fica como melhoria de IO/latência,
+não como correção de memória — quem for fazer, meça a latência antes/depois, não a memória.
+
 Duas medidas, e o que cada uma resolve:
 
 - **Aplicado**: teto de heap V8 nos dois processos Node (`NODE_OPTIONS=--max-old-space-size`, 200 MiB
@@ -248,7 +258,12 @@ Os erros de imagem no console têm dois significados distintos e ambos são o co
 Status completo, verificação executada e defeitos encontrados: `docs/reviews/2026-09-14-editorial-admin-universal-record-access.md`.
 Entregue: Fase 0 (field registry/inspector/editors), Fase 1 (`/admin/curations` + `/admin/curations/<id>`), Fase 2 (`/admin/entities` + detalhe), Fase 3 (paleta ⌘K + busca avançada por campo/operador/valor), Fase 4 (members e draft diff humanizados, preview a partir da Collection, card de relationships), Fase 9 (Content Health no `/admin`) e a fronteira `records/*` (18 paths no contrato). `/admin/explorer` virou redirect de compatibilidade.
 
-- [ ] **`draftSelectedCount` não é mantido em operações `mode: 'explicit'`** — `src/operations/apply-draft-operation.ts` incrementa o contador só no caminho `selection`; um "add" explícito commita a mudança (item `applied`, `draftRevision` sobe) mas o header continua dizendo "0 selected". Medido nos dois modos no stack local: a operação `selection` mostrou "1 selected", a `explicit` não. Fix correto precisa do delta de mudanças (re-add de membro existente não incrementa). Descoberto ao rodar o E2E `collections/admin-ui.spec.ts` (falha na linha 111); caminho não tocado pelo plano editorial.
+- [x] ~~**`draftSelectedCount` não é mantido em operações `mode: 'explicit'`**~~ ✓ — **não se reproduz em produção**
+  (2026-09-16, medido no banco, não na UI): um add `explicit` levou o campo de 0 para 2 num collection de
+  validação (`draftRevision 0→1`, `draftState clean→dirty`), e o caminho de `selection` — pela UI real,
+  "selecionar 1 → Apply to Collections… → confirmar" — commitou `{"mode":"selection","action":"add",
+  "selectedCount":1,"status":"committed"}` e deixou `draftSelectedCount: 1`. O contador é mantido nos dois
+  modos; se o sintoma reaparecer, é do *header* (refresh), não do delta.
 - [ ] **Integração do admin com Mongo local: 4 falhas pré-existentes** (`publish-concurrency.int.test.ts` ×2, `selection-manifest.int.test.ts` ×2). Medido contra um worktree limpo em HEAD: falha igual, não é regressão do plano.
 - [ ] **`verify:full` não foi rodado ponta a ponta** neste trabalho; os specs relevantes rodaram isolados (`curations/keyboard.spec.ts` ✓ antes da onda 3; `collections/admin-ui.spec.ts` ✗ pelo item acima).
 - [ ] Admin: mídia — thumbnails/originais precisam de uma fronteira que sirva mídia; hoje a seção Media & sources mostra só o que está armazenado (não inventa URL).
@@ -270,7 +285,8 @@ Admin) estão no `CLAUDE.md`. Nada no cliente mudou para isso funcionar.
 | Superfície | Jornada | Evidência |
 |---|---|---|
 | Admin | handoff completo (sem Google) → dashboard | `cms_session` no browser, `/admin` 200, **zero erro de console e zero resposta ≥400** |
-| Admin | lista de Curations, busca (`q=sushi`), filtro por status, ordenação (6 modos + teto `limit=500`), paginação | contagem e nomes conferem com o banco (`status=linked` → 1 linha, que é o que existe) |
+| Admin | lista de Curations, busca (`q=sushi`), filtro por status, **as 8 ordenações** do allowlist + teto `limit=500`, paginação, busca avançada (`?where=...`) | as 8 respondem 200 com 100 itens e a 1ª linha muda certo por ordenação (`name_asc` → "1900 Pizzeria", `sequence_asc` → seq 1); contagem bate com o banco (`status=linked` → 1 linha, que é o que existe) |
+| Admin | **seleção → "Apply to Collections…"** (a interação central do workspace, pela UI) | "1 Curation selected" → `POST /selections → 202` → worker commitou `{"mode":"selection","action":"add","selectedCount":1,"status":"committed"}`; a Collection de andaime ficou `draftSelectedCount: 1` e foi apagada (`DELETE 204`, lista final 0) |
 | Admin | detalhe de Curation e de Entity, paleta ⌘K (busca → clique → navega) | h1 correto, 10 resultados para "Adega", navegação para `/admin/entities/<id>` |
 | Admin | Collections: criar → metadados → operações de draft (add/remove) → preview → delete | `POST 201`, worker commitou (`draftSelectedCount 0→2`, `draftState clean→dirty`), `PATCH 200` (revisão 1→2), `DELETE 204`, CMS de volta a **0 collections** |
 | Admin | guards de publish/archive **sem** mudar estado | 400 sem idempotência, 412 sem `If-Match`, 400 com confirmação inválida, archive de draft → 409 (regra: só de `published`) |
