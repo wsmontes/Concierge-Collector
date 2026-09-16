@@ -281,6 +281,52 @@ Entregue: Fase 0 (field registry/inspector/editors), Fase 1 (`/admin/curations` 
 - [ ] Admin: coluna "Collections" na lista de Entities e o filtro "sem Collections" na lista de Curations precisam do join de membership do CMS exposto como consulta de lista (o contador do dashboard já existe via `POST /catalog/content-health`).
 - [ ] Admin: diff de versões no History precisa de snapshots — não existem para Curation; a tela diz isso. O lado de Collections tem versões e o draft diff já é humanizado.
 
+## UX/UI do Collector — passe de 2026-09-16
+
+**1. Razão de aspecto dos cards (corrigido, medido).** O sintoma (a mesma página com proporções
+diferentes por linha) não era a imagem: o `<img>` já é `position:absolute` + `object-fit: cover`. Era a
+CAIXA — `.collection-card__media` tinha `flex-basis` fixo com `align-self: stretch` e `min-height`, sem
+`aspect-ratio`, então a altura vinha do conteúdo de cada card (medido com `getBoundingClientRect` em 30
+cards: **150x190, 150x206 e 150x208** na mesma tela). Agora `align-self: flex-start` +
+`aspect-ratio: 3/4`: medido depois, **150x200 em todas as linhas** (110x147 no mobile), nas duas abas
+(Curations e Entities usam o mesmo componente). A imagem se enquadra na caixa, nunca o contrário.
+
+**2. Imagem re-buscada a cada load (corrigido, medido).** Contador de requisições com cache limpo:
+**18 na 1ª carga e 24/12 nos reloads seguintes** — cada uma refazendo no servidor o pipeline inteiro
+(download da página + Places). Três causas, todas no `ogImageModule`:
+
+- o caminho legado tratava o negativo no ramo `!response.ok`, que é **inalcançável** (`ApiService.request`
+  lança em 4xx/5xx): um 404 do `og-image` nunca era persistido e era re-perguntado em todo load;
+- falha transitória (rede/timeout/5xx) não era memorizada de propósito, o que significava repetir a busca
+  em cima dos MESMOS cards a cada reload numa conexão ruim;
+- negativo definitivo era **eterno** (sem validade), então um card sem imagem não se curava sozinho.
+
+Agora: `catch` trata o status (definitivo → negativo), falha transitória memoriza **10 min e só online**
+(offline não é "sem foto"), e o negativo definitivo tem **TTL de 7 dias** (mantém o ganho de não
+re-perguntar e deixa o card se curar). O prefetch passou a usar o MESMO rank do card (antes aquecia
+`rank:0` e o card com hero curado pagava a rede inteira — e a hero default era gravada sob a chave do
+hero escolhido). O delete de entrada vencida usava a chave lógica, que não é `Request` válida para o
+Cache API: falhava em silêncio. Medido depois: **4 requisições por reload** (contra 24/12) e o cache
+estabiliza em 20 entradas em vez de crescer re-buscando.
+
+Efeito colateral bem-vindo: cada re-fetch evitado é um pipeline `download + Places` que o servidor não
+roda — o mesmo pipeline que aparece na conta de memória do container.
+
+**Achados de captura de imagem (medidos, NÃO alterados — é decisão de produto):**
+
+- A foto que o curador tira **nunca é enviada ao servidor**: o único request com imagem é
+  `/ai/orchestrate` (análise). A Curation guarda só o marcador `sources.image=[{created_at}]`
+  (`sourceUtils.js:156`), e o card SEMPRE mostra a hero da web — ou seja, a foto existe em um lugar só
+  (o navegador de quem capturou) e o detalhe da Curation tenta renderizar `sources.image` que nunca vem
+  preenchido (`uiManager.js:2687-2690`). Ou seja: capturar foto hoje é alimentar a IA e nada mais.
+- A foto é guardada em **tamanho cheio** em base64 no draft (`draftRestaurants.metadata`, sem resize —
+  `resizeImageForAPI` só existe para a chamada de IA). Medido: um JPEG de 40 KB virou ~54 KB de metadata,
+  e a quota local era de 10 GB com 18,8 MB usados — **não é problema prático**, então não mexi (mudar
+  isso descartaria o original, e ele é a única cópia).
+- `cleanupOldDrafts(30 dias)` poda só drafts **vazios** (`draftRestaurantManager.js:243-253`): um draft
+  com foto fica para sempre — correto enquanto a foto não subir (é a única cópia), mas significa que
+  captura abandonada acumula. Decisão de produto, não bug.
+
 ## Qualificação em produção — 2026-09-16
 
 Sessão de validação com o **modo de acesso de operação** (sem Google), criado para isto: o Collector e
