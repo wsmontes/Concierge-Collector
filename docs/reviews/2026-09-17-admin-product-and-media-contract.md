@@ -173,3 +173,52 @@ recursivo (sem sobreposição) e guarda contra ciclo lento. `CMS_JOBS_INPROCESS=
 - Quando um agente de execução mediu um defeito no kit (especificidade em modo empilhado, `Esc` sem
   chegar ao dono do estado, `id` duplicado no picker, checkbox aninhado com toggle duplo), o
   conserto foi na origem — não no chamador.
+
+---
+
+## 9. Segundo passe: o que a revisão seguinte confirmou e o que ela errou
+
+Uma nova rodada de revisão automatizada levantou 14 pontos. Cada um foi conferido **no código**
+antes de virar trabalho; três não se sustentaram e ficaram de fora com a evidência:
+
+|Alegado|Medido|Veredito|
+|---|---|---|
+|"`failed.expires_at` é gravado e nunca honrado; só há cooldown de 60 s em memória"|`read_hero_media` tem o bloco `retry_fresh`, que compara `stored["expires_at"] > now()` e só então reenfileira; `test_backoff_persistido_e_quem_decide_quando_tentar_de_novo` prova as duas cadências|**refutado**|
+|"a fila guarda até 500 dicts de Entity"|`_enrichment_queue.append((collection, entity["_id"], key))` guarda **id**, e o documento é relido na vez|**refutado**|
+|"`get_restaurant_images(limit=3)` entra em modo galeria e busca oito"|`resolve_display_media` chama com `limit=1`, o mesmo hero do card|**refutado**|
+|"subir o teto de heap 200→256"|já revertido antes deste passe; `deploy/supervisord.conf` está em `--max-old-space-size=200`|**já feito**|
+|"`setExpired(false)` síncrono"|não existe `setExpired` neste repositório|**inapplicável**|
+|"contratos gerados defasados"|`npm run check:contracts` passa (o gate padrão o executa)|**refutado**|
+
+Seis se confirmaram e foram corrigidos, cada um com teste que falha se o defeito voltar:
+
+1. **`DataTable`**: a guarda de controle aninhado testava `input`/`button` por `instanceof` e deixava
+   `select` e `textarea` de fora — Espaço num select inline abria o dropdown *e* alternava a linha, e
+   as setas moviam o foco da tabela em vez do cursor. Agora é um `closest('input, button, select,
+   textarea, a, [contenteditable="true"]')`.
+2. **`useNow`**: o relógio do módulo nascia com o chunk, não com o primeiro leitor. Numa sessão longa
+   a primeira pintura de uma lista usava um "agora" de até um minuto atrás — uma credencial que
+   venceu nesse intervalo aparecia ativa. A assinatura atualiza o snapshot.
+3. **`CollectionDistributionView`**: o carregamento derivava de `loadedId === collectionId`, que
+   continua verdadeiro depois de `reloadKey++` — o Retry não mostrava carregamento nenhum e a
+   mensagem de erro antiga ficava na tela durante toda a nova requisição. A chave passa a ser
+   `${collectionId}:${reloadKey}`.
+4. **KPI de mídia declara o teto**: o texto passa a dizer que o número é um teto, não uma promessa —
+   a leitura também recusa fato cuja fonte mudou, e comparar impressão na agregação exigiria ler
+   21,6k documentos a cada carga do painel.
+5. **`display_media` exige igualdade da impressão da fonte.** Aceitar `None` (fato gravado antes do
+   campo existir) pouparia uma resolução por Entity e deixaria um fato órfão de origem sendo servido
+   por até 14 dias — o mesmo defeito de "derivado sem vínculo com a origem" que a impressão veio
+   corrigir. Os 29 fatos do acervo re-resolvem uma vez, sob demanda.
+6. **A chave de dedupe só é liberada depois da resolução.** Antes ia embora no `popleft`, e a janela
+   ficava a cargo do cooldown de 60 s, que conta desde o *enfileiramento*: com fila cheia, a mesma
+   Entity era enfileirada de novo enquanto a primeira ainda rodava.
+
+Provas de produção deste passe (deploy `1546afc6`, `deploy_ended succeeded` às 08:50:29):
+
+- três leituras reais de `/api/v3/entities/<id>/image` → **200 `image/jpeg`, 53.646 bytes**, com o
+  `cache-control` do ramo persistido (`public, max-age=3600`) — a regra estrita aceita os fatos que
+  estão no acervo;
+- o ciclo gravação↔leitura continua coberto no unit (`test_vencedor_do_site_persiste_a_url_da_imagem`
+  resolve e depois lê o mesmo documento), que é exatamente o risco da regra nova;
+- a cópia nova do KPI está no bundle servido (`6058-b0495e2fd2428333.js`).
