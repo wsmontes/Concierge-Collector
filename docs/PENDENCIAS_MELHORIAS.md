@@ -424,7 +424,7 @@ resposta de lista (uma chamada em lote) em vez de uma por linha.
 
 `tests/unit/payload/security-config.test.ts > allows CSRF and CORS only from the Admin and explicit Collector origins`.
 
-Placar em 2026-09-16: **2 falhas, 10 aprovações**. Duas hipóteses foram testadas e **derrubadas**:
+Placar em 2026-09-16: **2 falhas, 12 aprovações**. Duas hipóteses foram testadas e **derrubadas**:
 
 |Hipótese|Teste|Resultado|
 |---|---|---|
