@@ -47,12 +47,49 @@ def redact_text(value: object) -> str:
     return _SENSITIVE.sub(r"\1\2\3[REDACTED]", str(value))
 
 
+def _redact_arg(value: object) -> object:
+    """Redige o argumento, preservando o que o FORMATO do log precisa.
+
+    Números ficam intactos porque `%d`/`%f` exigem número — o access log do uvicorn
+    passa o status como `int` e o formatter chama `int()` nele. Todo o resto vira
+    texto redigido: uma `Exception` que carrega URL com `?key=` é o caso real
+    (`auth.py`, `og_image_service.py`), e deixá-la passar intacta por "não ser
+    string" devolveria o vazamento que o filtro existe para fechar.
+    """
+    if value is None or isinstance(value, (int, float, bool)):
+        return value
+    return redact_text(value)
+
+
+def _redact_args(args: object) -> object:
+    """Redige cada argumento preservando tupla/dicionário e o COMPRIMENTO.
+
+    Comprimento importa: o `AccessFormatter` do uvicorn desempacota
+    `record.args` como `(client, método, path, http_version, status)`.
+    """
+    if isinstance(args, dict):
+        return {key: _redact_arg(value) for key, value in args.items()}
+    if isinstance(args, tuple):
+        return tuple(_redact_arg(item) for item in args)
+    return args
+
+
 class SecretRedactionFilter(logging.Filter):
-    """Redact the message at handler time, including third-party loggers."""
+    """Redact the message at handler time, including third-party loggers.
+
+    A redação NÃO destrói a forma do registro: `msg` continua sendo o formato (com
+    `%s`) e `args` continua com o mesmo número de elementos. A versão anterior
+    renderizava tudo dentro de `msg` e zerava `args` — e o handler do access log do
+    uvicorn desempacota esses args, então zerá-los fazia o `AccessFormatter`
+    estourar `ValueError: not enough values to unpack (expected 5, got 0)` a CADA
+    requisição, imprimindo um traceback de ~30 linhas no stderr (medido em
+    produção e reproduzido local com o uvicorn real). O log ficava ilegível
+    justamente no lugar de onde os incidentes são diagnosticados.
+    """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = redact_text(record.getMessage())
-        record.args = ()
+        record.msg = redact_text(record.msg)
+        record.args = _redact_args(record.args)
         return True
 
 

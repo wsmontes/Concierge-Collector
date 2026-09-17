@@ -73,6 +73,79 @@ def test_chave_em_query_e_redigida_mesmo_vindo_de_logger_filho():
     assert "[REDACTED]" in registros[0]
 
 
+def test_access_log_do_uvicorn_sobrevive_ao_filtro():
+    """O filtro não pode destruir a FORMA que o AccessFormatter desempacota.
+
+    Medido em produção e reproduzido com o uvicorn real: o filtro renderizava tudo
+    dentro de `msg` e zerava `args`, e o `AccessFormatter` desempacota exatamente
+    esses args (`client, método, path, http_version, status`). Resultado: um
+    traceback de ~30 linhas no stderr a CADA requisição — e a linha de acesso, que
+    é a primeira coisa que se lê num incidente, não existia.
+    """
+    import io
+
+    from uvicorn.logging import AccessFormatter
+
+    record = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        __file__,
+        0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("1.2.3.4:0", "GET", "/api/v3/entities?key=super-secret-places-key", "1.1", 200),
+        None,
+    )
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.addFilter(SecretRedactionFilter())
+    handler.setFormatter(AccessFormatter())
+
+    handler.handle(record)
+
+    linha = stream.getvalue()
+    assert linha, "o handler caiu no handleError e não emitiu nada"
+    assert "super-secret-places-key" not in linha
+    assert "[REDACTED]" in linha
+    # Os campos que o formatter monta a partir dos args continuam lá.
+    assert "GET" in linha and "/api/v3/entities" in linha and "200" in linha
+
+
+def test_excecao_com_chave_no_texto_e_redigida():
+    """Argumento não-string não é desculpa para vazar: a URL vive no texto da exceção.
+
+    O caso real está em `auth.py`/`og_image_service.py`, que logam `"%s", exc`: a
+    chave do Places viaja dentro da mensagem da exceção, e um filtro que só redige
+    `str` deixa passar justamente o argumento mais propenso a carregar segredo.
+    """
+    import io
+
+    class _FalhaDeProvedor(Exception):
+        pass
+
+    record = logging.LogRecord(
+        "app.services.og_image_service",
+        logging.ERROR,
+        __file__,
+        0,
+        "falha ao baixar: %s",
+        (_FalhaDeProvedor("GET https://places.googleapis.com/v1/places/P1?key=super-secret-places-key"),),
+        None,
+    )
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.addFilter(SecretRedactionFilter())
+    handler.setFormatter(logging.Formatter("%(message)s"))
+
+    handler.handle(record)
+
+    saida = stream.getvalue()
+    assert saida, "o handler não emitiu nada"
+    assert "super-secret-places-key" not in saida
+    assert "[REDACTED]" in saida
+    # A parte útil da mensagem continua legível para quem lê o log.
+    assert "places.googleapis.com" in saida
+
+
 def test_install_log_redaction_coloca_o_filtro_nos_handlers():
     root = logging.getLogger()
     previous = list(root.handlers)
