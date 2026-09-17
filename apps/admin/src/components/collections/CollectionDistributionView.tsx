@@ -36,11 +36,16 @@ export function CollectionDistributionView({
   const api = useMemo(() => client ?? createCollectionDistributionClient(), [client])
   const [applications, setApplications] = useState<CollectionConsumerApplication[]>([])
   const [error, setError] = useState<string | null>(null)
-  // `loaded` marca o par (api, collection) que já respondeu: enquanto o par atual
-  // não for o carregado, a seção está carregando. O efeito, assim, só escreve
-  // estado quando a resposta chega — nada de `setLoading(true)` síncrono no corpo
-  // do efeito, que dispara render em cascata.
-  const [loadedId, setLoadedId] = useState<string | null>(null)
+  // `loaded` marca a CHAVE (collection + tentativa) que já respondeu: enquanto a
+  // chave atual não for a carregada, a seção está carregando. O efeito, assim, só
+  // escreve estado quando a resposta chega — nada de `setLoading(true)` síncrono
+  // no corpo do efeito, que dispara render em cascata.
+  //
+  // A tentativa entra na chave porque a recarga é um contador: `loadedId ===
+  // collectionId` continuava verdadeiro depois de `reloadKey++`, então o Retry
+  // não mostrava carregamento nenhum e a mensagem de erro antiga ficava na tela
+  // durante toda a nova requisição.
+  const [loadedKey, setLoadedKey] = useState<string | null>(null)
 
   // A recarga é um contador, e o carregamento é derivado dele: o efeito só
   // escreve estado QUANDO a resposta chega (dentro do callback), nunca de forma
@@ -48,6 +53,8 @@ export function CollectionDistributionView({
   // efeito colateral é o certo: nada renderiza em cascata antes da resposta.
   const [reloadKey, setReloadKey] = useState(0)
   const reload = useCallback(() => setReloadKey((key) => key + 1), [])
+  // Depois de `reloadKey`: fora de ordem isto é dead zone temporal no render.
+  const requestKey = `${collectionId}:${reloadKey}`
 
   useEffect(() => {
     let active = true
@@ -56,18 +63,18 @@ export function CollectionDistributionView({
         if (!active) return
         setApplications(items)
         setError(null)
-        setLoadedId(collectionId)
+        setLoadedKey(requestKey)
       },
       (cause: unknown) => {
         if (!active) return
         setError(cause instanceof Error ? cause.message : 'request_failed')
-        setLoadedId(collectionId)
+        setLoadedKey(requestKey)
       },
     )
     return () => { active = false }
-  }, [api, collectionId, reloadKey])
+  }, [api, collectionId, requestKey])
 
-  const loading = loadedId !== collectionId
+  const loading = loadedKey !== requestKey
 
   return (
     <AdminSection

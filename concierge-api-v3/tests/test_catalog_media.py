@@ -25,6 +25,7 @@ from app.models.catalog_media import (
     ENTITY_IMAGE_CACHE_TTL_SECONDS,
     ENTITY_IMAGES_MAX_ITEMS,
 )
+from app.services import display_media_service
 from app.services.restaurant_image_collector import CollectedImage
 
 PATH = "/api/v3/catalog/entities"
@@ -187,6 +188,9 @@ async def test_image_bytes_are_the_reencoded_jpeg_with_a_private_short_ttl(async
             "expires_at": datetime.now(timezone.utc) + timedelta(days=14),
             "attempts": 1,
             "last_error": None,
+            # A impressão da fonte que escreveu o fato: a leitura exige igualdade,
+            # então um seed sem ela é (corretamente) recusado.
+            "source_fingerprint": display_media_service.source_fingerprint("https://restaurante.example", "ChIJ123"),
         },
     )
     calls: dict = {}

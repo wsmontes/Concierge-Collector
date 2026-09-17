@@ -127,10 +127,19 @@ export function DataTable<Row>({
       // O handler mora na tabela, então o `keydown` de um controle aninhado
       // borbulha até aqui: sem esta guarda, Espaço no checkbox de uma linha marca
       // pelo próprio input E alterna de novo pelo handler — dois toggles, e a
-      // seleção volta ao estado anterior. Vale para qualquer controle dentro de
-      // uma célula (checkbox, botão, link, campo de edição inline).
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLButtonElement) return
-      if (event.target instanceof HTMLElement && event.target.closest('a, [contenteditable="true"]') !== null) return
+      // seleção volta ao estado anterior.
+      //
+      // A lista é `closest` de uma vez, e não `instanceof` por tipo: `select` e
+      // `textarea` ficavam de fora (só input e botão eram testados), então Espaço
+      // num select inline abria o dropdown E alternava a linha, e as setas
+      // moviam o foco da tabela em vez do cursor. Um seletor só cobre todo
+      // controle dentro de célula — checkbox, botão, link, select, editor.
+      if (
+        event.target instanceof HTMLElement
+        && event.target.closest('input, button, select, textarea, a, [contenteditable="true"]') !== null
+      ) {
+        return
+      }
       const current = activeIndex
       const key = event.key
       if (key === 'ArrowDown') {

@@ -217,7 +217,11 @@ function ContentHealthMediaGroup({ health }: { health: ContentHealth }) {
       title="Entity display media"
     >
       <div className="ui-kpi-grid">
-        <KpiCard label="With a display image" value={countText(health.entities_display_media_resolved)} />
+        <KpiCard
+          hint="Fresh persisted facts. A ceiling, not a promise: the read path also rejects a fact whose source changed since it was written."
+          label="With a display image"
+          value={countText(health.entities_display_media_resolved)}
+        />
         <KpiCard
           hint="No website and no Places id: there is nothing to resolve."
           label="No source at all"

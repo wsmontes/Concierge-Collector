@@ -444,10 +444,17 @@ async def read_hero_media(entities_collection, entity: dict) -> HeroMediaRead:
         return HeroMediaRead(state=STATE_NO_SOURCES)
 
     stored = _stored(entity)
-    if stored is not None and stored.get("source_fingerprint") not in (None, source_fingerprint(website, place_id)):
+    if stored is not None and stored.get("source_fingerprint") != source_fingerprint(website, place_id):
         # A fonte mudou depois de o fato ser gravado: o que está persistido fala
         # de outro site/place. Não serve como resposta; volta a pendente e
         # reenfileira.
+        #
+        # IGUALDADE, não "igual ou sem impressão". Aceitar `None` (fato gravado
+        # antes deste campo existir) pouparia UMA resolução por Entity e deixaria
+        # um fato órfão de origem sendo servido por até 14 dias — exatamente o
+        # defeito de "derivado sem vínculo com a origem" que esta impressão veio
+        # corrigir. O acervo tem 29 fatos gravados hoje: re-resolver todos custa
+        # menos que carregar a exceção.
         _schedule_enrichment(entities_collection, entity)
         return HeroMediaRead(state=STATE_MISSING)
 
@@ -562,7 +569,6 @@ async def _consume_enrichment_queue() -> None:
     try:
         while _enrichment_queue:
             entities_collection, entity_id, key = _enrichment_queue.popleft()
-            _enrichment_queued.discard(key)
             _enrichment_active += 1
             try:
                 entity = None
@@ -577,6 +583,13 @@ async def _consume_enrichment_queue() -> None:
                 await _enrich(entities_collection, entity, key)
             finally:
                 _enrichment_active -= 1
+                # A chave volta a ser enfileirável só DEPOIS da resolução. Soltá-la
+                # no popleft deixava a janela de dedupe a cargo do cooldown de 60 s,
+                # que conta desde o ENFILEIRAMENTO: com fila cheia, uma resolução
+                # podia passar de um minuto e a mesma Entity era enfileirada de novo
+                # enquanto a primeira ainda rodava (trabalho dobrado, transbordo da
+                # fila à toa).
+                _enrichment_queued.discard(key)
     finally:
         _enrichment_active = 0
 

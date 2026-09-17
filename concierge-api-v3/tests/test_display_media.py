@@ -120,6 +120,9 @@ def _probe_dead(monkeypatch, code="http_403"):
     monkeypatch.setattr(display, "get_reference_image_bytes", probe)
 
 
+_UNSET = object()
+
+
 def _resolved(
     kind="website",
     provider_ref="https://cdn.example/hero.jpg",
@@ -128,7 +131,7 @@ def _resolved(
     attempts=1,
     website="https://restaurante.example",
     place_id=None,
-    source_fingerprint_value=None,
+    source_fingerprint_value=_UNSET,
 ):
     return {
         "state": "resolved",
@@ -141,9 +144,15 @@ def _resolved(
         "expires_at": expires_at if expires_at is not None else datetime.now(timezone.utc) + timedelta(days=14),
         "attempts": attempts,
         "last_error": None,
-        # None = fato sem impressão (legado): a leitura o aceita. Quando o teste
-        # quer o vínculo com a fonte, ele passa a impressão calculada.
-        "source_fingerprint": source_fingerprint_value,
+        # A impressão é de QUEM ESCREVEU o fato, então o seed a calcula a partir
+        # da MESMA fonte que a Entity de teste carrega — a leitura exige
+        # igualdade e um seed solto viraria "a fonte mudou". O valor explícito
+        # fica para os dois casos que querem mismatch ou legado sem impressão.
+        "source_fingerprint": (
+            display.source_fingerprint(website, place_id)
+            if source_fingerprint_value is _UNSET
+            else source_fingerprint_value
+        ),
     }
 
 
@@ -258,7 +267,9 @@ async def test_rank_zero_no_boundary_do_cms_serve_o_fato_persistido(async_client
     in_memory_db.entities.insert_one(
         {
             **_entity(place_id="ChIJ123"),
-            display.DISPLAY_MEDIA_FIELD: _resolved(kind="google_places", provider_ref="places/P1/photos/PH1"),
+            display.DISPLAY_MEDIA_FIELD: _resolved(
+                kind="google_places", provider_ref="places/P1/photos/PH1", place_id="ChIJ123"
+            ),
         }
     )
     calls = {}
@@ -528,6 +539,29 @@ async def test_referencia_morta_vira_failed_e_reenfileira(monkeypatch):
     # o enriquecimento PROVA a referência antes de gravar `resolved` — sem essa
     # prova, "morreu depois" e "nunca serviu" seriam indistinguíveis daqui.
     assert value["expires_at"] == value["resolved_at"] + timedelta(seconds=display.DEAD_REFERENCE_RETRY_SECONDS)
+    for task in list(asyncio.all_tasks()):
+        if _is_enrichment_task(task):
+            task.cancel()
+
+
+@pytest.mark.asyncio
+async def test_fato_sem_impressao_nao_serve_e_reenfileira(monkeypatch):
+    """Fato gravado antes do campo existir não é aceito: ele não sabe de que fonte veio.
+
+    Aceitar `None` como "serve" pouparia uma resolução e deixaria a Entity
+    mostrando a foto de um site que talvez não seja mais o dela por 14 dias.
+    """
+    monkeypatch.setattr(settings, "display_media_enrich_enabled", True)
+    legado = _resolved(provider_ref="https://antigo.example/hero.jpg", source_fingerprint_value=None)
+    entity = _entity(display_media=legado)
+    collection = _RecordingCollection(entity)
+    probed = _probe_ok(monkeypatch)
+
+    read = await display.read_hero_media(collection, entity)
+
+    assert read.state == display.STATE_MISSING and read.image is None
+    assert probed == []  # nem tentou buscar a referência do fato órfão
+    assert len(display._enrichment_queue) == 1
     for task in list(asyncio.all_tasks()):
         if _is_enrichment_task(task):
             task.cancel()
@@ -829,7 +863,7 @@ async def test_smoke_do_fato_persistido_ate_os_bytes(monkeypatch):
 
     entity = _entity(
         place_id="ChIJ123",
-        display_media=_resolved(kind="google_places", provider_ref="places/P1/photos/PH1"),
+        display_media=_resolved(kind="google_places", provider_ref="places/P1/photos/PH1", place_id="ChIJ123"),
     )
     collection = _RecordingCollection(entity)
 
@@ -1027,6 +1061,7 @@ async def test_backoff_persistido_e_quem_decide_quando_tentar_de_novo(monkeypatc
             "attempts": 1,
             "resolved_at": datetime.now(timezone.utc),
             "expires_at": datetime.now(timezone.utc) + timedelta(hours=5),
+            "source_fingerprint": display.source_fingerprint("https://restaurante.example", None),
         },
     )
     vencido = _entity(
@@ -1037,6 +1072,7 @@ async def test_backoff_persistido_e_quem_decide_quando_tentar_de_novo(monkeypatc
             "attempts": 1,
             "resolved_at": datetime.now(timezone.utc) - timedelta(days=2),
             "expires_at": datetime.now(timezone.utc) - timedelta(days=1),
+            "source_fingerprint": display.source_fingerprint("https://restaurante.example", None),
         },
     )
 

@@ -30,6 +30,12 @@ const listeners = new Set<() => void>()
 function subscribe(listener: () => void): () => void {
   listeners.add(listener)
   if (timer === null) {
+    // O módulo guarda `now` desde que o CHUNK carregou, não desde que alguém
+    // passou a ler: numa sessão longa a primeira pintura desta lista usaria um
+    // relógio até um minuto velho (uma credencial vencida apareceria "ativa").
+    // O React relê o snapshot logo depois de assinar, então atualizar aqui basta
+    // — o intervalo continua sendo só a atualização periódica.
+    now = Date.now()
     timer = setInterval(() => {
       now = Date.now()
       for (const notify of listeners) notify()
