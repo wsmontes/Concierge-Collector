@@ -142,7 +142,8 @@ Plano `starter` = **512 MB / 0.5 CPU** ($7/mês). Medido no serviço fundido:
   durante o blue/green de um deploy).
 - CPU folgadíssima: pico 0.05 de 0.5 núcleo.
 
-Os quatro processos (uvicorn + Next + jobs + nginx) dividem 512 MB. Se houver picos (muitas resoluções
+Os quatro processos de então (uvicorn + Next + jobs + nginx) dividiam 512 MB — hoje são três, porque o
+runner de jobs saiu como processo (ver a nota datada de 2026-09-17, adiante). Se houver picos (muitas resoluções
 de imagem simultâneas, chamadas de IA com imagem/áudio em base64), o risco é OOM → reinício do
 container → **exatamente o sintoma de 502 sem CORS** já observado. Referência de custo: 3 serviços
 `starter` custavam $21/mês; hoje é 1 por $7; se apertar, `standard` (1c-2g, $25) dá 2 GB.
@@ -215,7 +216,7 @@ Alavancas NOSSAS, aplicadas (medidas no código, não estimadas):
 
 **Isto devolve parte da folga, não cria folga.** Com regime de ~450 MB, a correção robusta continua sendo
 mais memória (`standard`, 2 GB) ou menos processos no mesmo container — decisão de custo do usuário.
-Ordem de grandeza dos quatro processos: Next ~200 MB, runner de jobs ~150 MB, uvicorn ~100 MB, nginx ~10 MB.
+Ordem de grandeza dos quatro processos de então: Next ~200 MB, runner de jobs ~150 MB, uvicorn ~100 MB, nginx ~10 MB.
 
 **2026-09-17 — o quarto processo saiu.** O worker de jobs dedicado (`payload jobs:run`) foi eliminado do
 container: o runner vive agora DENTRO do processo do Next (`apps/admin/src/jobs/inProcessRunner.ts`, ligado
@@ -230,15 +231,18 @@ subir teto de heap ou instância sem essa prova é trocar um OOM por algo que ni
 
 Duas medidas, e o que cada uma resolve:
 
-- **Aplicado**: teto de heap V8 nos dois processos Node (`NODE_OPTIONS=--max-old-space-size`, 200 MiB
-  para o Next e 128 MiB para o runner, em `deploy/supervisord.conf`). O V8 dimensiona o heap pela RAM
+- **Aplicado, e hoje vale para UM processo Node**: `NODE_OPTIONS=--max-old-space-size=200` no programa
+  `admin` do `deploy/supervisord.conf` (o teto de 128 MiB era do runner, e saiu com o worker dedicado em
+  2026-09-17). O V8 dimensiona o heap pela RAM
   do HOST, não pelo limite do cgroup — sem teto, cada Node cresce sem motivo até o kernel matar o
   container inteiro. Com teto, no pior caso cai UM processo (o supervisord o reinicia) em vez de todos.
   Isto **não** foi suficiente sozinho: houve OOM com os tetos no ar, porque parte do consumo está fora
   do old space (Buffers, nativo, Python).
 - **Pendente (decisão de custo do usuário)**: subir a instância para `standard` (2 GB, $25/mês). Com
-  regime de 370-378 MB em 512 MB e picos acima disso, **não há folga para 4 processos** — a alternativa
-  seria separar o runner de jobs em outro serviço, que custa mais que o upgrade.
+  regime de 370-378 MB em 512 MB e picos acima disso, a folga era insuficiente para QUATRO processos; desde
+  2026-09-17 o container roda três (uvicorn + Next + nginx), porque o runner passou a viver dentro do
+  processo do Next. **A folga resultante sob carga ainda não foi medida**, então a recomendação continua de
+  pé — a alternativa antiga (separar o runner em outro serviço) morreu com a consolidação.
 
 ### Imagens dos cards (400 vs 404) — NÃO é bug
 Os erros de imagem no console têm dois significados distintos e ambos são o comportamento correto:
@@ -251,18 +255,20 @@ Os erros de imagem no console têm dois significados distintos e ambos são o co
 - [ ] CI do GitHub Actions removido (billing) — decidir se reativa
 - [ ] Auto-deploy do Render não confiável — sempre verificar após push
 - [x] ~~API parada em commit antigo~~ — RESOLVIDO em 2026-09-12: o serviço `Concierge-Collector` (API) estava live em `077c1633` (01/09) enquanto `main` já tinha ~180 commits; o auto-deploy existe mas não pega. Deploy manual disparado via API do Render: `b545626a` subiu em 77s, `/api/v3/ready` com 31 índices e 0 falhas, zero 5xx. **Lição: `Concierge-Collector-Web` (static) estava atualizado e a API não — verificar os DOIS depois de cada push, eles divergem.**
-- [x] ~~Admin/Worker em serviços separados~~ — **DESMONTADOS em 2026-09-12, por decisão de custo.** Criados como 2 serviços pagos (`Concierge-Collector-Admin` + `-Admin-Worker`) e no mesmo dia fundidos no serviço da API: 3 instâncias pagas para um sistema sem clientes não se justificava. Agora o web service da API roda **três processos em um container** (nginx roteia a porta única):
+- [x] ~~Admin/Worker em serviços separados~~ — **DESMONTADOS em 2026-09-12, por decisão de custo.** Criados como 2 serviços pagos (`Concierge-Collector-Admin` + `-Admin-Worker`) e no mesmo dia fundidos no serviço da API: 3 instâncias pagas para um sistema sem clientes não se justificava. O web service da API roda **três processos em um container** (nginx roteia a porta única):
   ```
   /api/v3, /capture, /            -> uvicorn (FastAPI)
-  /admin, /_next, /api/<não-v3>   -> next    (Payload)
-  jobs:run (sem porta)            -> payload jobs: filas + agendamentos
+  /admin, /_next, /api/<não-v3>   -> next    (Payload + runner de jobs in-process)
+  porta pública                   -> nginx   (o único alcançável de fora)
   ```
+  Entre 2026-09-12 e 2026-09-17 eram quatro, com `payload jobs:run` como processo próprio; o runner foi
+  absorvido pelo processo do Next (ver a nota datada de 2026-09-17, acima).
   `Dockerfile` na raiz + `deploy/{nginx.conf.template,supervisord.conf,entrypoint.sh}`. `Dockerfile.admin` foi removido. Os dois serviços antigos e o domínio `admin.*` foram deletados do Render; **resta 1 web service pago** (`starter`) + o static site (free).
   - Ganho colateral: **o DNS deixou de ser bloqueio** — não existe mais `admin.concierge-collector.com`, o Collector fala com `https://api.concierge-collector.com/api/admin/v1/...` (host que já tinha TLS e CORS).
   - Verificado após a fusão: `/api/v3/health`, `/api/v3/ready`, `/api/v3/docs`, `/capture/`, `/admin`, `/health`, `/ready` todos 200; `/api/admin/v1/collections` → 401 `authentication_required` (gate ativo, não 503); smoke da API **zero 5xx**; heartbeat do runner a cada 1min e jobs novos (`reconcile-leases`, `sync-consumer-usage`) sem erro dentro do container.
   - ⚠️ **Duas opções do nginx existem para não perder/corromper dado:** `proxy_buffering off` em `/api/v3` (a API faz streaming — NDJSON de export e proxy de fotos; bufferizar transforma stream em memória) e `client_max_body_size 100m` (IA recebe áudio/imagem em base64; o default de 1m recusaria).
-  - ⚠️ O runner de jobs é processo próprio, **não** `jobs.autoRun`: `jobs:run --handle-schedules` também CRIA os agendados (heartbeat, reconciliação, retenção); `autoRun` só drena filas, então trocar pararia os agendados em silêncio.
-  - ⚠️ Com 1 instância o runner não duplica; se o serviço escalar para N instâncias, os jobs passam a rodar N vezes (as leases do Payload protegem a correção, mas o custo de execução multiplica). Revisitar antes de escalar horizontalmente.
+  - ⚠️ O runner de jobs **não** é `jobs.autoRun`: `jobs:run --handle-schedules` também CRIA os agendados (heartbeat, reconciliação, retenção); `autoRun` só drena filas, então trocar pararia os agendados em silêncio. Desde 2026-09-17 ele roda **dentro do processo do Next** (`apps/admin/instrumentation.ts` → `src/jobs/inProcessRunner.ts`), não como processo próprio — `CMS_JOBS_INPROCESS=false` reverte para o programa dedicado.
+  - ⚠️ Com 1 instância o runner não duplica — e desde 2026-09-17 o flag de "já iniciei" vive no `globalThis`, então reavaliar o módulo do hook (dev/HMR) também não cria uma segunda cadeia no mesmo processo. Se o serviço escalar para N instâncias, os jobs passam a rodar N vezes (as leases do Payload protegem a correção, mas o custo de execução multiplica). Revisitar antes de escalar horizontalmente.
 - [x] ~~Migrations do Payload pendentes~~ — 11/11 APLICADAS em 2026-09-12 (banco novo). Três bloqueios reais apareceram e foram corrigidos:
   1. `Module not found: '@concierge/fastapi-client'` — o `dist` do client é gerado e cai no `.dockerignore`; a imagem nunca o gerava. Corrigido com `npm run generate && npm run build` do workspace `fastapi-client` antes do build do admin.
   2. `next start --hostname 0.0.0.0 10000` → `Invalid project directory` — `npm run start:admin -- --port N` não repassa a flag (o script interno é outro `npm run`, sem `--`). Agora `next` lê `PORT` do ambiente.
