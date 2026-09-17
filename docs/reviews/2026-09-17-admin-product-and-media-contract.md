@@ -222,3 +222,53 @@ Provas de produção deste passe (deploy `1546afc6`, `deploy_ended succeeded` à
 - o ciclo gravação↔leitura continua coberto no unit (`test_vencedor_do_site_persiste_a_url_da_imagem`
   resolve e depois lê o mesmo documento), que é exatamente o risco da regra nova;
 - a cópia nova do KPI está no bundle servido (`6058-b0495e2fd2428333.js`).
+
+---
+
+## 10. Terceiro passe: o runner in-process e o log de produção
+
+Dois defeitos apareceram ao **ler o log de produção** para conferir o deploy — nenhum deles visível em
+teste ou em build verde.
+
+### 10.1 O filtro de redação quebrava a linha de acesso (e o log inteiro)
+
+Sintoma medido em produção e reproduzido local com o uvicorn real: **cada requisição** imprimia ~30
+linhas de traceback no stderr.
+
+```
+--- Logging error ---
+  File ".../uvicorn/logging.py", line 99, in formatMessage
+ValueError: not enough values to unpack (expected 5, got 0)
+```
+
+`SecretRedactionFilter` (em `app/core/observability.py`) rodava sobre `record.msg = getMessage()` e
+zerava `record.args`. O `AccessFormatter` do uvicorn **desempacota** esses args
+(`client, método, path, http_version, status`), e o filtro vive nos HANDLERS — inclusive no handler do
+access log. Resultado: a linha de acesso, que é a primeira coisa que se lê num incidente, não existia,
+e o volume de traceback empurrava qualquer outra linha para fora da janela de logs. As linhas de boot
+também saíam sem formatar (`Started server process [%d]`, `Uvicorn running on %s://%s:%d`).
+
+A correção mantém a redação **preservando a forma**: `msg` continua o formato e `args` mantém tupla e
+comprimento. Cada argumento é redigido; números passam intactos porque `%d`/`%f` exigem número (o status
+do access log é `int` e o formatter chama `int()` nele). Argumento não-string é redigido por `str()`: a
+URL com `?key=` vive dentro do texto da exceção (`auth.py`, `og_image_service.py`), e um filtro que só
+olhasse `str` devolveria justamente o argumento mais propenso a carregar segredo.
+
+Prova local (uvicorn real, 5 requisições): zero `Logging error`, linha de acesso presente e com o
+segredo redigido — `INFO: 127.0.0.1:55055 - "GET /api/v3/health[REDACTED] HTTP/1.1" 200 OK`. Prova em
+produção depois do deploy, na janela do boot: **0 tracebacks, 40 linhas de acesso**, `Uvicorn running on
+http://127.0.0.1:8000` formatado. Dois testes com dentes: o filtro antigo falha o caso do access log (o
+handler cai no `handleError`) e um filtro que só redige `str` falha o caso da exceção.
+
+### 10.2 O runner de jobs podia subir DUAS vezes
+
+`instrumentation.register()` pode rodar mais de uma vez (dev/HMR re-avalia o módulo do hook; o Next pode
+ter mais de um contexto de servidor). O flag era `let started` no módulo, então a re-avaliação nascia
+zerada e criava uma SEGUNDA cadeia recursiva de ciclos no mesmo processo — duas drenando a mesma fila, no
+processo que também renderiza. Agora o flag vive no `globalThis` (chave símbolo), e a suíte do runner
+limpa o flag nos hooks, porque ele passou a ser estado de processo.
+
+Prova em produção (restart controlado, janela do boot): **exatamente uma** linha
+`[jobs] runner in-process ativo (intervalo 60000ms, até 10 jobs/ciclo, sequencial)`, zero
+`runner in-process desligado`, e `CMS_JOBS_INPROCESS` ausente do ambiente (o default é ligado). Ou seja:
+o runner in-process está mesmo no ar, e sobe uma vez.
