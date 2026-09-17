@@ -146,6 +146,8 @@ coverage/
 .vitest/
 /apps/admin/playwright-report/
 /apps/admin/test-results/
+/e2e/authoring/playwright-report/
+/e2e/authoring/test-results/
 
 ############################
 # LOGS

@@ -1,9 +1,0 @@
-/* Vazio por desenho. O que este arquivo descrevia saiu da UI:
-   `explorer-saved-views*` (virou o menu de views salvas da lista, em
-   curations-admin.css), `selection-toolbar*` (é `curations-selection-toolbar`,
-   na classe do componente que a renderiza) e a tabela virtualizada caseira
-   (`curation-table*`), substituída pelo `DataTable` do kit em kit.css.
-   Nenhuma das três famílias de classe tem referência em tsx/ts.
-
-   A linha de import vive em `app/(payload)/layout.tsx`, que é de outro dono:
-   apagar o arquivo antes de remover o import quebra o build. */

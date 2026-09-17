@@ -359,7 +359,7 @@ export function ApplicationViews() {
   return (
     <AdminPage
       eyebrow="Distribution"
-      title="Consumer applications"
+      title="Applications"
       description="Grant each consumer only the Collections it needs. Credentials are individually revocable and their secrets are never stored in the CMS."
     >
       {notice && (
@@ -407,8 +407,8 @@ export function ApplicationViews() {
             />
           ) : applications.length === 0 ? (
             <EmptyState
-              description="Create an application to issue scoped credentials for published Collections."
-              title="No consumer applications yet"
+              description="Create an Application to issue scoped credentials for published Collections."
+              title="No Applications yet"
             />
           ) : (
             <ul className="applications-list">

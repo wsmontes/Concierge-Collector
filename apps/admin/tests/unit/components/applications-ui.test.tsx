@@ -40,8 +40,8 @@ test('renders an explicit empty state when there are no consumer applications', 
   stubAdminFetch([])
   render(<ApplicationViews />)
 
-  expect(await screen.findByLabelText('No consumer applications yet')).toBeVisible()
-  expect(screen.getByText('Create an application to issue scoped credentials for published Collections.')).toBeVisible()
+  expect(await screen.findByLabelText('No Applications yet')).toBeVisible()
+  expect(screen.getByText('Create an Application to issue scoped credentials for published Collections.')).toBeVisible()
 })
 
 test('renders application health as a semantic status pill', async () => {

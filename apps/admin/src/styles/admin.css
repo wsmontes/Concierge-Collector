@@ -1,6 +1,26 @@
-/* The limestone/olive ramp lives in @concierge/design-tokens so the
-   Collector can project the same values into styles/tokens.generated.css.
-   Only Payload's --theme-* mapping stays product-specific. */
+/*
+ * Cola do Admin com o Payload.
+ *
+ * Purpose: o que o Payload exige e nada mais — as famílias da marca no lugar da
+ * pilha do sistema, o foco visível, o alvo de toque e o alvo do contraste. O
+ * vocabulário de produto vive em `theme.css` (tokens), `kit.css` (componentes) e
+ * `shell-admin.css` (casca); cada tela tem o seu.
+ *
+ * Este arquivo tinha 619 linhas e 73 regras que ninguém mais usava: `.admin-page*`,
+ * `.admin-section*`, `.admin-notice*`, `.admin-empty-state`, `.application-views*`,
+ * `.collection-views*`, `.bulk-dialog*`, `.credential-dialog*`, `.job-drawer*`,
+ * `.job-row*` e `.curation-table*`. Todas foram substituídas pelo kit quando as
+ * telas migraram (`ui-page`, `ui-section`, `ui-notice`, `ui-empty`, `ui-dialog`,
+ * `ui-drawer`, `ui-table`) — e ficaram para trás como peso morto no bundle e como
+ * uma segunda verdade sobre a mesma aparência. A guarda de CSS morto do repo
+ * (`tests/test_design_tokens_parity.test.js`) não olha classes, mas o build do
+ * Admin agora serve só o que está em uso.
+ *
+ * Dependencies: `@concierge/design-tokens` (cores e escala) e a projeção em px,
+ * ambas importadas aqui — nesta ordem, e antes de `theme.css`, que é quem mapeia
+ * `--theme-*` para o Payload.
+ */
+
 @import '@concierge/design-tokens/css';
 /* Depois do pacote, de propósito: a cópia em px precisa vencer os passos em rem.
    Payload declara `html { font-size: 13px }` e rem resolve contra o root, então
@@ -19,22 +39,19 @@
   --cms-font-mono: var(--font-mono-loaded), 'JetBrains Mono', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
 
   /* O corpo do Admin usa DM Sans (o texto do Collector também). O Payload define
-     a fonte em `--font-body`; apontamos para a escala compartilhada em vez de
-     deixar a pilha do sistema. */
+     a fonte em `--font-body`, e o mapeamento precisa ficar FORA de camada: o
+     Payload declara `--font-body` fora de `@layer`, e uma declaração em camada
+     perderia para ele. */
   --font-body: var(--cms-font-sans);
 }
 
-
-/* Títulos de página e de seção falam a serifada da marca — o MESMO par
-   tipográfico que o Collector usa em "Collector"/nomes de restaurante. É o que
-   dá identidade ao Admin em vez de cara de painel genérico. */
 body {
   font-family: var(--cms-font-sans);
 }
 
-.admin-page__title,
-.collection-views__title,
-.cms-brand,
+/* Títulos de página e a marca falam a serifada — o MESMO par tipográfico que o
+   Collector usa em "Collector"/nomes de restaurante. `h1` continua aqui porque
+   também alcança as telas NATIVAS do Payload, que não passam pelo kit. */
 h1 {
   font-family: var(--cms-font-display);
   font-weight: 600;
@@ -49,571 +66,33 @@ h1 {
   letter-spacing: -0.02em;
 }
 
-/* Shared product vocabulary. Payload owns the primitive controls; these
-   classes only establish Concierge information hierarchy and spacing. */
-.admin-page {
-  display: grid;
-  gap: var(--cms-spacing-5);
-  margin: 0 auto;
-  /* Antes: 1280px fixos. Duas consequências medidas: a 1440 o conteúdo deixava
-     ~8% da largura sem uso, e a lista de Curations — cujas trilhas somam ~1436px
-     — transbordava SEMPRE, porque o container era mais estreito que a própria
-     tabela. O teto agora acompanha a tela até 1760 (acima disso a linha de
-     leitura fica longa demais para uma tabela de dados) e o padding cresce um
-     pouco em telas largas. */
-  max-width: min(1760px, 100%);
-  min-width: 0;
-  padding: clamp(var(--cms-spacing-3), 2vw, var(--cms-spacing-8));
-  width: 100%;
-}
-
-.admin-page__header {
-  align-items: flex-start;
-  border-bottom: 1px solid var(--theme-border-color);
-  display: flex;
-  gap: var(--cms-spacing-5);
-  justify-content: space-between;
-  padding-bottom: var(--cms-spacing-4);
-}
-
-.admin-page__heading {
-  display: grid;
-  gap: var(--cms-spacing-1);
-  max-width: 52rem;
-}
-
-.admin-page__heading h1,
-.admin-page__heading p {
-  margin: 0;
-}
-
-.admin-page__heading h1 {
-  /* O Collector (produto de referência) declara `h1 { font-size: var(--text-4xl) }`
-     — 36px, o mesmo passo desta escala. O clamp em rem rendia 29.25px aqui: além
-     de fora da escala, 19% menor que a intenção, porque o root do Payload é 13px. */
-  font-size: var(--cms-text-4xl);
-  letter-spacing: -0.025em;
-  line-height: 1.08;
-}
-
-.admin-page__description {
-  color: var(--cms-olive-600);
-  line-height: 1.55;
-  max-width: 46rem;
-}
-
-.admin-page__eyebrow,
-.collection-views__eyebrow {
-  color: var(--cms-olive-700);
-  font-size: var(--cms-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-
-.admin-page__actions {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-2);
-  justify-content: flex-end;
-}
-
-.admin-page__actions > * {
-  margin: 0;
-}
-
-.admin-page__body {
-  display: grid;
-  gap: var(--cms-spacing-4);
-  min-width: 0;
-}
-
-.admin-section {
-  display: grid;
-  gap: var(--cms-spacing-3);
-  min-width: 0;
-}
-
-.admin-section__header {
-  align-items: flex-end;
-  display: flex;
-  gap: var(--cms-spacing-3);
-  justify-content: space-between;
-}
-
-.admin-section__header h2,
-.admin-section__header p {
-  margin: 0;
-}
-
-.admin-section__header h2 {
-  font-size: var(--cms-text-base);
-}
-
-.admin-section__header p {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-  margin-top: var(--cms-spacing-0-5);
-}
-
-.admin-section__action > * {
-  margin: 0;
-}
-
-.admin-section__body {
-  min-width: 0;
-}
-
+/* Wrapper do `StatusPill`: o chip em si é do kit; aqui só o alinhamento na
+   célula, que é onde a pílula convive com texto e números. */
 .admin-status {
   display: inline-flex;
   vertical-align: middle;
 }
 
-.admin-empty-state {
-  align-items: center;
-  background: var(--theme-elevation-50);
-  border: 1px dashed var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  display: flex;
-  gap: var(--cms-spacing-5);
-  justify-content: space-between;
-  min-height: 8rem;
-  padding: var(--cms-spacing-5);
-}
-
-.admin-empty-state h2,
-.admin-empty-state p {
-  margin: 0;
-}
-
-.admin-empty-state h2 {
-  font-size: var(--cms-text-base);
-}
-
-.admin-empty-state p {
-  color: var(--cms-olive-600);
-  margin-top: var(--cms-spacing-1);
-}
-
-.admin-empty-state__action > * {
-  margin: 0;
-}
-
-.admin-notice {
-  align-items: center;
-  background: var(--theme-elevation-50);
-  border: 1px solid var(--theme-border-color);
-  border-left-width: 4px;
-  border-radius: var(--cms-radius-md);
-  display: flex;
-  gap: var(--cms-spacing-3);
-  justify-content: space-between;
-  padding: var(--cms-spacing-2-5) var(--cms-spacing-3);
-}
-
-.admin-notice--info {
-  border-left-color: var(--cms-olive-500);
-}
-
-.admin-notice--success {
-  border-left-color: var(--theme-success-500);
-}
-
-.admin-notice--warning {
-  border-left-color: var(--theme-warning-500, var(--cms-olive-700));
-}
-
-.admin-notice--error {
-  border-left-color: var(--theme-error-500, var(--cms-olive-900));
-}
-
-.admin-notice__content {
-  min-width: 0;
-}
-
-.admin-notice__content > :first-child {
-  margin-top: 0;
-}
-
-.admin-notice__content > :last-child {
-  margin-bottom: 0;
-}
-
-.admin-notice__action {
-  flex: 0 0 auto;
-}
-
-.admin-notice__action > * {
-  margin: 0;
-}
-
-.collection-views {
-  display: grid;
-  gap: var(--cms-spacing-3);
-  margin: 0 auto;
-  /* 1400 (era 1100): a revisão de Collection tem member list, diff de draft e
-     versões — três listas que ganham com a largura e não sofrem com linha longa,
-     diferente de um parágrafo corrido. */
-  max-width: min(1400px, 100%);
-  padding: var(--cms-spacing-5);
-}
-
-.collection-views__header {
-  align-items: start;
-  display: flex;
-  gap: var(--cms-spacing-3);
-  justify-content: space-between;
-}
-
-.collection-views__header h1,
-.collection-views__header p {
-  margin: 0;
-}
-
-.collection-views [role='tablist'] {
-  border-bottom: 1px solid var(--theme-border-color);
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-1);
-}
-
-.collection-views [role='tab'] {
-  background: transparent;
-  border: 0;
-  color: var(--theme-text);
-  padding: var(--cms-spacing-1-5) var(--cms-spacing-2-5);
-}
-
-.collection-views [role='tab'][aria-selected='true'] {
-  border-bottom: 3px solid var(--cms-olive-700);
-  font-weight: 700;
-}
-
-.collection-views__panel {
-  background: var(--theme-elevation-50);
-  border: 1px solid var(--theme-border-color);
-  padding: var(--cms-spacing-3);
-}
-
-/* `.application-views` NÃO declara moldura: display/gap/largura/padding vêm de
-   `.admin-page` (regra única). Havia duas molduras concorrentes aqui — 1100px
-   nesta regra e 1280px em distribution-admin.css — sobre o MESMO elemento. */
-
-.application-views header h1,
-.application-views header p,
-.application-views__create h2,
-.application-views section > h2 {
-  margin-top: 0;
-}
-
-.application-views form {
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  max-width: 600px;
-}
-
-.application-views label {
-  display: grid;
-  gap: var(--cms-spacing-1);
-  font-weight: 600;
-}
-
-.application-views input,
-.application-views textarea {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  color: var(--theme-text);
-  padding: var(--cms-spacing-2);
-}
-
-.application-views__list {
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.application-views__list li {
-  align-items: center;
-  background: var(--theme-elevation-50);
-  border: 1px solid var(--theme-border-color);
-  display: flex;
-  gap: var(--cms-spacing-3);
-  justify-content: space-between;
-  padding: var(--cms-spacing-3);
-}
-
-.application-views__list h3,
-.application-views__list p {
-  margin: 0;
-}
-
-.application-views__credentials {
-  display: grid;
-  gap: var(--cms-spacing-1-5);
-  grid-column: 1 / -1;
-  list-style: none;
-  margin: 0;
-  padding: var(--cms-spacing-2-5) 0 0;
-}
-
-.application-views__credentials li {
-  background: transparent;
-  border: 0;
-  border-top: 1px solid var(--theme-border-color);
-  padding: var(--cms-spacing-1-5) 0 0;
-}
-
-.credential-dialog-backdrop {
-  align-items: center;
-  background: rgb(24 38 24 / 55%);
-  display: flex;
-  inset: 0;
-  justify-content: center;
-  padding: var(--cms-spacing-3);
-  position: fixed;
-  z-index: 100;
-}
-
-.credential-dialog {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  max-width: 620px;
-  padding: var(--cms-spacing-5);
-}
-
-.credential-dialog__secret {
-  background: var(--cms-olive-900);
-  color: var(--cms-limestone-50);
-  display: block;
-  overflow-wrap: anywhere;
-  padding: var(--cms-spacing-2-5);
-}
-
-
-
-.selection-toolbar {
-  align-items: center;
-  background: var(--cms-limestone-100);
-  border: 1px solid var(--theme-border-color);
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-2-5);
-  padding: var(--cms-spacing-2-5);
-}
-
-.selection-toolbar p {
-  margin: 0;
-}
-
-.selection-toolbar__hint {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-}
-
-.curation-table {
-  border: 1px solid var(--theme-border-color);
-}
-
-.curation-table__header,
-.curation-table__row {
-  align-items: center;
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  grid-template-columns: 2.5rem minmax(14rem, 2fr) minmax(6rem, 0.75fr) minmax(8rem, 1fr) minmax(8rem, 1fr);
-  padding: 0 var(--cms-spacing-2-5);
-}
-
-.curation-table__header {
-  background: var(--cms-limestone-100);
-  font-size: var(--cms-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  min-height: 40px;
-  text-transform: uppercase;
-}
-
-.curation-table__row {
-  border-top: 1px solid var(--cms-limestone-200);
-}
-
-.curation-table__row[data-active='true'] {
-  background: var(--cms-limestone-100);
-  box-shadow: inset 0 0 0 1px var(--cms-olive-700);
-}
-
-.curation-table:focus-visible {
-  outline: 2px solid var(--cms-olive-500);
-  outline-offset: -2px;
-}
-
+/* Um anel de foco para todo controle do Admin, inclusive os do Payload. O kit
+   repete a regra para o que ele mesmo renderiza; aqui ela cobre o resto. */
 :where(a, button, input, select, textarea):focus-visible {
-  outline: 2px solid var(--cms-olive-500);
+  outline: 2px solid var(--cms-accent);
   outline-offset: 2px;
 }
 
-:where(a, button, input, select, textarea) {
-  min-height: 40px;
+/* Alvo de toque: o mínimo de 40px vale no ponteiro impreciso, não no desktop. */
+@media (pointer: coarse) {
+  :where(a, button, input, select, textarea) {
+    min-height: var(--cms-control-height);
+  }
 }
 
+/* Alto contraste: as bordas e a tinta secundária saem do tom de fundo e vão para
+   o máximo da rampa. Vale só o que o Payload desenha; o kit trata o tema inteiro
+   em `theme.css` (lá o override cobre `--cms-border-*` e `--cms-fg-*`). */
 @media (prefers-contrast: more) {
   :root {
     --theme-border-color: var(--cms-olive-900);
+    --theme-text: var(--cms-olive-900);
   }
-}
-
-@media (max-width: 720px) {
-  .admin-page__header,
-  .admin-section__header,
-  .admin-empty-state,
-  .admin-notice {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .admin-page__actions {
-    justify-content: flex-start;
-  }
-}
-
-.selection-toolbar__apply {
-  margin-left: auto;
-}
-
-.job-drawer {
-  background: var(--theme-elevation-0);
-  border-left: 1px solid var(--theme-border-color);
-  display: flex;
-  flex-direction: column;
-  gap: var(--cms-spacing-2-5);
-  inset-block: 0;
-  overflow-y: auto;
-  padding: var(--cms-spacing-4);
-  position: fixed;
-  right: 0;
-  width: min(26rem, 100vw);
-  z-index: 90;
-}
-
-.job-drawer__header {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-}
-
-.job-drawer__header h2 {
-  margin: 0;
-}
-
-.job-drawer__list {
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.job-row {
-  background: var(--cms-limestone-100);
-  border: 1px solid var(--theme-border-color);
-  display: grid;
-  gap: var(--cms-spacing-1-5);
-  padding: var(--cms-spacing-2-5);
-}
-
-.job-row__main p {
-  margin: 0;
-}
-
-.job-row__title {
-  font-weight: 700;
-}
-
-.job-row__progress,
-.job-row__summary {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-}
-
-.job-row__actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.bulk-dialog-backdrop {
-  align-items: center;
-  background: rgb(24 38 24 / 55%);
-  display: flex;
-  inset: 0;
-  justify-content: center;
-  padding: var(--cms-spacing-3);
-  position: fixed;
-  z-index: 100;
-}
-
-.bulk-dialog {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  display: grid;
-  gap: var(--cms-spacing-3);
-  max-height: min(80vh, 42rem);
-  max-width: 560px;
-  overflow-y: auto;
-  padding: var(--cms-spacing-5);
-  width: 100%;
-}
-
-.bulk-dialog__header {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-}
-
-.bulk-dialog__header h2 {
-  margin: 0;
-}
-
-.bulk-dialog__hint {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-  margin: 0;
-}
-
-.bulk-dialog__action {
-  border: 1px solid var(--theme-border-color);
-  display: flex;
-  gap: var(--cms-spacing-3);
-  margin: 0;
-  padding: var(--cms-spacing-2-5);
-}
-
-.bulk-dialog__collections {
-  display: grid;
-  gap: var(--cms-spacing-1);
-  list-style: none;
-  margin: 0;
-  max-height: 16rem;
-  overflow-y: auto;
-  padding: 0;
-}
-
-.bulk-dialog__collections label {
-  align-items: baseline;
-  display: grid;
-  gap: var(--cms-spacing-1-5);
-  grid-template-columns: 1.5rem 1fr;
-  padding: var(--cms-spacing-1) 0;
-}
-
-.bulk-dialog__collection-meta {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-xs);
-  grid-column: 2;
-}
-
-.bulk-dialog__footer {
-  display: flex;
-  justify-content: flex-end;
 }
