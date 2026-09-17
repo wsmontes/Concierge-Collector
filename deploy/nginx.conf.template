@@ -3,7 +3,9 @@
 # Um container, uma porta (a que o Render injeta em $PORT), três processos:
 #   FastAPI (uvicorn, 127.0.0.1:8000) — superfície inteira sob /api/v3 (+ /capture, /)
 #   Payload/Admin (Next, 127.0.0.1:3000) — admin em /admin, REST em /api/*
-#   Worker de jobs (payload jobs:run) — sem porta
+#     (o runner de jobs vive DENTRO deste processo: o worker dedicado saiu do
+#      container em 2026-09-17 — ver apps/admin/src/jobs/inProcessRunner.ts)
+#   nginx (esta configuração) — a única porta pública
 #
 # Por que nginx e não um proxy escrito à mão: a API faz STREAMING (NDJSON de
 # export e imagens do proxy de fotos). Um proxy ingênuo que bufferiza a resposta

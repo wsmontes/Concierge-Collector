@@ -217,6 +217,17 @@ Alavancas NOSSAS, aplicadas (medidas no código, não estimadas):
 mais memória (`standard`, 2 GB) ou menos processos no mesmo container — decisão de custo do usuário.
 Ordem de grandeza dos quatro processos: Next ~200 MB, runner de jobs ~150 MB, uvicorn ~100 MB, nginx ~10 MB.
 
+**2026-09-17 — o quarto processo saiu.** O worker de jobs dedicado (`payload jobs:run`) foi eliminado do
+container: o runner vive agora DENTRO do processo do Next (`apps/admin/src/jobs/inProcessRunner.ts`, ligado
+por `apps/admin/instrumentation.ts`; `CMS_JOBS_INPROCESS=false` reverte). Ele mantinha uma segunda cópia de
+config + mongoose só para drenar fila. Ou seja: a ordem de grandeza acima perdeu a linha "runner de jobs
+~150 MB", e o número de processos caiu de quatro para três (uvicorn + Next + nginx).
+
+O que **não** está medido é a folga resultante sob carga: a evidência de produção é um pico de 430 MB
+durante o passe de mídia (com o runner já in-process) e 228-320 MB em janela pós-restart, sem OOM desde a
+mudança. A recomendação de subir para `standard` continua de pé até existir uma medição de carga a 512 MB —
+subir teto de heap ou instância sem essa prova é trocar um OOM por algo que ninguém verificou.
+
 Duas medidas, e o que cada uma resolve:
 
 - **Aplicado**: teto de heap V8 nos dois processos Node (`NODE_OPTIONS=--max-old-space-size`, 200 MiB

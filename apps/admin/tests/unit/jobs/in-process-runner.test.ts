@@ -172,10 +172,10 @@ describe('runner de jobs in-process', () => {
   })
 
   test('módulo reavaliado no mesmo processo não cria uma segunda cadeia', async () => {
-    // `register()` roda mais de uma vez (dev/HMR re-avalia o hook; o Next pode
-    // ter mais de um contexto de servidor). Com o flag guardado só no módulo, a
-    // re-avaliação traria um `let` zerado e uma SEGUNDA cadeia recursiva drenando
-    // a mesma fila no processo que também renderiza.
+    // `register()` roda mais de uma vez quando o Next re-avalia o módulo do hook
+    // (dev/HMR, e um novo boot do runtime no mesmo processo). Com o flag guardado
+    // só no módulo, a re-avaliação traria um `let` zerado e uma SEGUNDA cadeia
+    // recursiva drenando a mesma fila no processo que também renderiza.
     const jobs: JobSpy = { handleSchedules: vi.fn(async () => ({})), run: vi.fn(async () => ({})) }
     getPayload.mockReset()
     getPayload.mockResolvedValue(payloadWith(jobs))

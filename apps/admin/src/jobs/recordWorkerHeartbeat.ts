@@ -8,8 +8,13 @@ type RecordWorkerHeartbeatTask = {
 const scheduledWorkerId = process.env.CMS_WORKER_ID?.trim() || 'cms-admin-worker'
 
 /**
- * Persists worker liveness through Payload's official task runner. The web
- * process never calls this handler: only `payload jobs:run` owns execution.
+ * Persists worker liveness through Payload's official task runner.
+ *
+ * Quem executa é o RUNNER de jobs — processo dedicado ou o runner in-process
+ * dentro do Admin (`src/jobs/inProcessRunner.ts`, desde que o worker dedicado
+ * saiu do container). O que a frase antiga ("o processo web nunca chama este
+ * handler") protegia continua valendo: um request de página não executa task —
+ * só `payload.jobs.run()` drena a fila, e a liveness vem de lá.
  */
 export const recordWorkerHeartbeat: TaskConfig<RecordWorkerHeartbeatTask> = {
   slug: 'record-worker-heartbeat',
