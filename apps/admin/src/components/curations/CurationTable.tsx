@@ -218,9 +218,20 @@ export function CurationTable({
       .map((_row, index) => ({ index, size: rowHeight, start: index * rowHeight })))
   const first = visible[0]
   const last = visible[visible.length - 1]
-  const windowRows = visible.map((item) => rows[item.index]).filter((row): row is AdminCurationRow => row !== undefined)
-  const paddingTop = first ? first.start : 0
-  const paddingBottom = last ? Math.max(0, virtualizer.getTotalSize() - (last.start + last.size)) : 0
+  // MODO CARTÃO: sem virtualização, e TODAS as linhas. O virtualizador mede
+  // alturas contra uma linha de tabela de altura fixa; no modo cartão cada linha
+  // é um bloco de altura variável, então a janela que ele devolve não representa
+  // o que está na tela. O fallback anterior era uma lista VAZIA quando empilhado
+  // — medido em produção a 390px: cabeçalho e rodapé ("100 loaded") renderizavam
+  // e nenhuma linha aparecia, com o estado vazio por cima. A página é limitada a
+  // 100 linhas, que é o teto que o modo cartão renderiza direto.
+  const windowRows: AdminCurationRow[] = stacked
+    ? [...rows]
+    : visible.map((item) => rows[item.index]).filter((row): row is AdminCurationRow => row !== undefined)
+  const paddingTop = stacked || !first ? 0 : first.start
+  const paddingBottom = stacked || !last
+    ? 0
+    : Math.max(0, virtualizer.getTotalSize() - (last.start + last.size))
 
   /**
    * A janela virtual é menor que a página: quando o teclado chega à borda, o

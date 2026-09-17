@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { CurationTable } from '../../../../src/components/curations/CurationTable'
 import { makeRows } from '../../../support/factories'
 
@@ -60,5 +60,33 @@ describe('CurationTable columns', () => {
     expect(container.querySelector('tr[data-row] td[data-label="Curator"]')).toHaveTextContent('Wagner Montes')
     expect(container.querySelector('tr[data-row] td[data-label="Transcript"]')).toHaveTextContent('Yes')
     expect(container.querySelector('tr[data-row] td[data-label="Updated"]')).toHaveTextContent('2 hours ago')
+  })
+})
+
+
+describe('CurationTable no modo cartão', () => {
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  test('renderiza TODAS as linhas da página, não uma janela vazia', () => {
+    // Medido em produção a 390px: cabeçalho e rodapé ("100 loaded") renderizavam e
+    // NENHUMA linha aparecia — o fallback da janela virtual era uma lista vazia
+    // quando empilhado, e o estado vazio cobria a tabela. A virtualização mede
+    // alturas contra uma linha de altura fixa; no modo cartão cada linha é um
+    // bloco de altura variável, então a janela não representa a tela.
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('900px'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }))
+
+    const { container } = render(<CurationTable columns={['curation', 'city']} height={600} rows={makeRows(40)} />)
+
+    expect(container.querySelectorAll('tr[data-row]')).toHaveLength(40)
+    // Sem espaçadores: no modo cartão não há altura virtual a reservar.
+    expect(container.querySelectorAll('.ui-table__spacer')).toHaveLength(0)
   })
 })
