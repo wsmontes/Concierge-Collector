@@ -430,14 +430,29 @@ seguinte **reinicia** o anterior, e entre elas está:
 |`02c8a05e`|só documentação|Admin redeployou (cancelado pelo próximo)|
 |`82b378d0`|só documentação|Admin redeployou|
 
-O Admin e a API vivem no MESMO container (nginx → Next em 127.0.0.1:3000), e o boot dele leva ~90s em
-produção — medido hoje: `/admin/login` respondeu 502 por ~90s logo após `deploy_ended`, e voltou a 200 sem
-intervenção. Ou seja: **cada push compra ~90s de 502 em produção**, mesmo quando o commit é um `.md`.
+Causa-raiz, lida do campo real do serviço (topo do JSON, **não** em `serviceDetails` — procurar lá devolve
+ausência e parece "desligado"): `autoDeploy = yes`, `autoDeployTrigger = commit`, `branch = main`, sem
+`buildFilter`. Todo commit em `main` deploya.
 
-Consequência prática (regra): **agrupe edições de doc com o próximo commit funcional** em vez de publicá-las
-sozinhas. O static site também rebuilda a cada push, mas é atômico — não tem janela de boot; quem sofre é o
-container fusionado. O conserto durável (filtro por caminho ou auto-deploy desligado para doc) é configuração
-de dashboard/Render, não código — decisão do usuário.
+O Admin e a API vivem no MESMO container (nginx → Next em 127.0.0.1:3000), com boot de ~90s em produção.
+**Mas o 502 NÃO é garantido a cada deploy** — as duas medições divergem e é isso que vale registrar:
+
+|Observação|Resultado|
+|---|---|
+|Deploy de 2026-09-16 (~23:04)|`/admin/login` em 502 por ~90s (3 probes), depois 200 sem intervenção|
+|Deploy de 2026-09-17 03:40 (`15b1fac0`), medido DURANTE o `update_in_progress`|`/admin/login` **200**|
+
+Ou seja: o rollout normalmente mantém a instância antiga servindo enquanto a nova sobe; a janela de 502
+aparece quando isso não acontece (aqui, sem causa isolada). O que **está** provado é o gatilho: deploys
+frequentes e ilimitados, inclusive para `.md`.
+
+Consequência prática (regra): **agrupe edições de doc com o próximo commit funcional**. O static site
+também rebuilda a cada push, mas é atômico.
+
+Conserto durável: `buildFilter` com `ignoredPaths` (`docs/**`, `*.md`) — settável pela API/dashboard do
+Render. **NÃO** usar `autoDeployTrigger: checksPass`: o CI do GitHub foi removido por billing, e esse
+gatilho espera checks do GitHub — sem checks, a produção pode congelar no último commit para sempre. É
+configuração de produção: decisão do usuário, não do agente.
 
 ### Flake conhecido (não investigado até o fim)
 
