@@ -262,13 +262,17 @@ handler cai no `handleError`) e um filtro que só redige `str` falha o caso da e
 
 ### 10.2 O runner de jobs podia subir DUAS vezes
 
-`instrumentation.register()` pode rodar mais de uma vez (dev/HMR re-avalia o módulo do hook; o Next pode
-ter mais de um contexto de servidor). O flag era `let started` no módulo, então a re-avaliação nascia
-zerada e criava uma SEGUNDA cadeia recursiva de ciclos no mesmo processo — duas drenando a mesma fila, no
-processo que também renderiza. Agora o flag vive no `globalThis` (chave símbolo), e a suíte do runner
-limpa o flag nos hooks, porque ele passou a ser estado de processo.
+`instrumentation.register()` pode rodar mais de uma vez quando o Next re-avalia o módulo do hook
+(dev/HMR, e um novo boot do runtime dentro do mesmo processo). O flag era `let started` no módulo, então a
+re-avaliação nascia zerada e criava uma SEGUNDA cadeia recursiva de ciclos no mesmo processo — duas
+drenando a mesma fila, no processo que também renderiza. Agora o flag vive no `globalThis` (chave símbolo),
+e a suíte do runner limpa o flag nos hooks, porque ele passou a ser estado de processo. Escopo honesto:
+`globalThis` deduplica por realm — contextos/VM separados têm globals distintos, e entre eles quem garante
+é o lease do banco (como entre duas instâncias quaisquer).
 
-Prova em produção (restart controlado, janela do boot): **exatamente uma** linha
-`[jobs] runner in-process ativo (intervalo 60000ms, até 10 jobs/ciclo, sequencial)`, zero
-`runner in-process desligado`, e `CMS_JOBS_INPROCESS` ausente do ambiente (o default é ligado). Ou seja:
-o runner in-process está mesmo no ar, e sobe uma vez.
+Prova em produção, em duas camadas. (a) Janela do boot, depois de um restart controlado: **exatamente
+uma** linha `[jobs] runner in-process ativo (intervalo 60000ms, até 10 jobs/ciclo, sequencial)`, zero
+`runner in-process desligado`, e `CMS_JOBS_INPROCESS` ausente do ambiente (o default é ligado). (b) O
+sinal que importa de verdade, e que já existia: `GET /health/worker` responde **200** com
+`observedAt` de segundos antes — esse endpoint só devolve 200 se um heartbeat foi gravado nos últimos
+180 s, e quem CRIA o agendado é o runner. Ou seja: o runner não só sobe uma vez, ele está executando.

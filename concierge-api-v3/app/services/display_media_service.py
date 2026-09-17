@@ -453,8 +453,8 @@ async def read_hero_media(entities_collection, entity: dict) -> HeroMediaRead:
         # antes deste campo existir) pouparia UMA resolução por Entity e deixaria
         # um fato órfão de origem sendo servido por até 14 dias — exatamente o
         # defeito de "derivado sem vínculo com a origem" que esta impressão veio
-        # corrigir. O acervo tem 29 fatos gravados hoje: re-resolver todos custa
-        # menos que carregar a exceção.
+        # corrigir. O custo de não abrir a exceção é uma resolução por fato
+        # legado: limitado aos que existirem, decrescente, e pago uma vez.
         _schedule_enrichment(entities_collection, entity)
         return HeroMediaRead(state=STATE_MISSING)
 

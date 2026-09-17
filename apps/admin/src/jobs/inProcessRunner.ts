@@ -66,26 +66,25 @@ export const inProcessJobsState: { lastRunAt: Date | null; lastError: string | n
 /**
  * O flag vive no `globalThis`, não no módulo.
  *
- * `register()` pode rodar mais de uma vez (dev/HMR re-avalia o módulo do hook, e
- * o Next pode ter mais de um contexto de servidor), e aí um `let` local nasceria
- * de novo — criando uma SEGUNDA cadeia recursiva de ciclos no mesmo processo,
- * cada uma drenando a fila por conta própria. O símbolo é a chave para não
- * colidir com nada de outro pacote.
+ * `register()` pode rodar mais de uma vez quando o Next re-avalia o módulo do
+ * hook (dev/HMR, e um novo boot do runtime dentro do mesmo processo), e aí um
+ * `let` local nasceria zerado — criando uma SEGUNDA cadeia recursiva de ciclos
+ * drenando a mesma fila. O símbolo é a chave para não colidir com outro pacote.
+ *
+ * Escopo: `globalThis` deduplica por realm. Contextos/VM separados têm globals
+ * distintos (e continuam sendo processos lógicos distintos — neles o lease do
+ * banco é a garantia, como entre duas instâncias quaisquer).
  */
 const STARTED = Symbol.for('concierge.admin.jobsInProcessStarted')
 
-let started = false
-
 export async function startInProcessJobs(): Promise<void> {
   const guard = globalThis as typeof globalThis & { [STARTED]?: boolean }
-  if (started || guard[STARTED]) return
-  started = true
+  if (guard[STARTED]) return
   guard[STARTED] = true
   if (process.env.CMS_JOBS_INPROCESS === 'false') {
     console.info('[jobs] runner in-process desligado por CMS_JOBS_INPROCESS=false')
     return
   }
-  started = true
 
   // Import dinâmico de propósito: `payload` (e o mongoose por trás) só existe no
   // runtime Node, e este arquivo é alcançável a partir do hook de instrumentação,
