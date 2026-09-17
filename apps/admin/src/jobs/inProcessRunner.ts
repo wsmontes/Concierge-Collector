@@ -63,10 +63,24 @@ export const inProcessJobsState: { lastRunAt: Date | null; lastError: string | n
   runs: 0,
 }
 
+/**
+ * O flag vive no `globalThis`, não no módulo.
+ *
+ * `register()` pode rodar mais de uma vez (dev/HMR re-avalia o módulo do hook, e
+ * o Next pode ter mais de um contexto de servidor), e aí um `let` local nasceria
+ * de novo — criando uma SEGUNDA cadeia recursiva de ciclos no mesmo processo,
+ * cada uma drenando a fila por conta própria. O símbolo é a chave para não
+ * colidir com nada de outro pacote.
+ */
+const STARTED = Symbol.for('concierge.admin.jobsInProcessStarted')
+
 let started = false
 
 export async function startInProcessJobs(): Promise<void> {
-  if (started) return
+  const guard = globalThis as typeof globalThis & { [STARTED]?: boolean }
+  if (started || guard[STARTED]) return
+  started = true
+  guard[STARTED] = true
   if (process.env.CMS_JOBS_INPROCESS === 'false') {
     console.info('[jobs] runner in-process desligado por CMS_JOBS_INPROCESS=false')
     return

@@ -40,14 +40,23 @@ async function startWith(jobs: JobSpy) {
   return runner
 }
 
+/**
+ * O runner marca "já iniciei" no `globalThis` (para sobreviver à re-avaliação do
+ * módulo pelo Next). O flag é estado de PROCESSO, então cada teste tem de
+ * limpá-lo — caso contrário o segundo teste desta suíte nem chegaria a iniciar.
+ */
+const RUNNER_FLAG = Symbol.for('concierge.admin.jobsInProcessStarted')
+
 beforeEach(() => {
   vi.useFakeTimers()
+  delete (globalThis as Record<symbol, unknown>)[RUNNER_FLAG]
   delete process.env.CMS_JOBS_INPROCESS
   delete process.env.CMS_JOBS_INTERVAL_MS
 })
 
 afterEach(() => {
   vi.useRealTimers()
+  delete (globalThis as Record<symbol, unknown>)[RUNNER_FLAG]
   delete process.env.CMS_JOBS_INPROCESS
   delete process.env.CMS_JOBS_INTERVAL_MS
 })
@@ -160,5 +169,28 @@ describe('runner de jobs in-process', () => {
     expect(jobs.handleSchedules).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(5_000)
     expect(jobs.handleSchedules).toHaveBeenCalledTimes(2)
+  })
+
+  test('módulo reavaliado no mesmo processo não cria uma segunda cadeia', async () => {
+    // `register()` roda mais de uma vez (dev/HMR re-avalia o hook; o Next pode
+    // ter mais de um contexto de servidor). Com o flag guardado só no módulo, a
+    // re-avaliação traria um `let` zerado e uma SEGUNDA cadeia recursiva drenando
+    // a mesma fila no processo que também renderiza.
+    const jobs: JobSpy = { handleSchedules: vi.fn(async () => ({})), run: vi.fn(async () => ({})) }
+    getPayload.mockReset()
+    getPayload.mockResolvedValue(payloadWith(jobs))
+
+    vi.resetModules()
+    const primeira = await import('../../../src/jobs/inProcessRunner')
+    await primeira.startInProcessJobs()
+
+    vi.resetModules()
+    const segunda = await import('../../../src/jobs/inProcessRunner')
+    await segunda.startInProcessJobs()
+
+    await vi.advanceTimersByTimeAsync(5_000)
+
+    expect(getPayload).toHaveBeenCalledTimes(1)
+    expect(jobs.handleSchedules).toHaveBeenCalledTimes(1)
   })
 })
