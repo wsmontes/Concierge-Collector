@@ -31,8 +31,16 @@ from app.core.security import (
     require_role,
 )
 from app.services.entity_service import upsert_entity, refresh_linked_curation_projections
+from app.services.display_media_service import (
+    IMAGE_MISSING_DETAIL,
+    NO_SOURCES_CACHE_CONTROL,
+    NO_SOURCES_DETAIL,
+    PENDING_CACHE_CONTROL,
+    STATE_NO_SOURCES,
+    extract_image_sources,
+    read_hero_media,
+)
 from app.services.og_image_service import (
-    get_og_image_bytes,
     get_restaurant_image_bytes,
     get_restaurant_images,
 )
@@ -149,19 +157,13 @@ def get_entity(
 def _extract_image_sources(doc: dict) -> tuple[Optional[str], Optional[str]]:
     """Website + place_id da entity com a MESMA cadeia tolerante dos cards
     (v3 singular + bulk plural) — endpoint agregado não pode divergir do
-    frontend no que considera fonte de imagem."""
-    data = doc.get("data") or {}
-    website = (
-        (data.get("contact") or {}).get("website")
-        or (data.get("contacts") or {}).get("website")
-        or data.get("website")
-        or None
-    )
-    # google_place_id é o shape de algumas entities bulk (37 sem
-    # data.place_id no acervo vivo) — sem ele o fallback Places não
-    # alcançava esses lugares.
-    place_id = data.get("place_id") or data.get("google_place_id") or None
-    return website, place_id
+    frontend no que considera fonte de imagem.
+
+    A implementação mora em `display_media_service.extract_image_sources`
+    porque é ela que decide o estado `no_sources` da display media: uma cadeia,
+    um dono.
+    """
+    return extract_image_sources(doc)
 
 
 @router.get("/{entity_id}/image")
@@ -178,32 +180,56 @@ async def get_entity_image(
 ):
     """Imagem agregada da entity.
 
-    Sem `rank` (ou rank=0), preserva exatamente o caminho legado de hero JPEG.
-    Ranks 1..7 usam o catálogo do collector para permitir galerias sem expor
-    URLs de origem nem a chave server-side do Google Places.
+    `rank=0` (o hero que o card usa) serve a DISPLAY MEDIA persistida: o fato
+    resolvido uma vez — referência opaca + estado — fica no documento da Entity,
+    então esta leitura NÃO redescobre a imagem (site, og:image, Places) a cada
+    card. Quando não há fato fresco, a resposta é um 404 curto e o
+    enriquecimento sai em background (fire-and-forget), sem segurar a resposta.
+
+    Ranks 1..7 continuam exatamente no caminho do collector: a galeria é
+    sob demanda e o pipeline já cacheia o catálogo (e os bytes) em memória.
     """
     result = find_entity(db, entity_id)
     if not result:
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
 
     website, place_id = _extract_image_sources(result)
-    if not website and not place_id:
-        raise HTTPException(status_code=404, detail="entity sem website nem place_id (sem fonte de imagem)")
 
     # Chamadas diretas dos unit tests recebem o objeto Query como default;
     # na rota HTTP o FastAPI sempre entrega int.
     rank_value = rank if isinstance(rank, int) else 0
 
+    if rank_value == 0:
+        read = await read_hero_media(db.entities, result)
+        if read.image is not None:
+            image_data, content_type = read.image
+            return Response(
+                content=image_data,
+                media_type=content_type,
+                headers={"Cache-Control": "public, max-age=3600"},
+            )
+        if read.state == STATE_NO_SOURCES:
+            raise HTTPException(
+                status_code=404,
+                detail=NO_SOURCES_DETAIL,
+                headers={"Cache-Control": NO_SOURCES_CACHE_CONTROL},
+            )
+        raise HTTPException(
+            status_code=404,
+            detail=IMAGE_MISSING_DETAIL,
+            headers={"Cache-Control": PENDING_CACHE_CONTROL},
+        )
+
+    if not website and not place_id:
+        raise HTTPException(status_code=404, detail=NO_SOURCES_DETAIL)
+
     try:
-        if rank_value == 0:
-            image = await get_og_image_bytes(page_url=website, place_id=place_id)
-        else:
-            image = await get_restaurant_image_bytes(page_url=website, place_id=place_id, rank=rank_value)
+        image = await get_restaurant_image_bytes(page_url=website, place_id=place_id, rank=rank_value)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if image is None:
-        raise HTTPException(status_code=404, detail="imagem não encontrada (og:image e Places sem resultado)")
+        raise HTTPException(status_code=404, detail=IMAGE_MISSING_DETAIL)
 
     image_data, content_type = image
     return Response(

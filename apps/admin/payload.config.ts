@@ -125,19 +125,52 @@ export default buildConfig({
     meta: {
       titleSuffix: '— Concierge',
     },
+    // O Dashboard do Payload é fixo em `/admin` (segments.length === 0 não
+    // consulta `admin.components.views`), então a única extensão suportada era
+    // `beforeDashboard`. Aqui ele passa a ser um dashboard de verdade: os
+    // contadores do acervo e os dois painéis de atividade, com layout que o
+    // próprio operador reordena/redimensiona (o Payload guarda em preferences).
+    //
+    // `admin.dashboard` é experimental por contrato do Payload — por isso tudo
+    // o que ele precisa está neste bloco: se a API mudar, o fallback é voltar a
+    // `beforeDashboard: [ContentHealthView]`, que é o componente que virou o
+    // primeiro widget.
+    dashboard: {
+      widgets: [
+        {
+          slug: 'content-health',
+          label: 'Content health',
+          Component: '/src/components/overview/ContentHealthView#ContentHealthView',
+          minWidth: 'medium',
+          maxWidth: 'full',
+        },
+        {
+          slug: 'activity',
+          label: 'Activity',
+          Component: '/src/components/overview/ActivityWidget#ActivityWidget',
+          minWidth: 'small',
+          maxWidth: 'full',
+        },
+      ],
+      defaultLayout: [
+        { widgetSlug: 'content-health', width: 'full' },
+        { widgetSlug: 'activity', width: 'full' },
+      ],
+    },
     components: {
+      // Ações do cabeçalho: paleta de comandos, ajuda de atalhos e tema. O slot
+      // é o único ponto do admin que renderiza no topo à direita em TODAS as
+      // telas — inclusive nas listas nativas do Payload, que não passam pelas
+      // nossas views.
+      actions: [
+        { path: '/src/components/shell/CmsNav', exportName: 'CmsHeaderActions' },
+      ],
       // A paleta ⌘K NÃO pode morar dentro da nav: o `NavWrapper` marca a
       // sidebar como `inert` enquanto ela está fechada e nada dentro de um
       // subtree inert aceita foco (medido em browser real, 390 px e 1440 px).
       // `providers` envolve a árvore inteira do admin, fora de qualquer inert.
       providers: [
         { path: '/src/components/shell/CmsProviders', exportName: 'CmsProviders' },
-      ],
-      // O Dashboard do Payload é fixo em `/admin` (segments.length === 0 não
-      // consulta `admin.components.views`), então a única extensão suportada é
-      // `beforeDashboard` — que renderiza DENTRO do template autenticado.
-      beforeDashboard: [
-        { path: '/src/components/overview/ContentHealthView', exportName: 'ContentHealthView' },
       ],
       Nav: {
         path: '/src/components/shell/CmsNav',

@@ -125,7 +125,7 @@ liveBulk('applies an all-matching selection across Collections without ever ship
   // ---------------------------------------------------------------------------
   await page.goto('/admin/curations')
   const table = page.getByRole('table', { name: 'Curations' })
-  await expect(table.locator('.curation-table__row input[type="checkbox"]')).toHaveCount(3, { timeout: 30_000 })
+  await expect(table.locator('[data-row] input[type="checkbox"]')).toHaveCount(3, { timeout: 30_000 })
 
   // Select-all is a local React state change; the selection intent POST only
   // fires on "Apply to Collections" (handleApplyToCollections). Register both
@@ -175,7 +175,7 @@ liveBulk('applies an all-matching selection across Collections without ever ship
   // ---------------------------------------------------------------------------
   // 4. Leave/return while the job is active: the job survives server-side.
   // ---------------------------------------------------------------------------
-  const drawer = page.getByLabel('Jobs em andamento')
+  const drawer = page.getByLabel('Active jobs')
   await expect(drawer).toBeVisible({ timeout: 15_000 })
 
   const activeListBeforeLeave = await api('/api/admin/v1/operations?actor=current&active=true')

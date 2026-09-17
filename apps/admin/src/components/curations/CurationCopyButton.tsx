@@ -1,5 +1,6 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import { useState } from 'react'
 
 /**
@@ -26,10 +27,16 @@ export function CurationCopyButton({ text, label }: { text: string; label: strin
   }
 
   return (
-    <span className="curation-copy">
-      <button type="button" onClick={() => void copy()}>{label}</button>
-      {state === 'copied' && <span role="status">Copied.</span>}
-      {state === 'unavailable' && <span role="status">This browser will not copy for the page; select the text instead.</span>}
+    <span className="ui-copy">
+      <Button buttonStyle="secondary" margin={false} onClick={() => void copy()} size="small" type="button">
+        {label}
+      </Button>
+      {state === 'copied' && <span className="ui-copy__state" role="status">Copied.</span>}
+      {state === 'unavailable' && (
+        <span className="ui-copy__state" role="status">
+          This browser will not copy for the page; select the text instead.
+        </span>
+      )}
     </span>
   )
 }

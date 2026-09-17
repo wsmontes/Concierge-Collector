@@ -165,6 +165,41 @@ async def fetch_og_image(page_url: str) -> Optional[str]:
 
 PLACES_API_PHOTO_MEDIA_URL = "https://places.googleapis.com/v1/{photo_name}/media"
 
+
+def persistible_image_reference(url: str) -> Optional[str]:
+    """Referência DURÁVEL de uma imagem de site: origem + caminho, sem query.
+
+    A mesma razão do `_safe_log_url` vale aqui: a URL buscada pode estar
+    assinada, e o que é persistido não pode carregar credencial. Então a query
+    sai — inclusive quando ela era só cache-buster (`?v=3`) ou largura (`?w=1600`),
+    o que mantém a imagem utilizável.
+
+    Quem paga o caso assinado é a CADÊNCIA, não a referência: a leitura que
+    falhar num refetch registra um código de referência morta
+    (`http_403`/`http_404`/`invalid_reference`) e o retry desses códigos é raro
+    (diário) em vez de horário — uma tentativa por dia, não um laço por hora
+    redescobrindo o mesmo vencedor efêmero.
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return None
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        return None
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+
+def places_photo_media_url(photo_name: str) -> str:
+    """URL assinada do Places a partir do nome OPACO (`places/...`).
+
+    Existe para que a URL com `?key=` NUNCA precise ser guardada: o documento da
+    Entity guarda só o nome, e quem busca a imagem reconstrói a URL aqui, no
+    servidor. Um construtor só — o mesmo que a descoberta usa.
+    """
+    url = PLACES_API_PHOTO_MEDIA_URL.format(photo_name=photo_name)
+    return f"{url}?key={settings.google_places_api_key}&maxWidthPx={OG_IMAGE_MAX_DIM}"
+
+
 # Legacy final-JPEG cache: cache key -> ((bytes, content_type), expires_at)
 _og_bytes_cache: "OrderedDict[str, tuple[Tuple[bytes, str], float]]" = OrderedDict()
 
@@ -182,8 +217,34 @@ def _resize_to_card_jpeg(raw: bytes) -> Tuple[bytes, str]:
     return image.jpeg_bytes, "image/jpeg"
 
 
-async def _download_bytes(url: str, timeout: float) -> Optional[bytes]:
-    """Download with byte cap and one transient retry; SSRF ValueError propagates."""
+def _short_error_code(exc: BaseException) -> str:
+    """Código CURTO e seguro de uma falha de download.
+
+    Quem persiste isso (display media) grava em documento de Entity: a mensagem
+    da exceção pode carregar a URL — inclusive a assinada do Places —, então o
+    que sai daqui é só a classe do erro e o status HTTP.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"http_{exc.response.status_code}"
+    if isinstance(exc, (httpx.TimeoutException, asyncio.TimeoutError)):
+        return "timeout"
+    if isinstance(exc, httpx.HTTPError):
+        return "http_error"
+    return "fetch_failed"
+
+
+async def _download_bytes(
+    url: str,
+    timeout: float,
+    *,
+    error_sink: Optional[List[str]] = None,
+) -> Optional[bytes]:
+    """Download with byte cap and one transient retry; SSRF ValueError propagates.
+
+    `error_sink` é opcional: quando o chamador precisa do código curto da falha
+    (o estado `failed` da display media), ele recebe `_short_error_code` da
+    ÚLTIMA tentativa — nunca a mensagem nem a URL.
+    """
     for attempt in range(DOWNLOAD_ATTEMPTS):
         try:
             async with httpx.AsyncClient(
@@ -212,6 +273,8 @@ async def _download_bytes(url: str, timeout: float) -> Optional[bytes]:
                 _safe_log_url(url),
                 exc,
             )
+            if error_sink is not None:
+                error_sink[:] = [_short_error_code(exc)]
             if attempt + 1 < DOWNLOAD_ATTEMPTS:
                 await asyncio.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
     return None
@@ -238,9 +301,13 @@ async def _places_image_candidates(
         name = photo.get("name") if isinstance(photo, dict) else None
         if not name or not name.startswith("places/"):
             continue
-        media_url = PLACES_API_PHOTO_MEDIA_URL.format(photo_name=name)
-        media_url += f"?key={settings.google_places_api_key}&maxWidthPx={OG_IMAGE_MAX_DIM}"
-        candidates.append(ImageCandidate(media_url, "google_places", len(candidates)))
+        media_url = places_photo_media_url(name)
+        candidates.append(
+            # `provider_ref` é o nome OPACO do Places — é ele que pode ser
+            # persistido (display media); `url` carrega a chave e fica só em
+            # memória, no caminho de download.
+            ImageCandidate(media_url, "google_places", len(candidates), provider_ref=name)
+        )
         if len(candidates) >= max_photos:
             break
     return candidates
@@ -385,6 +452,10 @@ async def get_restaurant_images(
                     str(url),
                     getattr(url, "source", "website"),
                     getattr(url, "source_index", index),
+                    # Referência persistível de uma imagem de site: origem +
+                    # caminho, SEM query nem fragment (a URL buscada pode ser
+                    # assinada — e o que é durável não carrega credencial).
+                    provider_ref=persistible_image_reference(str(url)),
                 )
             )
 
@@ -434,7 +505,7 @@ async def get_restaurant_images(
         raw_places = await _places_image_candidates(place_id, max_photos=COLLECTOR_PLACES_CANDIDATES)
         offset = len(website_candidates)
         places_candidates = [
-            ImageCandidate(candidate.url, candidate.source, offset + index)
+            ImageCandidate(candidate.url, candidate.source, offset + index, provider_ref=candidate.provider_ref)
             for index, candidate in enumerate(raw_places)
         ]
     places_result = await _collect_candidate_group(places_candidates)
@@ -477,6 +548,24 @@ async def get_restaurant_image_bytes(
     return images[rank].jpeg_bytes, "image/jpeg"
 
 
+def bytes_cache_get(key: str) -> Optional[Tuple[bytes, str]]:
+    """Leitura do cache de bytes já existente (bounded por OG_BYTES_CACHE_MAX_ENTRIES).
+
+    Compartilhado entre o hero legado e a display media para não existir um
+    segundo cache de bytes no processo — a folga do container é o recurso
+    escasso, não a CPU do hit.
+    """
+    now = time.monotonic()
+    hit = _og_bytes_cache.get(key)
+    if not hit:
+        return None
+    if hit[1] < now:
+        _og_bytes_cache.pop(key, None)
+        return None
+    _og_bytes_cache.move_to_end(key)
+    return hit[0]
+
+
 def _bytes_cache_put(key: str, result: Tuple[bytes, str]) -> None:
     if key in _og_bytes_cache:
         _og_bytes_cache.pop(key, None)
@@ -496,14 +585,10 @@ async def get_og_image_bytes(
         raise ValueError("url ou place_id é obrigatória")
 
     cache_key = page_url if has_url else f"place:{place_id}"
-    now = time.monotonic()
-    hit = _og_bytes_cache.get(cache_key)
-    if hit and hit[1] >= now:
-        _og_bytes_cache.move_to_end(cache_key)
+    hit = bytes_cache_get(cache_key)
+    if hit is not None:
         _og_stats["cache_hits_bytes"] += 1
-        return hit[0]
-    if hit:
-        _og_bytes_cache.pop(cache_key, None)
+        return hit
 
     _og_stats["requests"] += 1
     images = await get_restaurant_images(page_url if has_url else None, place_id if has_place else None, limit=1)
@@ -519,3 +604,56 @@ async def get_og_image_bytes(
     else:
         _og_stats["source_og"] += 1
     return result
+
+
+async def get_reference_image_bytes(kind: str, provider_ref: str) -> Tuple[Optional[Tuple[bytes, str]], Optional[str]]:
+    """Bytes de uma referência JÁ PERSISTIDA (display media), sem descoberta.
+
+    `kind`/`provider_ref` vêm do documento da Entity: `website` é a URL pública
+    da imagem; `google_places` é o nome OPACO (`places/...`) e a URL assinada é
+    reconstruída aqui — a chave da API nunca é lida do documento porque nunca
+    foi escrita nele.
+
+    Um download e um reencode, com concorrência 1 (não é o pool do collector:
+    aqui há UM candidato), e o cache de bytes do processo como primeira parada.
+    Persistir os BYTES processados em storage durável é o passo seguinte deste
+    caminho: hoje não há bucket configurado em produção, e o campo persistido é
+    referência opaca, nunca bytes.
+
+    Falha nunca vira exceção: devolve `(None, código_curto)` para o estado
+    `failed` — a mensagem do erro não é persistível (pode carregar a URL).
+    """
+    if kind == "google_places":
+        # Só o nome opaco é aceitável: uma URL assinada aqui seria a chave da
+        # API entrando (ou saindo) de um documento por engano.
+        if not isinstance(provider_ref, str) or not provider_ref.startswith("places/"):
+            return None, "invalid_reference"
+        if not settings.google_places_api_key:
+            return None, "no_api_key"
+        url = places_photo_media_url(provider_ref)
+    elif kind == "website":
+        if not isinstance(provider_ref, str) or not provider_ref.strip():
+            return None, "invalid_reference"
+        url = provider_ref
+    else:
+        return None, "invalid_reference"
+
+    cache_key = f"display:{kind}:{provider_ref}"
+    cached = bytes_cache_get(cache_key)
+    if cached is not None:
+        return cached, None
+
+    errors: List[str] = []
+    try:
+        raw = await _download_bytes(url, IMAGE_FETCH_TIMEOUT_SECONDS, error_sink=errors)
+    except ValueError:
+        # SSRF guard: a referência persistida aponta para rede interna.
+        return None, "blocked_source"
+    if raw is None:
+        return None, errors[0] if errors else "download_failed"
+    try:
+        result = _resize_to_card_jpeg(raw)
+    except Exception:
+        return None, "decode_failed"
+    _bytes_cache_put(cache_key, result)
+    return result, None

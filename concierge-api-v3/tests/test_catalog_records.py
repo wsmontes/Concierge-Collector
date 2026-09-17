@@ -573,6 +573,45 @@ async def test_system_managed_keys_are_rejected_and_the_document_is_untouched(as
 
 
 @pytest.mark.asyncio
+async def test_display_media_is_api_state_hidden_from_the_record_and_read_only(async_client, in_memory_db):
+    """The Inspector renders every raw key, so the display media fact — derived,
+    API-owned state of the Entity card — must not travel through it: invisible on
+    reads (record and list) and refused on writes."""
+    in_memory_db._collections.clear()
+    _seed_cms_admin(in_memory_db)
+    fact = {
+        "state": "resolved",
+        "kind": "google_places",
+        "provider_ref": "places/P1/photos/PH1",
+        "width": 1600,
+        "height": 1000,
+        "score": 72.5,
+        "resolved_at": datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc),
+        "expires_at": datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc),
+        "attempts": 2,
+        "last_error": None,
+    }
+    in_memory_db.entities.insert_one(active_entity(_id="e-media", entity_id="e-media", display_media=deepcopy(fact)))
+
+    read = await async_client.get("/api/v3/catalog/entities/e-media/record", headers=_headers())
+    assert read.status_code == 200, read.text
+    assert "display_media" not in read.json()["record"]
+    assert "places.googleapis.com" not in read.text
+
+    listed = await async_client.get("/api/v3/catalog/entities", headers=_headers())
+    assert "display_media" not in listed.text
+
+    written = await async_client.patch(
+        "/api/v3/catalog/entities/e-media",
+        json={"display_media": {"state": "resolved", "kind": "website", "provider_ref": "https://x/y.jpg"}},
+        headers=_write_headers(),
+    )
+    assert written.status_code == 422, written.text
+    assert "display_media" in written.json()["detail"]
+    assert in_memory_db.entities.find_one({"_id": "e-media"})["display_media"] == fact
+
+
+@pytest.mark.asyncio
 async def test_undeclared_root_keys_round_trip_and_stay_visible(async_client, in_memory_db):
     """The whole point of the boundary: a legacy key no editor declared can be
     edited and is readable back through the universal record route."""
@@ -828,7 +867,8 @@ async def test_content_health_counts_every_card_and_skips_deleted_curations(asyn
     )
 
     assert response.status_code == 200, response.text
-    assert response.json() == {
+    body = response.json()
+    assert {name: body[name] for name in body if not name.startswith("entities_")} == {
         "total": 4,
         "unlinked": 3,
         "synthetic_drafts": 1,
@@ -837,6 +877,12 @@ async def test_content_health_counts_every_card_and_skips_deleted_curations(asyn
         "updated_today": 2,
         "without_collections": 2,
     }
+    # As três categorias de mídia de exibição PARTICIONAM o acervo de Entities.
+    # `without_images` acima conta outra coisa (a evidência da Curation): os dois
+    # números convivem no painel porque nomeiam fatos diferentes.
+    assert body["entities_unresolved"] == (
+        body["entities_total"] - body["entities_no_sources"] - body["entities_display_media_resolved"]
+    )
 
 
 @pytest.mark.asyncio
@@ -886,3 +932,85 @@ async def test_content_health_rejects_more_members_than_the_bound(async_client, 
 
     assert response.status_code == 413
     assert "10000" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_contadores_de_midia_particionam_o_acervo_de_entities(async_client, in_memory_db):
+    """As três categorias fecham a conta, e cada uma diz a verdade AGORA.
+
+    O caso que este teste existe para pegar: contar `display_media.state` cru
+    daria "zero sem fonte" e "tudo resolvido" no primeiro dia (as 21,6k legadas
+    não têm estado) e contaria como resolvido um fato VENCIDO, que não é
+    servível. E a cláusula de fonte precisa exigir `$exists`: `$nin` sozinho casa
+    com documento onde o campo não existe, o que marcaria quase tudo como "tem
+    fonte".
+    """
+    in_memory_db._collections.clear()
+    _seed_cms_admin(in_memory_db)
+    agora = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    for documento in [
+        # sem nenhum campo de fonte: nada a resolver
+        {"_id": "e-sem-fonte", "name": "Sem fonte", "data": {}},
+        # fonte presente e fato fresco: serve
+        {
+            "_id": "e-resolvido",
+            "name": "Resolvido",
+            "data": {"contact": {"website": "https://a.example"}},
+            "display_media": {"state": "resolved", "expires_at": agora + timedelta(days=3)},
+        },
+        # fato resolvido mas VENCIDO: não serve
+        {
+            "_id": "e-vencido",
+            "name": "Vencido",
+            "data": {"place_id": "P1"},
+            "display_media": {"state": "resolved", "expires_at": agora - timedelta(days=1)},
+        },
+        # perdeu a fonte depois de resolver: conta como sem fonte, UMA vez
+        {
+            "_id": "e-perdeu-fonte",
+            "name": "Perdeu a fonte",
+            "data": {},
+            "display_media": {"state": "resolved", "expires_at": agora + timedelta(days=3)},
+        },
+        # nunca lida: pendente
+        {"_id": "e-pendente", "name": "Pendente", "data": {"website": "https://b.example"}},
+    ]:
+        in_memory_db.entities.insert_one(documento)
+
+    response = await async_client.post(
+        "/api/v3/catalog/content-health", json={"member_curation_ids": []}, headers=_headers()
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["entities_total"] == 5
+    assert body["entities_no_sources"] == 2  # e-sem-fonte, e-perdeu-fonte
+    assert body["entities_display_media_resolved"] == 1  # só o fresco com fonte
+    assert body["entities_unresolved"] == 2  # vencido + nunca lido
+    assert (
+        body["entities_no_sources"] + body["entities_display_media_resolved"] + body["entities_unresolved"]
+        == body["entities_total"]
+    )
+
+
+def test_contagem_de_midia_falhando_nao_derruba_o_painel(in_memory_db, caplog):
+    """Agregação indisponível vira contador AUSENTE, nunca exceção.
+
+    O caminho de falha precisa de `logger` de verdade: sem ele o `NameError`
+    substituiria um contador desconhecido por um 500.
+    """
+    from app.services import catalog_service
+
+    class _Explode:
+        def aggregate(self, *args, **kwargs):
+            raise RuntimeError("mongo indisponível")
+
+    class _Db:
+        entities = _Explode()
+
+    with caplog.at_level("WARNING"):
+        counters = catalog_service._entity_media_counters(_Db())
+
+    assert counters == {}
+    assert any("display media" in record.message for record in caplog.records)

@@ -1,116 +1,201 @@
+/*
+ * Operations — a fila de trabalho do Admin.
+ *
+ * Escopo: só o que o kit não desenha (resumo por estado, célula de Collections,
+ * rodapé da fila, detalhe da operação e a lista de jobs em voo). Tabela, chip,
+ * medidor, diálogo, gaveta, esqueleto e estados vazios/erro vêm de `kit.css`.
+ * Nenhum valor literal: cor, espaço e raio são tokens.
+ */
 
-.operations-workspace__list {
-  display: grid;
-  gap: var(--cms-spacing-2-5);
+/* ---------------------------------------------------------------------------
+   1. Resumo por estado (Chips com contagem)
+   --------------------------------------------------------------------------- */
+
+.operations-queue__summary {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-1-5);
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.operations-workspace__card {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  padding: var(--cms-spacing-3) var(--cms-spacing-3);
+/* ---------------------------------------------------------------------------
+   2. Célula de Collections e ações da linha
+   --------------------------------------------------------------------------- */
+
+.operations-queue__collections {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-1);
 }
 
-.operations-workspace__card:hover {
-  background: var(--theme-elevation-50);
+.operations-queue__collection {
+  border-bottom: 1px solid var(--cms-border-subtle);
+  color: var(--cms-fg);
+  font-size: var(--cms-text-xs);
+  text-decoration: none;
 }
 
-.operations-workspace__card-header {
-  align-items: flex-start;
-  display: flex;
-  gap: var(--cms-spacing-3);
-  justify-content: space-between;
+.operations-queue__collection:hover {
+  border-bottom-color: var(--cms-accent);
+  color: var(--cms-accent-fg);
 }
 
-.operations-workspace__identity {
+.operations-queue__actions {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-1-5);
+  justify-content: flex-end;
+}
+
+.operations-queue__retry {
+  color: var(--cms-accent-fg);
+  font-size: var(--cms-text-xs);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.operations-queue__retry:hover {
+  text-decoration: underline;
+}
+
+.operations-queue__footer {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: var(--cms-spacing-2);
+  justify-content: space-between;
+  width: 100%;
 }
 
-.operations-workspace__identity > a {
-  font-weight: 700;
-  text-decoration: none;
+/* ---------------------------------------------------------------------------
+   3. Detalhe da operação (dentro do Drawer do kit)
+   --------------------------------------------------------------------------- */
+
+.operations-detail {
+  display: grid;
+  gap: var(--cms-spacing-4);
 }
 
-.operations-workspace__identity > a:hover {
-  text-decoration: underline;
-}
-
-.operations-workspace__card-header time {
-  color: var(--cms-olive-600);
-  flex: 0 0 auto;
-  font-size: var(--cms-text-xs);
-}
-
-.operations-workspace__metrics {
-  color: var(--cms-olive-600);
+.operations-detail__actions {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
-  font-size: var(--cms-text-sm);
-  gap: var(--cms-spacing-1-5) var(--cms-spacing-3);
-}
-
-.operations-workspace__collections {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-1-5);
-}
-
-.operations-workspace__collections a {
-  background: var(--cms-limestone-100);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-full);
-  font-size: var(--cms-text-xs);
-  padding: var(--cms-spacing-1) var(--cms-spacing-2);
-  text-decoration: none;
-}
-
-.operations-workspace__collections a:hover {
-  background: var(--cms-limestone-200);
-}
-
-.operations-workspace__card-actions {
-  display: flex;
+  gap: var(--cms-spacing-2);
   justify-content: flex-end;
 }
 
-.operations-workspace__card-actions > * {
-  margin: 0;
+.operations-detail__link {
+  color: var(--cms-accent-fg);
+  font-size: var(--cms-text-sm);
+  font-weight: 600;
+  text-decoration: none;
 }
 
-.operations-workspace__checkpoint {
-  color: var(--cms-olive-700);
-  font-size: var(--cms-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.04em;
+.operations-detail__link:hover {
+  text-decoration: underline;
+}
+
+/* ---------------------------------------------------------------------------
+   4. Aplicar seleção a Collections (corpo do Dialog do kit)
+   --------------------------------------------------------------------------- */
+
+.operations-bulk {
+  display: grid;
+  gap: var(--cms-spacing-3);
+}
+
+.operations-bulk__action {
+  align-items: center;
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-md);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2) var(--cms-spacing-4);
   margin: 0;
+  padding: var(--cms-spacing-2) var(--cms-spacing-3);
+}
+
+.operations-bulk__action legend {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0 var(--cms-spacing-1);
   text-transform: uppercase;
 }
 
-.operations-workspace__summary {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
+.operations-bulk__collections {
+  display: grid;
+  gap: 0;
+}
+
+.operations-bulk__collections > * + * {
+  border-top: 1px solid var(--cms-border-subtle);
+}
+
+.operations-bulk__collections > * {
+  padding: var(--cms-spacing-2) 0;
+}
+
+/* ---------------------------------------------------------------------------
+   5. Jobs em voo (lista dentro do Drawer do kit)
+   --------------------------------------------------------------------------- */
+
+.jobs-list {
+  display: grid;
+  gap: var(--cms-spacing-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.jobs-entry {
+  background: var(--cms-surface-2);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-lg);
+  display: grid;
+  gap: var(--cms-spacing-1-5);
+  padding: var(--cms-spacing-3);
+}
+
+.jobs-entry__head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2);
+  justify-content: space-between;
+}
+
+.jobs-entry__title,
+.jobs-entry__progress,
+.jobs-entry__summary {
   margin: 0;
 }
 
-@media (max-width: 720px) {
-  .operations-workspace__card-header {
-    align-items: stretch;
-    flex-direction: column;
-  }
+.jobs-entry__title {
+  color: var(--cms-fg-strong);
+  font-size: var(--cms-text-sm);
+}
 
-  .operations-workspace__card-header time {
-    flex: initial;
-  }
+.jobs-entry__progress {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+  font-variant-numeric: tabular-nums;
+}
 
-  .operations-workspace__card-actions {
-    justify-content: flex-start;
-  }
+.jobs-entry__summary {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.jobs-entry__actions {
+  display: flex;
+  gap: var(--cms-spacing-2);
+  justify-content: flex-end;
 }

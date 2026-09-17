@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import type { FieldNode } from '../../content/field-types'
 import { AdminSection } from '../ui/AdminPage'
+import { EmptyState } from '../ui/EmptyState'
 import { CurationCopyButton } from './CurationCopyButton'
 import { CurationFieldBlock, type CurationSectionEditProps } from './CurationFieldBlock'
 
@@ -22,20 +23,30 @@ export function CurationAdvancedSection({
   edit: CurationSectionEditProps
 }): ReactNode {
   const json = JSON.stringify(record, null, 2) ?? ''
+  const storedKeys = Object.keys(record).length
 
   return (
-    <AdminSection title="Advanced" description="Raw access for maintenance. The sections above stay the normal way to change a Curation.">
-      <div className="curation-raw">
-        <div className="curation-raw__header">
-          <h3 className="curation-raw__title">View raw record</h3>
+    <AdminSection
+      title="Advanced"
+      description="Raw access for maintenance. The sections above stay the normal way to change a Curation."
+      action={<p className="ui-section-count">{storedKeys} stored keys</p>}
+    >
+      <div className="ui-raw">
+        <div className="ui-raw__header">
+          <h3 className="ui-raw__title">View raw record</h3>
           <CurationCopyButton text={json} label="Copy JSON" />
         </div>
-        <pre className="curation-raw__json">{json}</pre>
+        <pre className="ui-raw__json ui-detail-pre">{json}</pre>
       </div>
-      <div className="curation-structured">
-        <h3 className="curation-structured__title">Edit structured data</h3>
+      <div className="ui-structured">
+        <h3 className="ui-structured__title">Edit structured data</h3>
         {flexible.length === 0
-          ? <p className="curation-structured__empty">This record stores no flexible values outside the sections above.</p>
+          ? (
+              <EmptyState
+                title="No structured values to edit"
+                description="This record stores no flexible values outside the sections above."
+              />
+            )
           : flexible.map((node) => <CurationFieldBlock key={node.path} node={node} edit={edit} />)}
       </div>
     </AdminSection>

@@ -1,7 +1,12 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import { useState } from 'react'
 import type { PublishPreviewDto } from '../../collections/admin-client'
+import { FactList } from '../ui/Card'
+import { Dialog } from '../ui/Dialog'
+import { CheckboxInput } from '../ui/Field'
+import { InlineNotice } from '../ui/InlineNotice'
 
 export interface PublishCollectionDialogProps {
   preview: PublishPreviewDto
@@ -11,16 +16,12 @@ export interface PublishCollectionDialogProps {
   onConfirm: () => void
 }
 
-function versionTransition(preview: PublishPreviewDto) {
-  return preview.currentPublishedVersion
-    ? `Version ${preview.currentPublishedVersion} → Version ${preview.nextVersion}`
-    : `First publish → Version ${preview.nextVersion}`
-}
-
-function changeLabel(count: number, singular: string) {
-  return `${count.toLocaleString('en-US')} ${count === 1 ? singular : `${singular}s`}`
-}
-
+/**
+ * Publish confirmation built from the live preview, not from the list state:
+ * every count below comes from the server response that the command is about to
+ * be checked against. When the preview carries unavailable Curations, the
+ * confirmation is a required checkbox — publishing them is a deliberate act.
+ */
 export function PublishCollectionDialog({
   preview,
   pending,
@@ -36,59 +37,67 @@ export function PublishCollectionDialog({
   // inicializador já reflete os contadores atuais.
 
   return (
-    <div className="collection-dialog-backdrop" role="presentation">
-      <section
-        aria-labelledby="publish-collection-title"
-        aria-modal="true"
-        className="collection-dialog"
-        role="dialog"
-      >
-        <header className="collection-dialog__header">
-          <div>
-            <p className="collection-views__eyebrow">Publication</p>
-            <h2 id="publish-collection-title">Publish Collection</h2>
-          </div>
-          <button type="button" onClick={onCancel} disabled={pending} aria-label="Close publish dialog">×</button>
-        </header>
-
-        <p className="collection-dialog__version">{versionTransition(preview)}</p>
-        <dl className="collection-dialog__summary">
-          <div><dt>Draft revision</dt><dd>{preview.draftRevision}</dd></div>
-          <div><dt>Selection</dt><dd>{preview.selectedCount.toLocaleString('en-US')} selected</dd></div>
-          <div><dt>Draft additions</dt><dd>{changeLabel(preview.addCount, 'add')}</dd></div>
-          <div><dt>Draft removals</dt><dd>{changeLabel(preview.removeCount, 'remove')}</dd></div>
-          <div><dt>Availability</dt><dd>{preview.availableCount.toLocaleString('en-US')} available</dd></div>
-          <div><dt>Unavailable</dt><dd>{preview.unavailableCount.toLocaleString('en-US')} unavailable</dd></div>
-        </dl>
-
-        {needsUnavailableConfirmation && (
-          <label className="collection-dialog__confirmation">
-            <input
-              type="checkbox"
-              checked={confirmedUnavailable}
-              onChange={(event) => setConfirmedUnavailable(event.target.checked)}
-            />
-            Publish with {preview.unavailableCount.toLocaleString('en-US')} unavailable {preview.unavailableCount === 1 ? 'Curation' : 'Curations'}
-          </label>
-        )}
-
-        <p className="collection-dialog__hint">
-          Publishing freezes this draft membership as a new version. Curation and Entity content remain live.
-        </p>
-        {error && <p role="alert">{error}</p>}
-
-        <footer className="collection-dialog__footer">
-          <button type="button" onClick={onCancel} disabled={pending}>Cancel</button>
-          <button
-            type="button"
+    <Dialog
+      description="Publishing freezes this draft membership as a new version. Curation and Entity content remain live."
+      footer={(
+        <>
+          <Button buttonStyle="secondary" disabled={pending} margin={false} onClick={onCancel} type="button">
+            Cancel
+          </Button>
+          <Button
             aria-label="Publish Collection now"
             disabled={pending || !confirmedUnavailable}
+            margin={false}
             onClick={onConfirm}
+            type="button"
           >
             {pending ? 'Publishing…' : 'Publish'}
-          </button>
-        </footer>
-      </section>
-    </div>
+          </Button>
+        </>
+      )}
+      onClose={() => { if (!pending) onCancel() }}
+      open
+      title="Publish Collection"
+    >
+      <p className="collections-dialog__version">
+        {preview.currentPublishedVersion
+          ? `Version ${preview.currentPublishedVersion} → Version ${preview.nextVersion}`
+          : `First publish → Version ${preview.nextVersion}`}
+      </p>
+
+      <FactList
+        facts={[
+          { label: 'Draft revision', value: preview.draftRevision.toLocaleString('en-US') },
+          { label: 'Selection', value: `${preview.selectedCount.toLocaleString('en-US')} selected` },
+          {
+            label: 'Draft additions',
+            value: `${preview.addCount.toLocaleString('en-US')} ${preview.addCount === 1 ? 'add' : 'adds'}`,
+          },
+          {
+            label: 'Draft removals',
+            value: `${preview.removeCount.toLocaleString('en-US')} ${preview.removeCount === 1 ? 'remove' : 'removes'}`,
+          },
+          { label: 'Availability', value: `${preview.availableCount.toLocaleString('en-US')} available` },
+          { label: 'Unavailable', value: `${preview.unavailableCount.toLocaleString('en-US')} unavailable` },
+        ]}
+      />
+
+      {needsUnavailableConfirmation && (
+        <div className="collections-dialog__confirmation">
+          <CheckboxInput
+            checked={confirmedUnavailable}
+            id="publish-unavailable-confirmation"
+            label={`Publish with ${preview.unavailableCount.toLocaleString('en-US')} unavailable ${preview.unavailableCount === 1 ? 'Curation' : 'Curations'}`}
+            onChange={setConfirmedUnavailable}
+          />
+        </div>
+      )}
+
+      {error && (
+        <InlineNotice tone="error">
+          <p>{error}</p>
+        </InlineNotice>
+      )}
+    </Dialog>
   )
 }

@@ -68,6 +68,10 @@ export function healthEndpoints(
           without_transcript: counters.without_transcript,
           updated_today: counters.updated_today,
           without_collections: degraded ? null : counters.without_collections,
+          entities_total: counters.entities_total ?? null,
+          entities_display_media_resolved: counters.entities_display_media_resolved ?? null,
+          entities_no_sources: counters.entities_no_sources ?? null,
+          entities_unresolved: counters.entities_unresolved ?? null,
           collections_members_tracked: memberIds.length,
           degraded,
         }

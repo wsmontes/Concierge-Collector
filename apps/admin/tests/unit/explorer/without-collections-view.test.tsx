@@ -50,7 +50,7 @@ test('the filter turns the listing into the "Without Collections" view, and the 
   expect(await screen.findByText('2,491 without Collections')).toBeInTheDocument()
   expect(loadWithoutCollectionsCount).toHaveBeenCalled()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Clear all' }))
 
   await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(3))
   expect(loadPage.mock.calls[2][0].filters).toEqual({})

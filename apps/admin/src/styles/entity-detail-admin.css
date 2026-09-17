@@ -1,163 +1,135 @@
 /* Entity full-record page: the curated blocks of the editorial CMS plan §21
    (Canonical identity, Location, Contact, Media, Attributes, Curations about
    this Entity, Metadata, All fields, History) and the Entity → Curations list
-   (§22). Only the Concierge brand tokens and Payload's --theme-* mapping carry
-   colour; no palette value is hardcoded here. */
+   (§22). Only the semantic tokens of `theme.css` carry colour, space, radius and
+   type; the mono role comes from the shared scale, never from a stack typed
+   here. */
+
+
+/* ---------------------------------------------------------------------------
+   Cabeçalho de identidade e estados da página
+   --------------------------------------------------------------------------- */
+
+.entity-detail__header {
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
+  box-shadow: var(--cms-elevation-1);
+  padding: var(--cms-spacing-4);
+}
+
+.entity-detail__loading {
+  display: grid;
+  gap: var(--cms-spacing-3);
+}
 
 .entity-detail__status {
-  color: var(--theme-elevation-600);
-  margin: 0;
-}
-
-.entity-detail__retry {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius);
-  color: var(--theme-text);
-  cursor: pointer;
-  font-weight: 600;
-  margin-top: var(--cms-spacing-2-5);
-  min-height: 40px;
-  padding: 0 var(--cms-spacing-3);
-}
-
-.entity-detail__retry:hover {
-  background: var(--theme-elevation-50);
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
 }
 
 .entity-detail__link {
-  align-items: center;
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius);
-  color: var(--theme-text);
-  display: inline-flex;
+  color: var(--cms-accent-fg);
   font-weight: 600;
-  min-height: 40px;
-  padding: 0 var(--cms-spacing-3);
   text-decoration: none;
 }
 
 .entity-detail__link:hover {
-  background: var(--theme-elevation-50);
+  text-decoration: underline;
 }
 
-/* ENTITY HEADER: the read-only summary that opens the page. */
-.entity-detail__header {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  padding: var(--cms-spacing-3) var(--cms-spacing-3);
-}
+/* ---------------------------------------------------------------------------
+   Um bloco por campo dentro de uma seção curada
+   --------------------------------------------------------------------------- */
 
-.entity-detail__facts {
-  display: grid;
-  gap: var(--cms-spacing-1-5) var(--cms-spacing-5);
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  margin: 0;
-}
-
-.entity-detail__fact {
-  display: grid;
-  gap: var(--cms-spacing-0-5);
-  min-width: 0;
-}
-
-.entity-detail__fact dt {
-  color: var(--theme-elevation-600);
-  font-size: var(--cms-text-xs);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.entity-detail__fact dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-/* One block per field inside a curated section. */
 .entity-fields {
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
   display: grid;
-  gap: var(--cms-spacing-2);
   list-style: none;
   margin: 0;
-  min-width: 0;
+  overflow: hidden;
   padding: 0;
 }
 
 .entity-field {
-  border-left: 2px solid var(--theme-elevation-100);
-  display: grid;
-  gap: var(--cms-spacing-1-5);
+  border-bottom: 1px solid var(--cms-border-subtle);
   min-width: 0;
-  padding-inline-start: 0.75rem;
+  padding: var(--cms-spacing-2) var(--cms-spacing-3);
 }
 
+.entity-fields > .entity-field:last-child {
+  border-bottom: 0;
+}
+
+/* Um campo que o registro não carrega ainda é nomeado — e é nomeado como
+   ausente, com a borda pontilhada que diz "declarado, não preenchido". */
 .entity-field--empty {
-  border-left-style: dashed;
+  border-left: 2px dashed var(--cms-border);
 }
 
 .entity-field__head {
   align-items: baseline;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--cms-spacing-1) var(--cms-spacing-2-5);
-  min-width: 0;
+  gap: var(--cms-spacing-1) var(--cms-spacing-2);
 }
 
 .entity-field__label {
+  color: var(--cms-fg-strong);
   font-weight: 600;
 }
 
 .entity-field__path {
-  color: var(--theme-elevation-500);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--cms-text-xs);
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
 .entity-field__value {
+  color: var(--cms-fg);
+  flex: 1 1 var(--cms-spacing-16);
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.entity-field__hint,
-.entity-field__system {
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-full);
-  color: var(--theme-elevation-600);
-  font-size: var(--cms-text-xs);
-  padding: var(--cms-spacing-px) var(--cms-spacing-1-5);
+.entity-field__value--empty {
+  color: var(--cms-fg-faint);
 }
 
 .entity-field__edit {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius);
-  color: var(--theme-text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--cms-radius-md);
+  color: var(--cms-accent-fg);
   cursor: pointer;
-  margin-inline-start: auto;
-  min-height: 32px;
-  padding: 0 var(--cms-spacing-2-5);
+  font: inherit;
+  font-size: var(--cms-text-sm);
+  font-weight: 600;
+  margin-left: auto;
+  padding: var(--cms-spacing-0-5) var(--cms-spacing-2);
+  transition:
+    background var(--cms-duration-base) var(--cms-ease-standard),
+    border-color var(--cms-duration-base) var(--cms-ease-standard);
 }
 
 .entity-field__edit:hover {
-  background: var(--theme-elevation-50);
+  background: var(--cms-accent-soft);
+  border-color: var(--cms-accent-border);
 }
 
-/* CURATIONS ABOUT THIS ENTITY. */
+/* ---------------------------------------------------------------------------
+   Curations about this Entity
+   --------------------------------------------------------------------------- */
+
 .entity-curations {
   display: grid;
-  gap: var(--cms-spacing-2-5);
+  gap: var(--cms-spacing-3);
   min-width: 0;
 }
 
-.entity-curations__status {
-  color: var(--theme-elevation-600);
-  margin: 0;
-}
-
 .entity-curations__total {
-  color: var(--theme-elevation-600);
+  color: var(--cms-fg-muted);
   font-size: var(--cms-text-sm);
   margin: 0;
 }
@@ -167,124 +139,139 @@
   gap: var(--cms-spacing-2);
   list-style: none;
   margin: 0;
-  min-width: 0;
   padding: 0;
 }
 
 .entity-curations__card {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card-inner);
   display: grid;
-  gap: var(--cms-spacing-1-5);
-  padding: var(--cms-spacing-2-5) var(--cms-spacing-3);
+  gap: var(--cms-spacing-2);
+  padding: var(--cms-spacing-3);
 }
 
 .entity-curations__name {
+  color: var(--cms-fg-strong);
   font-size: var(--cms-text-base);
+  font-weight: 600;
   margin: 0;
-  overflow-wrap: anywhere;
 }
 
 .entity-curations__link {
   color: inherit;
+  text-decoration: none;
+}
+
+.entity-curations__link:hover {
+  text-decoration: underline;
 }
 
 .entity-curations__meta {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--cms-spacing-1-5);
+  gap: var(--cms-spacing-2);
   margin: 0;
 }
 
-.entity-curations__curator {
-  color: var(--theme-elevation-600);
-  font-size: var(--cms-text-sm);
-}
-
 .entity-curations__concepts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-1);
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.entity-curations__concept {
-  background: var(--theme-elevation-100);
-  border-radius: var(--cms-radius-full);
-  font-size: var(--cms-text-xs);
-  padding: var(--cms-spacing-0-5) var(--cms-spacing-2);
-}
-
 .entity-curations__updated {
-  color: var(--theme-elevation-600);
-  font-size: var(--cms-text-xs);
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
   margin: 0;
 }
 
-/* Stack the field rows once the section column is narrower than the two-line
-   layout the header was designed for. */
-@media (max-width: 720px) {
-  .entity-detail__facts {
-    grid-template-columns: 1fr;
-  }
+/* ---------------------------------------------------------------------------
+   Media (Entity image + galeria)
+   --------------------------------------------------------------------------- */
 
-  .entity-field__head {
-    flex-direction: column;
-    gap: var(--cms-spacing-0-5);
-  }
-
-  .entity-field__edit {
-    margin-inline-start: 0;
-    width: 100%;
-  }
+.entity-image {
+  display: grid;
+  gap: var(--cms-spacing-3);
+  margin-bottom: var(--cms-spacing-3);
+  min-width: 0;
 }
 
-/* Entity thumbnail (Media section): the one image this page renders — the
-   hero the domain resolved for the Entity. Sized to a card, so the reencoded
-   JPEG (up to 768px on its longest side) never dominates the section. */
-.entity-image {
-  margin: 0 0 var(--cms-spacing-3);
+.entity-image--loading {
+  align-items: center;
+  display: flex;
+  gap: var(--cms-spacing-3);
+}
+
+.entity-image__hero {
+  display: grid;
+  gap: var(--cms-spacing-2);
+  margin: 0;
+  max-width: 24rem;
 }
 
 .entity-image__thumb {
-  background: var(--theme-elevation-100);
-  border-radius: var(--cms-radius-md);
+  aspect-ratio: 4 / 3;
+  background: var(--cms-surface-2);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card-inner);
   display: block;
-  height: auto;
-  max-height: 180px;
-  max-width: 320px;
   object-fit: cover;
-  width: auto;
+  width: 100%;
 }
 
 .entity-image__caption {
-  align-items: baseline;
+  align-items: center;
+  color: var(--cms-fg-muted);
   display: flex;
-  gap: var(--cms-spacing-2-5);
-  margin-top: var(--cms-spacing-1);
+  flex-wrap: wrap;
+  font-size: var(--cms-text-sm);
+  gap: var(--cms-spacing-2);
 }
 
 .entity-image__source {
-  color: var(--theme-elevation-600);
-  font-size: var(--cms-text-xs);
+  font-family: var(--cms-font-mono);
 }
 
 .entity-image__link {
-  color: inherit;
+  color: var(--cms-accent-fg);
+  text-decoration: none;
+}
+
+.entity-image__link:hover {
+  text-decoration: underline;
 }
 
 .entity-image__status {
-  color: var(--theme-elevation-600);
+  color: var(--cms-fg-muted);
   font-size: var(--cms-text-sm);
-  margin: 0 0 var(--cms-spacing-3);
+  margin: 0;
 }
 
-@media (max-width: 720px) {
-  .entity-image__thumb {
-    max-width: 100%;
-  }
+.entity-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.entity-gallery__item {
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-md);
+  display: block;
+  overflow: hidden;
+}
+
+.entity-gallery__item:hover {
+  border-color: var(--cms-accent-border);
+}
+
+.entity-gallery__thumb {
+  display: block;
+  height: var(--cms-spacing-12);
+  object-fit: cover;
+  width: var(--cms-spacing-16);
 }

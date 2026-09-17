@@ -366,7 +366,7 @@
         "type": "object"
       },
       "CatalogRecordResponse": {
-        "description": "The complete stored document, JSON-safe and key-for-key faithful.\n\nMongo's ``_id`` is exposed as ``id``; ``ObjectId``/``Decimal128`` become\nstrings, dates become ISO-8601 strings and binary payloads (packed float32\nembedding vectors included) become a ``{\"format\": ..., \"byte_length\": N}``\nsummary. Every other key — unknown and legacy ones included — is returned\nuntouched.",
+        "description": "The complete stored document, JSON-safe and key-for-key faithful.\n\nMongo's ``_id`` is exposed as ``id``; ``ObjectId``/``Decimal128`` become\nstrings, dates become ISO-8601 strings and binary payloads (packed float32\nembedding vectors included) become a ``{\"format\": ..., \"byte_length\": N}``\nsummary. Every other key — unknown and legacy ones included — is returned\nuntouched, EXCEPT the API's own derived keys for Entities\n(``catalog_records.ENTITY_INTERNAL_FIELDS``: the persisted display media of\nthe card), which are not editorial content and are neither read nor written\nthrough this surface.",
         "properties": {
           "record": {
             "title": "Record",
@@ -919,6 +919,58 @@
       "ContentHealthResponse": {
         "description": "Editorial counters for the Admin overview, over non-deleted Curations.\n\n``updated_today`` counts Curations whose ``updatedAt`` falls inside the last\n24 hours from the moment of the request. ``without_collections`` counts the\nCurations that are not in the member ids the caller reported.",
         "properties": {
+          "entities_display_media_resolved": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Entities with a durable, proven display media fact.",
+            "title": "Entities Display Media Resolved"
+          },
+          "entities_no_sources": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Entities with neither website nor place_id: nothing to resolve.",
+            "title": "Entities No Sources"
+          },
+          "entities_total": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Entities in the catalog.",
+            "title": "Entities Total"
+          },
+          "entities_unresolved": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Entities whose display media is missing or failed.",
+            "title": "Entities Unresolved"
+          },
           "synthetic_drafts": {
             "description": "``curator_type == 'synthetic'`` and ``status == 'draft'``.",
             "minimum": 0.0,
@@ -2967,7 +3019,7 @@
     },
     "/api/v3/catalog/entities/{entity_id}/image": {
       "get": {
-        "description": "The reencoded JPEG of one ranked Entity image.\n\nRank 0 keeps the hero path of the curator-facing route; ranks 1..7 use the\nranked catalog. Both are the existing hardened paths — this route only\nchanges which credential opens the door.",
+        "description": "The reencoded JPEG of one ranked Entity image.\n\nRank 0 (the thumbnail the Admin renders) serves the Entity's persisted\ndisplay media — the resolution that used to be redone on every render is now\na stored fact, and this route only fetches the opaque reference it stored.\nWith no fresh fact the response is a short-cached 404 and the enrichment is\nscheduled in the background, never awaited.\n\nRanks 1..7 keep the ranked collector path: the gallery is on demand and the\npipeline already caches its catalog in memory.",
         "operationId": "read_entity_image_api_v3_catalog_entities__entity_id__image_get",
         "parameters": [
           {
@@ -3091,7 +3143,7 @@
     },
     "/api/v3/catalog/entities/{entity_id}/record": {
       "get": {
-        "description": "Return the complete stored Entity document, JSON-safe.",
+        "description": "Return the complete stored Entity document, JSON-safe.\n\nEvery stored key is returned except the API's own derived ones\n(``ENTITY_INTERNAL_FIELDS``) — the inspector renders raw fields, and the\ndisplay media fact is not editorial content.",
         "operationId": "read_entity_record_api_v3_catalog_entities__entity_id__record_get",
         "parameters": [
           {

@@ -1,7 +1,11 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
+import { Button } from '@payloadcms/ui'
+import { useState, type FormEvent, type KeyboardEvent } from 'react'
 import type { AdminCollectionRecord } from '../../collections/admin-client'
+import { Dialog } from '../ui/Dialog'
+import { Field, TextareaInput } from '../ui/Field'
+import { InlineNotice } from '../ui/InlineNotice'
 
 export interface CollectionMetadataFormProps {
   collection: AdminCollectionRecord
@@ -9,21 +13,28 @@ export interface CollectionMetadataFormProps {
   onSave: (input: { title: string; description: string | null }) => Promise<void>
 }
 
+/**
+ * Metadata editing of one Collection: title and description, which is exactly
+ * the pair the command accepts. The slug belongs to the record's identity and is
+ * neither shown nor editable here.
+ */
 export function CollectionMetadataForm({ collection, onCancel, onSave }: CollectionMetadataFormProps) {
+  const [title, setTitle] = useState(collection.title)
+  const [description, setDescription] = useState(collection.description ?? '')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function submit() {
     if (pending) return
-    const form = new FormData(event.currentTarget)
+    const trimmedTitle = title.trim()
+    if (trimmedTitle.length === 0) {
+      setError('A Title is required.')
+      return
+    }
     setPending(true)
     setError(null)
     try {
-      await onSave({
-        title: String(form.get('title') ?? '').trim(),
-        description: String(form.get('description') ?? '').trim() || null,
-      })
+      await onSave({ title: trimmedTitle, description: description.trim() || null })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'request_failed')
     } finally {
@@ -31,38 +42,58 @@ export function CollectionMetadataForm({ collection, onCancel, onSave }: Collect
     }
   }
 
+  function onFieldKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    void submit()
+  }
+
   return (
-    <div className="collection-dialog-backdrop" role="presentation">
-      <section
-        aria-labelledby="collection-metadata-title"
-        aria-modal="true"
-        className="collection-dialog"
-        role="dialog"
+    <Dialog
+      description="The revision sent with the save is the one this Collection was loaded with, so a concurrent edit is refused instead of overwritten."
+      footer={(
+        <>
+          <Button buttonStyle="secondary" disabled={pending} margin={false} onClick={onCancel} type="button">
+            Cancel
+          </Button>
+          <Button disabled={pending} margin={false} onClick={() => void submit()} type="button">
+            {pending ? 'Saving…' : 'Save metadata'}
+          </Button>
+        </>
+      )}
+      onClose={() => { if (!pending) onCancel() }}
+      open
+      title="Edit Collection metadata"
+    >
+      <form
+        className="collections-dialog-form"
+        onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); void submit() }}
       >
-        <header className="collection-dialog__header">
-          <div>
-            <p className="collection-views__eyebrow">Collection</p>
-            <h2 id="collection-metadata-title">Edit Collection metadata</h2>
-          </div>
-          <button type="button" onClick={onCancel} disabled={pending} aria-label="Close metadata editor">×</button>
-        </header>
-        <p><strong>Slug</strong> <code>/{collection.slug}</code></p>
-        <form onSubmit={submit}>
-          <label>
-            Title
-            <input name="title" required maxLength={160} defaultValue={collection.title} autoFocus />
-          </label>
-          <label>
-            Description
-            <textarea name="description" rows={5} defaultValue={collection.description ?? ''} />
-          </label>
-          {error && <p role="alert">Unable to save metadata: {error}</p>}
-          <footer className="collection-dialog__footer">
-            <button type="button" onClick={onCancel} disabled={pending}>Cancel</button>
-            <button type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save metadata'}</button>
-          </footer>
-        </form>
-      </section>
-    </div>
+        <Field htmlFor="collection-metadata-title" label="Title" required>
+          <input
+            autoFocus
+            className="ui-input"
+            id="collection-metadata-title"
+            maxLength={160}
+            onChange={(event) => setTitle(event.target.value)}
+            onKeyDown={onFieldKeyDown}
+            required
+            value={title}
+          />
+        </Field>
+        <TextareaInput
+          id="collection-metadata-description"
+          label="Description"
+          onChange={setDescription}
+          rows={5}
+          value={description}
+        />
+        {error && (
+          <InlineNotice tone="error">
+            <p>Unable to save metadata: {error}</p>
+          </InlineNotice>
+        )}
+      </form>
+    </Dialog>
   )
 }

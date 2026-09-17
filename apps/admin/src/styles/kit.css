@@ -1,0 +1,1182 @@
+/*
+ * Kit do Admin — o vocabulário de componentes do CMS.
+ *
+ * Purpose: dar a toda tela um único conjunto de classes para página, seção,
+ * cartão, barra de ferramentas, tabela, chip, diálogo, gaveta, menu, campo,
+ * esqueleto, vazio e erro. Antes deste arquivo cada tela reimplementava os
+ * mesmos blocos: 10 overlays caseiros com 4 backdrops copiados, 3 gramáticas de
+ * tabela e 49 arquivos com controle nativo sem rótulo — a divergência era
+ * estrutural, não de gosto.
+ *
+ * Responsibilities: estrutura e aparência dos componentes. Estado de dado (o
+ * que carregar, o que salvar) é do componente React; comportamento de foco e
+ * teclado vem dos primitivos do Payload (`Modal`, `Drawer`, `Popup`) que o kit
+ * envolve em `src/components/ui/**`.
+ *
+ * Dependencies: `theme.css` (tokens `--cms-*`) e a escala compartilhada.
+ * Nenhum valor de cor, espaço, raio ou duração é literal aqui, exceto o que já
+ * vem de um token — as guardas em `tests/test_design_tokens_parity.test.js`
+ * vigiam isso no lado do Admin e falham se um literal reaparecer.
+ */
+
+/* ---------------------------------------------------------------------------
+   1. Foco e controle: uma regra, não uma por tela
+   --------------------------------------------------------------------------- */
+
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  border-radius: var(--cms-radius-md);
+  outline: var(--cms-focus-ring-width) solid var(--cms-accent);
+  outline-offset: var(--cms-focus-ring-offset);
+}
+
+/* Alvo de toque só onde o ponteiro é impreciso: no desktop, 40px em todo
+   controle engorda a tabela e a barra de ferramentas sem ganho de acessibilidade. */
+@media (pointer: coarse) {
+  :where(a, button, input, select, textarea).ui-touch-target {
+    min-height: var(--cms-control-height);
+  }
+}
+
+.ui-visually-hidden {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.ui-no-value {
+  color: var(--cms-fg-faint);
+}
+
+/* ---------------------------------------------------------------------------
+   2. Página e seção
+   --------------------------------------------------------------------------- */
+
+.ui-page {
+  display: grid;
+  gap: var(--cms-spacing-5);
+  margin: 0 auto;
+  max-width: min(1760px, 100%);
+  min-width: 0;
+  padding: var(--cms-spacing-5) clamp(var(--cms-spacing-4), 2vw, var(--cms-spacing-8));
+  width: 100%;
+}
+
+.ui-page--wide {
+  max-width: min(2000px, 100%);
+}
+
+.ui-page--readable {
+  max-width: min(1200px, 100%);
+}
+
+.ui-page__header {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--cms-border-subtle);
+  display: flex;
+  gap: var(--cms-spacing-5);
+  justify-content: space-between;
+  padding-bottom: var(--cms-spacing-4);
+}
+
+.ui-page__heading {
+  display: grid;
+  gap: var(--cms-spacing-1);
+  max-width: 52rem;
+}
+
+.ui-page__heading > * {
+  margin: 0;
+}
+
+.ui-page__eyebrow {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.ui-page__title {
+  color: var(--cms-fg-strong);
+  font-family: var(--cms-font-display);
+  font-size: var(--cms-text-4xl);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+}
+
+.ui-page__description {
+  color: var(--cms-fg-muted);
+  line-height: 1.55;
+  max-width: 46rem;
+}
+
+.ui-page__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2);
+  justify-content: flex-end;
+}
+
+.ui-page__actions > * {
+  margin: 0;
+}
+
+.ui-page__body {
+  display: grid;
+  gap: var(--cms-spacing-4);
+  min-width: 0;
+}
+
+/* Cabeçalho que acompanha a rolagem: título e ações continuam alcançáveis numa
+   lista longa, sem roubar altura do conteúdo. */
+.ui-page__header--sticky {
+  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--cms-surface-0) 88%, transparent);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.ui-breadcrumb {
+  color: var(--cms-fg-faint);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--cms-text-xs);
+  gap: var(--cms-spacing-1-5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ui-breadcrumb a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.ui-breadcrumb a:hover {
+  color: var(--cms-fg);
+  text-decoration: underline;
+}
+
+.ui-section {
+  display: grid;
+  gap: var(--cms-spacing-3);
+  min-width: 0;
+}
+
+.ui-section__header {
+  align-items: flex-end;
+  display: flex;
+  gap: var(--cms-spacing-3);
+  justify-content: space-between;
+}
+
+.ui-section__header > * {
+  margin: 0;
+}
+
+.ui-section__title {
+  color: var(--cms-fg-strong);
+  font-size: var(--cms-text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.ui-section__description {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+  margin-top: var(--cms-spacing-0-5);
+}
+
+.ui-section__action > * {
+  margin: 0;
+}
+
+.ui-section__body {
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   3. Superfícies
+   --------------------------------------------------------------------------- */
+
+.ui-card {
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
+  box-shadow: var(--cms-elevation-1);
+  display: grid;
+  gap: var(--cms-spacing-3);
+  min-width: 0;
+  padding: var(--cms-spacing-4);
+}
+
+.ui-card--plain {
+  box-shadow: none;
+}
+
+.ui-card--flush {
+  padding: 0;
+}
+
+.ui-card--quiet {
+  background: var(--cms-surface-2);
+  box-shadow: none;
+}
+
+.ui-card__title {
+  color: var(--cms-fg-strong);
+  font-size: var(--cms-text-base);
+  font-weight: 600;
+  margin: 0;
+}
+
+.ui-card__description {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+  margin: 0;
+}
+
+.ui-kpi-grid {
+  display: grid;
+  gap: var(--cms-spacing-3);
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+}
+
+.ui-kpi {
+  align-content: space-between;
+  display: grid;
+  gap: var(--cms-spacing-1);
+  min-height: 6.5rem;
+  text-decoration: none;
+}
+
+a.ui-kpi:hover {
+  border-color: var(--cms-accent-border);
+  box-shadow: var(--cms-elevation-2);
+}
+
+.ui-kpi__label {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.ui-kpi__value {
+  color: var(--cms-fg-strong);
+  font-size: var(--cms-text-3xl);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.ui-kpi__hint {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  line-height: 1.4;
+}
+
+/* ---------------------------------------------------------------------------
+   4. Barra de ferramentas e busca
+   --------------------------------------------------------------------------- */
+
+.ui-toolbar {
+  align-items: flex-end;
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-toolbar-gap) var(--cms-spacing-3);
+  padding: var(--cms-spacing-3);
+}
+
+.ui-toolbar--bare {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+.ui-toolbar__group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2);
+}
+
+.ui-toolbar__group--end {
+  margin-left: auto;
+}
+
+.ui-search {
+  align-items: center;
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border);
+  border-radius: var(--cms-radius-input);
+  display: flex;
+  gap: var(--cms-spacing-2);
+  min-width: 14rem;
+  padding: 0 var(--cms-spacing-2-5);
+  transition: border-color var(--cms-duration-base) var(--cms-ease-standard);
+}
+
+.ui-search:focus-within {
+  border-color: var(--cms-accent);
+}
+
+.ui-search input {
+  background: transparent;
+  border: 0;
+  color: var(--cms-fg);
+  flex: 1;
+  min-height: var(--cms-control-height);
+  min-width: 0;
+  outline: none;
+}
+
+.ui-search__icon {
+  color: var(--cms-fg-faint);
+  flex: 0 0 auto;
+}
+
+.ui-filter-chips {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-1-5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   5. Chip, pílula de status e contadores
+   --------------------------------------------------------------------------- */
+
+.ui-chip {
+  align-items: center;
+  background: var(--cms-surface-2);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-full);
+  color: var(--cms-fg);
+  display: inline-flex;
+  font-size: var(--cms-text-xs);
+  font-weight: 600;
+  gap: var(--cms-spacing-1);
+  line-height: 1;
+  max-width: 100%;
+  padding: var(--cms-spacing-1) var(--cms-spacing-2);
+  white-space: nowrap;
+}
+
+.ui-chip--sm {
+  padding: var(--cms-spacing-0-5) var(--cms-spacing-1-5);
+}
+
+.ui-chip[data-tone='accent'] {
+  background: var(--cms-accent-soft);
+  border-color: var(--cms-accent-border);
+  color: var(--cms-accent-fg);
+}
+
+.ui-chip[data-tone='success'] {
+  background: var(--cms-tone-success-bg);
+  border-color: var(--cms-tone-success-border);
+  color: var(--cms-tone-success-fg);
+}
+
+.ui-chip[data-tone='warning'] {
+  background: var(--cms-tone-warning-bg);
+  border-color: var(--cms-tone-warning-border);
+  color: var(--cms-tone-warning-fg);
+}
+
+.ui-chip[data-tone='error'] {
+  background: var(--cms-tone-error-bg);
+  border-color: var(--cms-tone-error-border);
+  color: var(--cms-tone-error-fg);
+}
+
+.ui-chip[data-tone='info'] {
+  background: var(--cms-tone-info-bg);
+  border-color: var(--cms-tone-info-border);
+  color: var(--cms-tone-info-fg);
+}
+
+.ui-chip[data-tone='muted'] {
+  background: var(--cms-surface-2);
+  color: var(--cms-fg-muted);
+}
+
+.ui-chip__count {
+  color: currentcolor;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.72;
+}
+
+.ui-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-1);
+}
+
+/* ---------------------------------------------------------------------------
+   6. Tabela de dados
+   --------------------------------------------------------------------------- */
+
+.ui-table {
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
+  box-shadow: var(--cms-elevation-1);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ui-table__scroll {
+  max-height: var(--ui-table-max-height, none);
+  overflow: auto;
+  position: relative;
+}
+
+.ui-table__table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+  width: 100%;
+}
+
+.ui-table__table caption {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+  padding: var(--cms-spacing-2) var(--cms-spacing-3);
+  text-align: left;
+}
+
+.ui-table__th {
+  background: var(--cms-surface-2);
+  border-bottom: 1px solid var(--cms-border);
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: var(--cms-spacing-2) var(--cms-spacing-3);
+  position: sticky;
+  text-align: left;
+  text-transform: uppercase;
+  top: 0;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.ui-table__th[data-align='end'],
+.ui-table__td[data-align='end'] {
+  text-align: right;
+}
+
+.ui-table__th[data-align='center'],
+.ui-table__td[data-align='center'] {
+  text-align: center;
+}
+
+.ui-table__th--select,
+.ui-table__td--select {
+  padding-right: 0;
+  width: 2.75rem;
+}
+
+.ui-table__td {
+  border-bottom: 1px solid var(--cms-border-subtle);
+  color: var(--cms-fg);
+  height: var(--cms-row-height);
+  padding: var(--cms-spacing-2) var(--cms-spacing-3);
+  vertical-align: middle;
+}
+
+[data-density='compact'] .ui-table__td {
+  height: var(--cms-row-height-compact);
+  padding: var(--cms-spacing-1) var(--cms-spacing-3);
+}
+
+[data-density='compact'] .ui-table__th {
+  padding: var(--cms-spacing-1) var(--cms-spacing-3);
+}
+
+.ui-table__row:last-child .ui-table__td {
+  border-bottom: 0;
+}
+
+.ui-table__row:hover .ui-table__td {
+  background: var(--cms-surface-2);
+}
+
+.ui-table__row[aria-selected='true'] .ui-table__td {
+  background: var(--cms-accent-soft);
+}
+
+.ui-table__row[data-active='true'] .ui-table__td {
+  box-shadow: inset 0 1px 0 var(--cms-accent), inset 0 -1px 0 var(--cms-accent);
+}
+
+.ui-table__row:focus-visible {
+  outline: none;
+}
+
+.ui-table__row:focus-visible .ui-table__td {
+  box-shadow: inset 0 0 0 var(--cms-focus-ring-width) var(--cms-accent);
+}
+
+.ui-table__num {
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-table__mono {
+  color: var(--cms-fg-muted);
+  font-family: var(--cms-font-mono);
+  font-size: var(--cms-text-xs);
+}
+
+.ui-table__primary {
+  color: var(--cms-fg-strong);
+  font-weight: 600;
+}
+
+.ui-table__secondary {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+}
+
+.ui-table__spacer td {
+  border: 0;
+  padding: 0;
+}
+
+.ui-table__footer {
+  align-items: center;
+  border-top: 1px solid var(--cms-border-subtle);
+  color: var(--cms-fg-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--cms-text-sm);
+  gap: var(--cms-spacing-3);
+  justify-content: space-between;
+  padding: var(--cms-spacing-2-5) var(--cms-spacing-3);
+}
+
+.ui-table__thumb {
+  background: var(--cms-surface-2);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-md);
+  display: block;
+  flex: 0 0 auto;
+  height: 2.25rem;
+  object-fit: cover;
+  width: 2.25rem;
+}
+
+.ui-table__cell-stack {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ui-table__row-action {
+  background: transparent;
+  border: 0;
+  border-radius: var(--cms-radius-md);
+  color: var(--cms-fg-muted);
+  cursor: pointer;
+  display: inline-flex;
+  padding: var(--cms-spacing-1);
+}
+
+.ui-table__row-action:hover {
+  background: var(--cms-surface-3);
+  color: var(--cms-fg-strong);
+}
+
+/* ---------------------------------------------------------------------------
+   7. Diálogo, gaveta e menu
+   --------------------------------------------------------------------------- */
+
+.ui-dialog {
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
+  box-shadow: var(--cms-elevation-3);
+  color: var(--cms-fg);
+  display: grid;
+  gap: var(--cms-spacing-4);
+  max-height: min(85vh, 46rem);
+  overflow: auto;
+  padding: var(--cms-spacing-5);
+  width: min(100%, var(--ui-dialog-width, 34rem));
+}
+
+.ui-dialog__header {
+  display: grid;
+  gap: var(--cms-spacing-1);
+}
+
+.ui-dialog__header > * {
+  margin: 0;
+}
+
+.ui-dialog__title {
+  color: var(--cms-fg-strong);
+  font-family: var(--cms-font-display);
+  font-size: var(--cms-text-2xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.ui-dialog__description {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+}
+
+.ui-dialog__body {
+  display: grid;
+  gap: var(--cms-spacing-3);
+  min-width: 0;
+}
+
+.ui-dialog__footer {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2);
+  justify-content: flex-end;
+}
+
+.ui-dialog__footer--split {
+  justify-content: space-between;
+}
+
+.ui-drawer {
+  background: var(--cms-surface-1);
+  border-left: 1px solid var(--cms-border-subtle);
+  box-shadow: var(--cms-elevation-3);
+  color: var(--cms-fg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cms-spacing-3);
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--cms-spacing-4);
+  width: min(30rem, 100vw);
+}
+
+.ui-drawer__header {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--cms-spacing-3);
+  justify-content: space-between;
+}
+
+.ui-drawer__title {
+  color: var(--cms-fg-strong);
+  font-size: var(--cms-text-lg);
+  font-weight: 600;
+  margin: 0;
+}
+
+.ui-menu {
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-lg);
+  box-shadow: var(--cms-elevation-3);
+  color: var(--cms-fg);
+  display: grid;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  min-width: 12rem;
+  padding: var(--cms-spacing-1-5);
+}
+
+.ui-menu__item {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--cms-radius-md);
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font-size: var(--cms-text-sm);
+  gap: var(--cms-spacing-2);
+  justify-content: space-between;
+  padding: var(--cms-spacing-1-5) var(--cms-spacing-2);
+  text-align: left;
+  width: 100%;
+}
+
+.ui-menu__item:hover,
+.ui-menu__item:focus-visible {
+  background: var(--cms-surface-3);
+}
+
+.ui-menu__separator {
+  border-top: 1px solid var(--cms-border-subtle);
+  margin: var(--cms-spacing-1) 0;
+}
+
+.ui-backdrop {
+  background: var(--cms-scrim);
+  inset: 0;
+  position: fixed;
+  z-index: var(--cms-z-overlay);
+}
+
+/* Host do `Modal` do Payload (faceless-ui): o item do modal é posicionado pelo
+   próprio provider; aqui só o alinhamos ao centro e desenhamos o scrim. O
+   `<dialog>`/`div` recebe `modal-item` + esta classe, e o Payload declara as
+   visibilidades de transição — por isso nenhuma regra de visibilidade aqui. */
+.ui-dialog-host {
+  display: grid;
+  inset: 0;
+  padding: var(--cms-spacing-4);
+  place-items: center;
+}
+
+.ui-dialog-host::before {
+  background: var(--cms-scrim);
+  content: '';
+  inset: 0;
+  position: absolute;
+}
+
+.ui-dialog-host > .ui-dialog {
+  position: relative;
+}
+
+/* Host da gaveta: o Payload posiciona o painel; nós garantimos a coluna flex e
+   a altura cheia para o conteúdo rolar dentro dela. */
+.ui-drawer-host .drawer__content {
+  height: 100%;
+  padding: 0;
+}
+
+/* Caminho sem `ModalProvider` (jsdom): o mesmo painel, alinhado à direita sobre o
+   scrim. No browser quem posiciona é o `Drawer` do Payload. */
+.ui-backdrop.ui-drawer-host {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ---------------------------------------------------------------------------
+   7b. Abas
+   --------------------------------------------------------------------------- */
+
+.ui-tabs {
+  display: grid;
+  gap: var(--cms-spacing-4);
+  min-width: 0;
+}
+
+.ui-tabs__list {
+  border-bottom: 1px solid var(--cms-border-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-1);
+}
+
+.ui-tabs__tab {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--cms-fg-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: var(--cms-text-sm);
+  font-weight: 600;
+  gap: var(--cms-spacing-1-5);
+  padding: var(--cms-spacing-2) var(--cms-spacing-3);
+  transition:
+    border-color var(--cms-duration-base) var(--cms-ease-standard),
+    color var(--cms-duration-base) var(--cms-ease-standard);
+}
+
+.ui-tabs__tab:hover {
+  color: var(--cms-fg-strong);
+}
+
+.ui-tabs__tab[aria-selected='true'] {
+  border-bottom-color: var(--cms-accent);
+  color: var(--cms-fg-strong);
+}
+
+.ui-tabs__panel {
+  min-width: 0;
+}
+
+.ui-tabs__panel:focus-visible {
+  outline-offset: var(--cms-focus-ring-offset);
+}
+
+/* ---------------------------------------------------------------------------
+   8. Campo de formulário
+   --------------------------------------------------------------------------- */
+
+.ui-field {
+  display: grid;
+  gap: var(--cms-spacing-1);
+  min-width: 0;
+}
+
+.ui-field__label {
+  color: var(--cms-fg);
+  font-size: var(--cms-text-sm);
+  font-weight: 600;
+}
+
+.ui-field__required {
+  color: var(--cms-tone-error-solid);
+  margin-left: var(--cms-spacing-0-5);
+}
+
+.ui-field__description {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+}
+
+.ui-field__error {
+  color: var(--cms-tone-error-fg);
+  font-size: var(--cms-text-xs);
+  font-weight: 600;
+}
+
+.ui-input,
+.ui-select,
+.ui-textarea {
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border);
+  border-radius: var(--cms-radius-input);
+  color: var(--cms-fg);
+  font: inherit;
+  min-height: var(--cms-control-height);
+  padding: var(--cms-spacing-2) var(--cms-spacing-2-5);
+  transition: border-color var(--cms-duration-base) var(--cms-ease-standard);
+  width: 100%;
+}
+
+.ui-textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.ui-input:hover,
+.ui-select:hover,
+.ui-textarea:hover {
+  border-color: var(--cms-border-strong);
+}
+
+.ui-input:disabled,
+.ui-select:disabled,
+.ui-textarea:disabled {
+  background: var(--cms-surface-inset);
+  color: var(--cms-fg-faint);
+}
+
+.ui-checkbox {
+  align-items: center;
+  display: flex;
+  gap: var(--cms-spacing-2);
+}
+
+.ui-checkbox input {
+  accent-color: var(--cms-accent);
+  height: 1rem;
+  width: 1rem;
+}
+
+/* ---------------------------------------------------------------------------
+   9. Estados: vazio, esqueleto, erro, aviso
+   --------------------------------------------------------------------------- */
+
+.ui-empty {
+  align-items: center;
+  background: var(--cms-surface-2);
+  border: 1px dashed var(--cms-border);
+  border-radius: var(--cms-radius-card);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-4);
+  justify-content: space-between;
+  min-height: 8rem;
+  padding: var(--cms-spacing-5);
+}
+
+.ui-empty__title {
+  color: var(--cms-fg-strong);
+  font-size: var(--cms-text-base);
+  margin: 0;
+}
+
+.ui-empty__description {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+  margin: var(--cms-spacing-1) 0 0;
+}
+
+.ui-error {
+  align-items: flex-start;
+  background: var(--cms-tone-error-bg);
+  border: 1px solid var(--cms-tone-error-border);
+  border-radius: var(--cms-radius-card);
+  color: var(--cms-tone-error-fg);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-3);
+  justify-content: space-between;
+  padding: var(--cms-spacing-4);
+}
+
+.ui-error__title {
+  font-size: var(--cms-text-base);
+  margin: 0;
+}
+
+.ui-error__description {
+  font-size: var(--cms-text-sm);
+  margin: var(--cms-spacing-1) 0 0;
+}
+
+.ui-skeleton {
+  animation: ui-skeleton-pulse 1.6s var(--cms-ease-standard) infinite;
+  background: linear-gradient(
+    90deg,
+    var(--cms-surface-2) 0%,
+    var(--cms-surface-3) 50%,
+    var(--cms-surface-2) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--cms-radius-md);
+  display: block;
+  height: 0.75rem;
+  width: var(--ui-skeleton-width, 100%);
+}
+
+.ui-skeleton--row {
+  height: 1rem;
+}
+
+.ui-skeleton--thumb {
+  border-radius: var(--cms-radius-md);
+  height: 2.25rem;
+  width: 2.25rem;
+}
+
+.ui-skeleton-stack {
+  display: grid;
+  gap: var(--cms-spacing-3);
+  padding: var(--cms-spacing-3);
+}
+
+@keyframes ui-skeleton-pulse {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton {
+    animation: none;
+  }
+}
+
+.ui-notice {
+  align-items: center;
+  background: var(--cms-surface-2);
+  border: 1px solid var(--cms-border-subtle);
+  border-left: 4px solid var(--cms-border-strong);
+  border-radius: var(--cms-radius-md);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-3);
+  justify-content: space-between;
+  padding: var(--cms-spacing-2-5) var(--cms-spacing-3);
+}
+
+.ui-notice[data-tone='info'] {
+  background: var(--cms-tone-info-bg);
+  border-left-color: var(--cms-tone-info-solid);
+  color: var(--cms-tone-info-fg);
+}
+
+.ui-notice[data-tone='success'] {
+  background: var(--cms-tone-success-bg);
+  border-left-color: var(--cms-tone-success-solid);
+  color: var(--cms-tone-success-fg);
+}
+
+.ui-notice[data-tone='warning'] {
+  background: var(--cms-tone-warning-bg);
+  border-left-color: var(--cms-tone-warning-solid);
+  color: var(--cms-tone-warning-fg);
+}
+
+.ui-notice[data-tone='error'] {
+  background: var(--cms-tone-error-bg);
+  border-left-color: var(--cms-tone-error-solid);
+  color: var(--cms-tone-error-fg);
+}
+
+.ui-notice__content > :first-child {
+  margin-top: 0;
+}
+
+.ui-notice__content > :last-child {
+  margin-bottom: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   10. Detalhes: descrição em par chave/valor, teclas, barras
+   --------------------------------------------------------------------------- */
+
+.ui-facts {
+  display: grid;
+  gap: var(--cms-spacing-2) var(--cms-spacing-4);
+  grid-template-columns: minmax(7rem, auto) 1fr;
+  margin: 0;
+}
+
+.ui-facts dt {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.ui-facts dd {
+  color: var(--cms-fg);
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ui-keyhint {
+  background: var(--cms-surface-2);
+  border: 1px solid var(--cms-border-subtle);
+  border-bottom-width: 2px;
+  border-radius: var(--cms-radius-sm);
+  color: var(--cms-fg-muted);
+  display: inline-block;
+  font-family: var(--cms-font-mono);
+  font-size: var(--cms-text-xs);
+  line-height: 1;
+  min-width: 1.25rem;
+  padding: 2px var(--cms-spacing-1);
+  text-align: center;
+}
+
+.ui-meter {
+  background: var(--cms-surface-3);
+  border-radius: var(--cms-radius-full);
+  height: 0.375rem;
+  overflow: hidden;
+  width: 100%;
+}
+
+.ui-meter__value {
+  background: var(--cms-accent);
+  height: 100%;
+  transition: width var(--cms-duration-slower) var(--cms-ease-standard);
+}
+
+.ui-divider {
+  border: 0;
+  border-top: 1px solid var(--cms-border-subtle);
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   11. Responsivo: a tabela vira cartão abaixo de 900px
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .ui-page {
+    padding-left: var(--cms-spacing-3);
+    padding-right: var(--cms-spacing-3);
+  }
+
+  .ui-page__header {
+    flex-direction: column;
+  }
+
+  .ui-page__actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .ui-table--stacked .ui-table__table,
+  .ui-table--stacked .ui-table__table tbody,
+  .ui-table--stacked .ui-table__table tr {
+    display: block;
+    width: 100%;
+  }
+
+  /* As CÉLULAS não entram na regra acima de propósito: `td` tem especificidade
+     maior que `.ui-table__td` (0,2,1 contra 0,2,0) e um `display: block` aqui
+     venceria o `display: grid` que põe o rótulo (`::before`) ao lado do valor —
+     era o defeito medido em browser a 390px: o rótulo colava no valor. A célula
+     é sempre grid no modo empilhado; o que precisa virar bloco é a tabela, o
+     corpo e a linha. */
+  .ui-table--stacked .ui-table__table thead {
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .ui-table--stacked .ui-table__row {
+    border-bottom: 1px solid var(--cms-border-subtle);
+    display: grid;
+    gap: var(--cms-spacing-1);
+    padding: var(--cms-spacing-2-5);
+  }
+
+  .ui-table--stacked .ui-table__td {
+    border: 0;
+    display: grid;
+    gap: var(--cms-spacing-2);
+    grid-template-columns: minmax(6rem, 38%) 1fr;
+    height: auto;
+    padding: 0;
+  }
+
+  .ui-table--stacked .ui-table__td::before {
+    color: var(--cms-fg-faint);
+    content: attr(data-label);
+    font-size: var(--cms-text-xs);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .ui-table--stacked .ui-table__td--select::before,
+  .ui-table--stacked .ui-table__td--actions::before {
+    content: none;
+  }
+
+  .ui-facts {
+    grid-template-columns: 1fr;
+  }
+}

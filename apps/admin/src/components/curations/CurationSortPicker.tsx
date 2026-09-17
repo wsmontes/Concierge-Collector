@@ -2,6 +2,7 @@
 
 import { CURATION_SORTS, type CurationSort } from '../../content/record-types'
 import { isCurationSort } from '../../explorer/types'
+import { SelectInput } from '../ui/Field'
 
 /** Sort selector for the list. Options come from the frozen sort vocabulary. */
 export function CurationSortPicker({
@@ -11,15 +12,15 @@ export function CurationSortPicker({
   value: CurationSort
   onChange: (sort: CurationSort) => void
 }) {
-  return <label className="curation-sort-picker">
-    Sort
-    <select
-      value={value}
-      onChange={(event) => {
-        if (isCurationSort(event.target.value)) onChange(event.target.value)
+  return <div className="curation-sort-picker">
+    <SelectInput
+      id="curation-sort"
+      label="Sort"
+      onChange={(sort) => {
+        if (isCurationSort(sort)) onChange(sort)
       }}
-    >
-      {CURATION_SORTS.map((sort) => <option key={sort.id} value={sort.id}>{sort.label}</option>)}
-    </select>
-  </label>
+      options={CURATION_SORTS.map((sort) => ({ label: sort.label, value: sort.id }))}
+      value={value}
+    />
+  </div>
 }

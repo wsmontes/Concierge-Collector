@@ -1,7 +1,18 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
+import { Button } from '@payloadcms/ui'
+import { useState } from 'react'
+import { Dialog } from '../ui/Dialog'
+import { Field } from '../ui/Field'
+import { InlineNotice } from '../ui/InlineNotice'
 
+/**
+ * Emissão de credencial. O overlay é o `Dialog` do kit (focus trap, `Esc`, clique
+ * fora) e o campo usa o `Field` do kit — mas o `<input>` é nativo porque o
+ * contrato de escrita precisa de `maxLength` e `autoFocus`, que o `TextInput` do
+ * kit não expõe; perder o teto de 120 caracteres deixaria o servidor recusar o
+ * que a UI deixou digitar.
+ */
 export function IssueCredentialDialog({
   applicationName,
   pending,
@@ -13,50 +24,68 @@ export function IssueCredentialDialog({
   onClose: () => void
   onIssue: (name: string) => Promise<void> | void
 }) {
+  const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function submit() {
     if (pending) return
-    const form = new FormData(event.currentTarget)
-    const name = String(form.get('name') ?? '').trim()
-    if (!name) {
+    const trimmed = name.trim()
+    if (!trimmed) {
       setError('Credential name is required.')
       return
     }
     setError(null)
     try {
-      await onIssue(name)
+      await onIssue(trimmed)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'request_failed')
     }
   }
 
-  return <div className="collection-dialog-backdrop" role="presentation">
-    <section aria-labelledby="issue-credential-title" aria-modal="true" className="collection-dialog" role="dialog">
-      <header className="collection-dialog__header">
-        <div>
-          <p className="collection-views__eyebrow">Distribution</p>
-          <h2 id="issue-credential-title">Issue credential</h2>
-        </div>
-        <button type="button" onClick={onClose} disabled={pending} aria-label="Close issue credential dialog">×</button>
-      </header>
-      <p>Create an individually revocable read credential for <strong>{applicationName}</strong>. Its secret will be shown only once.</p>
-      <form onSubmit={submit}>
-        <label>
-          Credential name
-          <input name="name" required maxLength={120} autoFocus disabled={pending} />
-        </label>
-        {error && <p role="alert">{error}</p>}
-        <footer className="collection-dialog__footer">
-          <button type="button" onClick={onClose} disabled={pending}>Cancel</button>
-          <button type="submit" disabled={pending} aria-label="Issue credential now">
+  return (
+    <Dialog
+      description={`Create an individually revocable read credential for ${applicationName}. Its secret will be shown only once.`}
+      footer={(
+        <>
+          <Button buttonStyle="secondary" disabled={pending} margin={false} onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button
+            aria-label="Issue credential now"
+            disabled={pending}
+            margin={false}
+            onClick={() => void submit()}
+            type="button"
+          >
             {pending ? 'Issuing…' : 'Issue credential'}
-          </button>
-        </footer>
-      </form>
-    </section>
-  </div>
+          </Button>
+        </>
+      )}
+      onClose={() => { if (!pending) onClose() }}
+      open
+      title="Issue credential"
+    >
+      <Field
+        description="Shown in the credential list; the secret is never stored in the CMS."
+        error={error ?? undefined}
+        htmlFor="issue-credential-name"
+        label="Credential name"
+        required
+      >
+        <input
+          autoFocus
+          className="ui-input"
+          disabled={pending}
+          id="issue-credential-name"
+          maxLength={120}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Enter') void submit() }}
+          required
+          value={name}
+        />
+      </Field>
+    </Dialog>
+  )
 }
 
 export function CredentialActionDialog({
@@ -76,22 +105,43 @@ export function CredentialActionDialog({
 }) {
   const rotate = action === 'rotate'
   const title = rotate ? 'Rotate credential' : 'Revoke credential'
-  return <div className="collection-dialog-backdrop" role="presentation">
-    <section aria-labelledby="credential-action-title" aria-modal="true" className="collection-dialog" role="dialog">
-      <header className="collection-dialog__header">
-        <h2 id="credential-action-title">{title}</h2>
-      </header>
-      <p>
-        {rotate
-          ? <>A new secret will be issued for <strong>{credentialName}</strong>. The current secret remains valid for {overlapHours} hours so the consumer can cut over safely.</>
-          : <>Revoking <strong>{credentialName}</strong> takes effect on the next API request and cannot be undone. Issue a new credential if access is needed again.</>}
-      </p>
-      <footer className="collection-dialog__footer">
-        <button type="button" onClick={onClose} disabled={pending}>Cancel</button>
-        <button type="button" onClick={onConfirm} disabled={pending}>
-          {pending ? (rotate ? 'Rotating…' : 'Revoking…') : rotate ? 'Confirm rotate' : 'Confirm revoke'}
-        </button>
-      </footer>
-    </section>
-  </div>
+  return (
+    <Dialog
+      footer={(
+        <>
+          <Button buttonStyle="secondary" disabled={pending} margin={false} onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button
+            buttonStyle={rotate ? 'primary' : 'error'}
+            disabled={pending}
+            margin={false}
+            onClick={onConfirm}
+            type="button"
+          >
+            {pending ? (rotate ? 'Rotating…' : 'Revoking…') : rotate ? 'Confirm rotate' : 'Confirm revoke'}
+          </Button>
+        </>
+      )}
+      onClose={() => { if (!pending) onClose() }}
+      open
+      title={title}
+    >
+      {rotate ? (
+        <InlineNotice tone="info">
+          <p>
+            A new secret will be issued for <strong>{credentialName}</strong>. The current secret remains valid
+            for {overlapHours} hours so the consumer can cut over safely.
+          </p>
+        </InlineNotice>
+      ) : (
+        <InlineNotice tone="warning">
+          <p>
+            Revoking <strong>{credentialName}</strong> takes effect on the next API request and cannot be undone.
+            Issue a new credential if access is needed again.
+          </p>
+        </InlineNotice>
+      )}
+    </Dialog>
+  )
 }

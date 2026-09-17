@@ -10,14 +10,24 @@
  */
 
 import { Button } from '@payloadcms/ui'
-import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { isRecord } from '../../content/value-guards'
 import { AdminSection } from '../ui/AdminPage'
 import { InlineNotice } from '../ui/InlineNotice'
+import { KpiCard } from '../ui/Card'
 
 /** Wire shape of `GET /api/admin/v1/records/content-health`. */
 export interface ContentHealth {
+  /**
+   * Cobertura de mídia de EXIBIÇÃO, contada sobre as Entities. Não confundir com
+   * `without_images`, que conta a EVIDÊNCIA da Curation (a foto capturada pelo
+   * curador). Eram o mesmo número no painel antes desta separação — e o operador
+   * lia o card errado.
+   */
+  entities_total: number | null
+  entities_display_media_resolved: number | null
+  entities_no_sources: number | null
+  entities_unresolved: number | null
   total: number | null
   unlinked: number | null
   synthetic_drafts: number | null
@@ -92,7 +102,7 @@ const CARD_LABEL: Record<HealthCardId, string> = {
   total: 'Curations',
   unlinked: 'Unlinked',
   synthetic_drafts: 'Synthetic drafts',
-  without_images: 'Without images',
+  without_images: 'Without evidence media',
   without_transcript: 'Without transcript',
   updated_today: 'Updated today',
   without_collections: 'Without Collections',
@@ -159,6 +169,10 @@ function toContentHealth(value: unknown): ContentHealth {
     updated_today: asCount(body.updated_today),
     without_collections: asCount(body.without_collections),
     collections_members_tracked: asCount(body.collections_members_tracked),
+    entities_total: asCount(body.entities_total),
+    entities_display_media_resolved: asCount(body.entities_display_media_resolved),
+    entities_no_sources: asCount(body.entities_no_sources),
+    entities_unresolved: asCount(body.entities_unresolved),
     degraded: typeof body.degraded === 'string' && body.degraded.length > 0 ? body.degraded : null,
   }
 }
@@ -187,6 +201,39 @@ async function readHealth(loadHealth: () => Promise<ContentHealth>): Promise<{ h
     return { health: null, error: cause instanceof Error ? cause.message : 'request_failed' }
   }
 }
+
+/**
+ * Cobertura de mídia de exibição — o outro lado do par.
+ *
+ * Estes três contadores não têm link porque a lista de Entities ainda não sabe
+ * filtrar por estado de mídia; um link para um filtro que não existe seria pior
+ * que a ausência dele. Eles existem para responder a pergunta que o contador de
+ * evidência NÃO responde: "os cards vão conseguir mostrar foto?".
+ */
+function ContentHealthMediaGroup({ health }: { health: ContentHealth }) {
+  return (
+    <AdminSection
+      description="Which Entities can show a photo in the Collector. A durable fact counts only while it is inside its validity window and the Entity still has a source to resolve from."
+      title="Entity display media"
+    >
+      <div className="ui-kpi-grid">
+        <KpiCard label="With a display image" value={countText(health.entities_display_media_resolved)} />
+        <KpiCard
+          hint="No website and no Places id: there is nothing to resolve."
+          label="No source at all"
+          value={countText(health.entities_no_sources)}
+        />
+        <KpiCard
+          hint="Missing, failed, or past its validity — these are the cards the enrichment queue still has to cover."
+          label="Not yet resolved"
+          value={countText(health.entities_unresolved)}
+        />
+        <KpiCard label="Entities" value={countText(health.entities_total)} />
+      </div>
+    </AdminSection>
+  )
+}
+
 
 export function ContentHealthView({ loadHealth = loadContentHealth }: ContentHealthViewProps) {
   const [health, setHealth] = useState<ContentHealth | null>(null)
@@ -217,8 +264,8 @@ export function ContentHealthView({ loadHealth = loadContentHealth }: ContentHea
 
   return (
     <AdminSection
-      title="Content Health"
-      description="Objective counters over the stored Catalog, each one an entry point into the Curations list."
+      title="Curations"
+      description="Counters over the stored Curations (evidence captured by curators), each one an entry point into the list."
       className="content-health"
       action={loading || !health ? undefined : (
         <Button size="small" onClick={() => void reload()}>Refresh</Button>
@@ -231,29 +278,28 @@ export function ContentHealthView({ loadHealth = loadContentHealth }: ContentHea
       )}
       {health?.degraded && <InlineNotice tone="warning">{health.degraded}</InlineNotice>}
       {loading && !health && !error && (
-        <p className="content-health__loading" role="status">Loading content health…</p>
+        <p className="ui-page__description" role="status">Loading content health…</p>
       )}
       {health && (
-        <ul className="content-health__cards">
+        <div className="ui-kpi-grid">
           {CARD_ORDER.map((id) => (
-            <li key={id} className="content-health__item">
-              <Link className="content-health__card" href={CARD_LINK[id].href} title={CARD_LINK[id].title}>
-                <span
-                  className="content-health__count"
-                  title={health[id] === null ? 'Not reported by the boundary' : undefined}
-                >
-                  {countText(health[id])}
-                </span>
-                <span className="content-health__label">{CARD_LABEL[id]}</span>
-                {id === 'without_collections' && (
-                  <span className="content-health__note">
-                    {`Counted from the CMS membership ledger, which tracks ${countText(health.collections_members_tracked)} Curations. The list applies the same predicate.`}
-                  </span>
-                )}
-              </Link>
-            </li>
+            <KpiCard
+              hint={
+                id === 'without_collections'
+                  ? `Counted from the CMS membership ledger, which tracks ${countText(health.collections_members_tracked)} Curations. The list applies the same predicate.`
+                  : undefined
+              }
+              href={CARD_LINK[id].href}
+              key={id}
+              label={CARD_LABEL[id]}
+              title={CARD_LINK[id].title}
+              value={countText(health[id])}
+            />
           ))}
-        </ul>
+        </div>
+      )}
+      {health && (
+        <ContentHealthMediaGroup health={health} />
       )}
     </AdminSection>
   )

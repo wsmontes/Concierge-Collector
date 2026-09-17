@@ -10,39 +10,36 @@ describe('CurationTable columns', () => {
     const { container } = render(<CurationTable
       columns={['curation', 'city', 'version']}
       height={600}
-      rowHeight={44}
       rows={makeRows(1, { version: 4 })}
     />)
 
     expect(screen.queryByRole('columnheader', { name: 'Concepts' })).toBeNull()
     expect(screen.getByRole('columnheader', { name: 'City' })).toBeInTheDocument()
-    expect(container.querySelector('.curation-table__row [data-column="city"]')).toHaveTextContent('Vancouver')
-    expect(container.querySelector('.curation-table__row [data-column="version"]')).toHaveTextContent('4')
+    expect(container.querySelector('tr[data-row] td[data-label="City"]')).toHaveTextContent('Vancouver')
+    expect(container.querySelector('tr[data-row] td[data-label="Version"]')).toHaveTextContent('4')
   })
 
   test('never invents a value for a field the row does not carry', () => {
     const { container } = render(<CurationTable
       columns={['curation', 'collections', 'created', 'has_transcript', 'audio_count']}
       height={600}
-      rowHeight={44}
       rows={makeRows(1)}
     />)
 
-    expect(container.querySelector('.curation-table__row [data-column="collections"]')).toHaveTextContent('—')
-    expect(container.querySelector('.curation-table__row [data-column="created"]')).toHaveTextContent('—')
-    expect(container.querySelector('.curation-table__row [data-column="has_transcript"]')).toHaveTextContent('—')
-    expect(container.querySelector('.curation-table__row [data-column="audio_count"]')).toHaveTextContent('—')
+    expect(container.querySelector('tr[data-row] td[data-label="Collections"]')).toHaveTextContent('—')
+    expect(container.querySelector('tr[data-row] td[data-label="Created"]')).toHaveTextContent('—')
+    expect(container.querySelector('tr[data-row] td[data-label="Transcript"]')).toHaveTextContent('—')
+    expect(container.querySelector('tr[data-row] td[data-label="Audio"]')).toHaveTextContent('—')
   })
 
   test('caps visible concept chips and marks the remainder', () => {
     const { container } = render(<CurationTable
       columns={['curation', 'concepts']}
       height={600}
-      rowHeight={44}
       rows={makeRows(1, { concepts: ['Business', 'Casual', 'Friends', 'Burger', 'Sharing'] })}
     />)
 
-    const cell = container.querySelector('.curation-table__row [data-column="concepts"]')
+    const cell = container.querySelector('tr[data-row] td[data-label="Concepts"]')
     expect(cell).toHaveTextContent('Business')
     expect(cell).toHaveTextContent('+2')
     expect(cell).not.toHaveTextContent('Burger')
@@ -52,7 +49,6 @@ describe('CurationTable columns', () => {
     const { container } = render(<CurationTable
       columns={['curation', 'curator', 'has_transcript', 'updated']}
       height={600}
-      rowHeight={44}
       rows={makeRows(1, {
         curator_name: 'Wagner Montes',
         has_transcript: true,
@@ -60,9 +56,9 @@ describe('CurationTable columns', () => {
       })}
     />)
 
-    expect(container.querySelector('.curation-table__row [data-column="curation"]')).toHaveTextContent('Restaurant 1')
-    expect(container.querySelector('.curation-table__row [data-column="curator"]')).toHaveTextContent('Wagner Montes')
-    expect(container.querySelector('.curation-table__row [data-column="has_transcript"]')).toHaveTextContent('Yes')
-    expect(container.querySelector('.curation-table__row [data-column="updated"]')).toHaveTextContent('2 hours ago')
+    expect(container.querySelector('tr[data-row] td[data-label="Curation"]')).toHaveTextContent('Restaurant 1')
+    expect(container.querySelector('tr[data-row] td[data-label="Curator"]')).toHaveTextContent('Wagner Montes')
+    expect(container.querySelector('tr[data-row] td[data-label="Transcript"]')).toHaveTextContent('Yes')
+    expect(container.querySelector('tr[data-row] td[data-label="Updated"]')).toHaveTextContent('2 hours ago')
   })
 })

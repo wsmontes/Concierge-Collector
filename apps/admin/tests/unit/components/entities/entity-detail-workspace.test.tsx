@@ -63,7 +63,7 @@ function fieldBlock(path: string): HTMLElement {
 }
 
 function section(title: string): HTMLElement {
-  const sections = Array.from(document.querySelectorAll<HTMLElement>('.admin-section'))
+  const sections = Array.from(document.querySelectorAll<HTMLElement>('.ui-section'))
   const found = sections.find((candidate) => candidate.querySelector('h2')?.textContent === title)
   if (found === undefined) throw new Error(`No section rendered titled "${title}"`)
   return found
@@ -104,6 +104,51 @@ describe('EntityDetailWorkspace', () => {
     expect(screen.getByText('Loading Entity…')).toHaveAttribute('role', 'status')
     // Let the pending load settle so its update is not left un-flushed.
     await screen.findByRole('heading', { level: 1, name: 'Ritz Restaurant' })
+  })
+
+  test('links the website and the map the record carries, and omits them when it does not', async () => {
+    render(
+      <EntityDetailWorkspace
+        entityId="ent_1"
+        loadRecord={async () => ({ record: ENTITY_RECORD })}
+        saveRecord={vi.fn()}
+        loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
+      />,
+    )
+
+    await screen.findByRole('heading', { level: 1, name: 'Ritz Restaurant' })
+    const header = document.querySelector<HTMLElement>('.entity-detail__header')
+    expect(header).not.toBeNull()
+    if (header === null) return
+    // The stored website becomes a link; there are no coordinates, so there is no
+    // map link to invent.
+    expect(within(header).getByRole('link', { name: 'ritz.example' }))
+      .toHaveAttribute('href', 'https://ritz.example')
+    expect(within(header).queryByRole('link', { name: 'Open in maps' })).toBeNull()
+  })
+
+  test('builds the map link from stored coordinates', async () => {
+    render(
+      <EntityDetailWorkspace
+        entityId="ent_1"
+        loadRecord={async () => ({
+          record: { ...ENTITY_RECORD, data: { ...ENTITY_DATA, latitude: -23.55, longitude: -46.63 } },
+        })}
+        saveRecord={vi.fn()}
+        loadCurations={async () => ({ items: [], total: 0 })}
+        loadImages={NO_IMAGES}
+      />,
+    )
+
+    await screen.findByRole('heading', { level: 1, name: 'Ritz Restaurant' })
+    const header = document.querySelector<HTMLElement>('.entity-detail__header')
+    expect(header).not.toBeNull()
+    if (header === null) return
+    expect(within(header).getByRole('link', { name: 'Open in maps' })).toHaveAttribute(
+      'href',
+      'https://www.google.com/maps/search/?api=1&query=-23.55,-46.63',
+    )
   })
 
   test('renders the header, canonical identity and history from the stored record', async () => {
@@ -509,7 +554,7 @@ describe('EntityDetailWorkspace', () => {
     await screen.findByRole('heading', { level: 1, name: 'Bare Entity' })
     expect(await screen.findByRole('heading', { name: 'No location stored' })).toBeVisible()
     expect(screen.getByRole('heading', { name: 'No contact stored' })).toBeVisible()
-    expect(screen.getByRole('heading', { name: 'No media stored' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'No display media stored' })).toBeVisible()
     expect(screen.getByRole('heading', { name: 'No attributes stored' })).toBeVisible()
     expect(screen.getByRole('heading', { name: 'No metadata stored' })).toBeVisible()
     // A registered canonical field the record does not carry is still named.
@@ -554,7 +599,7 @@ describe('EntityDetailWorkspace', () => {
     expect(loadRecord).toHaveBeenCalledTimes(2)
   })
 
-  test('shows the Entity image the gallery resolves as the Media thumbnail', async () => {
+  test('shows the display media the gallery resolves as the Media hero, plus the rest as thumbnails', async () => {
     render(
       <EntityDetailWorkspace
         entityId="ent_1"
@@ -571,14 +616,18 @@ describe('EntityDetailWorkspace', () => {
     )
 
     await screen.findByRole('heading', { level: 1, name: 'Ritz Restaurant' })
-    const thumbnail = await within(section('Media')).findByRole('img', { name: 'Entity image' })
+    const media = section('Media')
+    const thumbnail = await within(media).findByRole('img', { name: 'Entity display media' })
     // The rank-0 hero, fetched through the BFF: never a boundary or origin URL.
     expect(thumbnail).toHaveAttribute('src', '/api/admin/v1/records/entities/ent_1/image?rank=0')
-    expect(within(section('Media')).getByRole('link', { name: 'Open image' }))
+    expect(within(media).getByRole('link', { name: 'Open image' }))
       .toHaveAttribute('href', '/api/admin/v1/records/entities/ent_1/image?rank=0')
+    // A galeria é display media também: a segunda imagem fica como miniatura.
+    expect(within(media).getByRole('link', { name: 'Open display media from google_places' }))
+      .toHaveAttribute('href', '/api/admin/v1/records/entities/ent_1/image?rank=1')
   })
 
-  test('says the Entity has no image instead of rendering a broken frame', async () => {
+  test('says the Entity has no display media instead of rendering a broken frame', async () => {
     render(
       <EntityDetailWorkspace
         entityId="ent_1"
@@ -593,7 +642,10 @@ describe('EntityDetailWorkspace', () => {
 
     await screen.findByRole('heading', { level: 1, name: 'Ritz Restaurant' })
     const media = section('Media')
-    expect(await within(media).findByText('No image is available for this Entity.')).toBeVisible()
+    // A linha diz QUAL das duas mídias falta: display media, não evidência.
+    expect(await within(media).findByText(
+      'No display media: this Entity has no image the Collector card can show.',
+    )).toBeVisible()
     expect(within(media).queryByRole('img')).toBeNull()
   })
 })

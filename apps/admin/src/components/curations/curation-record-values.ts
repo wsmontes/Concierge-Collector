@@ -10,7 +10,7 @@
 
 import { humanizeFieldName } from '../../content/field-types'
 import { isRecord } from '../../content/value-guards'
-import { formatRelativeDate } from '../ui/format-relative-date'
+import { formatAbsoluteDate, formatRelativeDate } from '../ui/format-relative-date'
 
 /** How a `sources` bucket is presented: a media list, or generic provenance. */
 export type SourceKind = 'image' | 'audio' | 'other'
@@ -73,12 +73,38 @@ export const CREATED_AT_KEYS = ['createdAt', 'created_at'] as const
 export const UPDATED_AT_KEYS = ['updatedAt', 'updated_at'] as const
 
 const TIMESTAMP_FIELD = /(_at|At)$/
+/** Stored names whose value is an identifier, a hash or a path: shown in mono. */
+const TECHNICAL_FIELD = /(^|_)(id|uuid|hash|checksum|sha\d*|path|slug|url|key)$/i
 const DURATION_SECONDS = /^\d+(\.\d+)?$/
 const LINKABLE_URL = /^(https?:|data:)/
+
+/** The last segment of a stored path: `sources.audio[0].source_id` → `source_id`. */
+function lastName(path: string): string {
+  const cut = Math.max(path.lastIndexOf('.'), path.lastIndexOf(']'))
+  return cut === -1 ? path : path.slice(cut + 1)
+}
+
+/**
+ * Whether a stored field name — or a full field path — holds a timestamp
+ * (`_at`/`At`), the shape the Collector and Payload both write. The page reads
+ * it as a time, never as a run of digits.
+ */
+export function isTimestampName(path: string): boolean {
+  return TIMESTAMP_FIELD.test(lastName(path))
+}
+
+/** Whether a stored field name or path holds a technical value: id, hash, path, URL. */
+export function isTechnicalName(path: string): boolean {
+  return TECHNICAL_FIELD.test(lastName(path))
+}
 
 export interface MetadataRow {
   label: string
   value: string
+  /** Absolute rendering of a timestamp value, for the row's `title`. */
+  title?: string
+  /** Technical value (id, hash, path): the row renders it in mono. */
+  mono?: boolean
 }
 
 export interface SourceEntryView {
@@ -148,6 +174,19 @@ export function firstValue(record: Record<string, unknown>, keys: readonly strin
     if (!isBlank(record[key])) return record[key]
   }
   return undefined
+}
+
+/**
+ * A stored timestamp as the page shows it: relative in the text, absolute in
+ * the `title` — an editor reads "3 days ago" and still gets the exact instant.
+ * Null when the value is not a stored date.
+ */
+export function timestampLabels(value: unknown): { relative: string; absolute: string | null } | null {
+  const stored = asString(value)
+  if (stored === null) return null
+  const absolute = formatAbsoluteDate(stored)
+  if (absolute === null) return null
+  return { relative: formatRelativeDate(stored), absolute }
 }
 
 /** `03:42`, `1:02:07` — the plan asks for a duration, not for raw seconds. */
@@ -282,10 +321,14 @@ function metadataRows(entry: unknown): MetadataRow[] {
   for (const [key, value] of Object.entries(entry)) {
     if (MEDIA_TEXT_FIELD[key] === true || isBlank(value)) continue
     const label = SOURCE_FIELD_LABEL[key] ?? humanizeFieldName(key)
-    rows.push({
-      label,
-      value: TIMESTAMP_FIELD.test(key) ? formatRelativeDate(asString(value)) : readableText(value),
-    })
+    const mono = isTechnicalName(key)
+    // A stored time reads as "3 days ago" and carries the instant in `title`.
+    const timestamp = isTimestampName(key) ? timestampLabels(value) : null
+    if (timestamp !== null) {
+      rows.push({ label, value: timestamp.relative, title: timestamp.absolute ?? undefined, mono })
+      continue
+    }
+    rows.push({ label, value: readableText(value), mono })
   }
   return rows
 }

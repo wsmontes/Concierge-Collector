@@ -9,7 +9,8 @@ test('issue dialog collects a non-empty credential name and disables controls wh
   render(<IssueCredentialDialog applicationName="Guide API" pending={false} onClose={vi.fn()} onIssue={onIssue} />)
 
   const dialog = screen.getByRole('dialog', { name: 'Issue credential' })
-  fireEvent.change(screen.getByLabelText('Credential name'), { target: { value: ' production reader ' } })
+  // O rótulo visual do kit traz o marcador de obrigatório; o nome acessível é exato.
+  fireEvent.change(screen.getByRole('textbox', { name: 'Credential name' }), { target: { value: ' production reader ' } })
   fireEvent.click(screen.getByRole('button', { name: 'Issue credential now' }))
 
   expect(onIssue).toHaveBeenCalledWith('production reader')

@@ -23,13 +23,15 @@ test('applies a private saved view and can delete it', async () => {
   const api = client()
   render(<CurationsSavedViews client={api} currentColumns={['curation']} currentFilters={{}} currentSort="updated_at_desc" onApply={onApply} />)
 
-  const select = await screen.findByLabelText('Saved view')
   const view = { id: 'view-1', name: 'Victoria drafts', normalizedFilters: { city: 'Victoria', status: ['draft'] }, sort: null, visibleColumns: null }
-  fireEvent.change(select, { target: { value: 'view-1' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Apply saved view' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Views' }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: /Victoria drafts/ }))
   expect(onApply).toHaveBeenCalledWith(expect.objectContaining(view))
 
-  fireEvent.click(screen.getByRole('button', { name: 'Delete saved view' }))
+  // A view só pode ser apagada depois de escolhida: o item nomeia exatamente a
+  // que está em uso, em vez de depender de uma seleção paralela.
+  fireEvent.click(screen.getByRole('button', { name: 'Views' }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: /Delete “Victoria drafts”/ }))
   await waitFor(() => expect(api.remove).toHaveBeenCalledWith('view-1'))
   expect(screen.queryByText('Victoria drafts')).toBeNull()
 })
@@ -46,7 +48,8 @@ test('saves the applied filters together with the sort and the visible columns',
     onApply={vi.fn()}
   />)
 
-  await screen.findByLabelText('Saved view')
+  fireEvent.click(screen.getByRole('button', { name: 'Views' }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: /Save current view/ }))
   fireEvent.change(screen.getByLabelText('New view name'), { target: { value: ' Active Victoria ' } })
   fireEvent.click(screen.getByRole('button', { name: 'Save current view' }))
 
@@ -55,5 +58,7 @@ test('saves the applied filters together with the sort and the visible columns',
     { city: 'Victoria', status: ['active'] },
     { sort: 'name_asc', visibleColumns: ['curation', 'city', 'created'] },
   ))
-  expect(await screen.findByRole('option', { name: 'Active Victoria' })).toBeVisible()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Views' }))
+  expect(await screen.findByRole('menuitem', { name: /^Active Victoria/ })).toBeVisible()
 })

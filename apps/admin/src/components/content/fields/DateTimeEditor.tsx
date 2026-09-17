@@ -2,7 +2,8 @@
 
 import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
-import { EditorFrame, type FieldEditorProps } from './EditorFrame'
+import { Field } from '../../ui/Field'
+import { EditorFrame, controlAria, type FieldEditorProps } from './EditorFrame'
 
 function pad(part: number): string {
   return String(part).padStart(2, '0')
@@ -40,17 +41,24 @@ export function DateTimeEditor({ node, onCommit, onCancel }: FieldEditorProps): 
   }
 
   return (
-    <EditorFrame node={node} controlId={controlId} error={error} onCancel={onCancel} onSave={save}>
-      <input
-        className="content-editor__input"
-        id={controlId}
-        type="datetime-local"
-        value={draft}
-        onChange={(event) => {
-          setDraft(event.target.value)
-          setError(null)
-        }}
-      />
+    <EditorFrame node={node} onCancel={onCancel} onSave={save}>
+      <Field
+        description={node.descriptor?.help}
+        error={error ?? undefined}
+        htmlFor={controlId}
+        label={node.label}
+      >
+        <input
+          {...controlAria(controlId, node, error)}
+          className="ui-input"
+          onChange={(event) => {
+            setDraft(event.target.value)
+            setError(null)
+          }}
+          type="datetime-local"
+          value={draft}
+        />
+      </Field>
     </EditorFrame>
   )
 }

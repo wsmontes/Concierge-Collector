@@ -38,7 +38,7 @@ describe('JobDrawer', () => {
     vi.stubGlobal('fetch', fetchMock)
     render(<JobDrawer />)
     await flush()
-    expect(screen.getByLabelText('Jobs em andamento')).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Active jobs' })).toBeInTheDocument()
     expect(screen.getByText('Add selection across 3 Collections')).toBeInTheDocument()
     expect(screen.getByText('5 applied, 1 skipped')).toBeInTheDocument()
     expect(screen.getByText('1 pending, 1 done, 1 failed')).toBeInTheDocument()
@@ -64,13 +64,34 @@ describe('JobDrawer', () => {
     vi.stubGlobal('fetch', fetchMock)
     render(<JobDrawer pollMs={2_000} />)
     await flush()
-    expect(screen.getByRole('alert')).toHaveTextContent('Unable to reach the server')
+    const failure = screen.getByRole('alert')
+    expect(failure).toHaveTextContent('Unable to reach the server')
     expect(fetchMock).toHaveBeenCalledTimes(1)
     // Backoff doubles the interval: the second attempt waits 4s, not 2s.
     await vi.advanceTimersByTimeAsync(2_000)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(2_000)
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  test('the failure state lets the operator retry without waiting for the backoff', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, false, 500))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<JobDrawer pollMs={2_000} />)
+    await flush()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    screen.getByRole('button', { name: 'Try again' }).click()
+    await flush()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  test('states that there is nothing in flight instead of showing an empty panel', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ items: [], nextCursor: null })))
+    render(<JobDrawer />)
+    await flush()
+    expect(screen.getByLabelText('No active jobs')).toBeVisible()
   })
 
   test('offers cancel only while the job is cancellable (never when committing)', async () => {

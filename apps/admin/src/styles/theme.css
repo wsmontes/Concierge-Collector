@@ -1,0 +1,325 @@
+/*
+ * Tema do Admin — a única camada que traduz a marca para o vocabulário do Payload.
+ *
+ * Purpose: declarar (a) o mapeamento `--theme-*` do Payload e (b) o vocabulário
+ * semântico do Admin (superfície, borda, tinta, tom, elevação, densidade, tipo),
+ * em claro e escuro, para que nenhuma tela precise escolher um hex.
+ *
+ * Responsibilities: apenas tokens. Nenhum seletor de componente mora aqui —
+ * componente é `kit.css`, tela é o CSS da tela.
+ *
+ * Dependencies: `@concierge/design-tokens` (os `--cms-*` de marca e escala) e a
+ * projeção em px, ambas importadas ANTES deste arquivo em `app/(payload)/layout.tsx`.
+ *
+ * ## Por que tudo aqui vive dentro de `@layer payload-default`
+ *
+ * Todo o CSS do Payload mora em `@layer payload-default, payload`
+ * (packages/ui/src/scss/app.scss). Estilo FORA de camada vence qualquer camada,
+ * e era exatamente onde este mapeamento vivia: um `:root { --theme-elevation-* }`
+ * sem camada anulava o bloco `html[data-theme='dark']` do próprio Payload (que
+ * está DENTRO da camada) — o modo escuro não invertia as elevações e o admin
+ * ficava claro com tinta clara. Dentro da camada, o bloco de dark do Payload
+ * vence por especificidade o nosso `:root`, e o nosso `html[data-theme='dark']`
+ * (que vem depois, na ordem de import) vence o dele por ordem. Medido no browser
+ * antes e depois: ver docs/reviews.
+ *
+ * ## Por que a rampa de elevação é literal
+ *
+ * O pacote compartilhado guarda as ÂNCORAS de marca (limestone/oliva + os quatro
+ * tons) porque o Collector declara os mesmos valores em `styles/design-system.css`
+ * e o teste de paridade trava isso. A escada de 21 degraus que o Payload espera
+ * não é âncora: é derivação. Ela vive aqui, como paleta derivada da marca, para
+ * que o pacote continue sendo a fonte das cores e não um depósito de tons
+ * intermediários. O que era defeito — 40 degraus semânticos colapsados em 3 hex,
+ * sem contraste entre "fundo sutil" e "texto forte" — é o que esta escada corrige.
+ */
+
+@layer payload-default {
+  :root {
+    /* ---- Superfícies: papel quente, cartão branco por cima ------------------ */
+    --cms-surface-0: var(--cms-bg);
+    --cms-surface-1: var(--cms-surface);
+    --cms-surface-2: #faf8f2;
+    --cms-surface-3: var(--cms-limestone-100);
+    --cms-surface-inset: var(--cms-limestone-100);
+    --cms-scrim: rgb(24 38 24 / 55%);
+
+    /* ---- Bordas: três forças, nunca um hex solto ---------------------------- */
+    --cms-border-subtle: #e6dfcc;
+    --cms-border: var(--cms-limestone-200);
+    --cms-border-strong: var(--cms-limestone-400);
+
+    /* ---- Tinta: quatro papéis ---------------------------------------------- */
+    --cms-fg-strong: var(--cms-olive-900);
+    --cms-fg: var(--cms-olive-800);
+    --cms-fg-muted: var(--cms-olive-600);
+    --cms-fg-faint: #646858;
+    --cms-fg-on-solid: #ffffff;
+
+    /* ---- Acento (a oliva da marca, no papel de "ação") --------------------- */
+    --cms-accent: var(--cms-primary);
+    --cms-accent-hover: #4d5c3d;
+    --cms-accent-soft: #eaeee2;
+    --cms-accent-border: #c3cfae;
+    --cms-accent-fg: var(--cms-olive-700);
+    --cms-accent-solid-fg: #ffffff;
+
+    /* ---- Tons semânticos: escada real de 5 papéis por tom ------------------ */
+    --cms-tone-success-bg: var(--cms-success-light);
+    --cms-tone-success-border: #b7cfc0;
+    --cms-tone-success-fg: var(--cms-success-dark);
+    --cms-tone-success-solid: var(--cms-success);
+    --cms-tone-error-bg: var(--cms-error-light);
+    --cms-tone-error-border: #e2b2ac;
+    --cms-tone-error-fg: var(--cms-error-dark);
+    --cms-tone-error-solid: var(--cms-error);
+    --cms-tone-warning-bg: var(--cms-warning-light);
+    --cms-tone-warning-border: #e2c39a;
+    --cms-tone-warning-fg: var(--cms-warning-dark);
+    --cms-tone-warning-solid: var(--cms-warning);
+    --cms-tone-info-bg: var(--cms-info-light);
+    --cms-tone-info-border: #b4c5d9;
+    --cms-tone-info-fg: var(--cms-info-dark);
+    --cms-tone-info-solid: var(--cms-info);
+
+    /* ---- Elevação: sombra quente, curta, que não vira mancha --------------- */
+    --cms-elevation-1: 0 1px 2px rgb(24 38 24 / 6%), 0 0 0 1px rgb(24 38 24 / 4%);
+    --cms-elevation-2: 0 2px 6px rgb(24 38 24 / 8%), 0 0 0 1px rgb(24 38 24 / 5%);
+    --cms-elevation-3: 0 12px 32px rgb(24 38 24 / 14%), 0 0 0 1px rgb(24 38 24 / 6%);
+
+    /* ---- Densidade: um lugar decide a altura de linha ---------------------- */
+    --cms-row-height: 3.25rem;
+    --cms-row-height-compact: 2.25rem;
+    --cms-toolbar-gap: var(--cms-spacing-2);
+
+    /* ---- Camadas: o popup do Payload (60) fica ACIMA de diálogo e gaveta ---
+       Um select dentro de um diálogo abre num popup; se o diálogo tiver z-index
+       maior, a lista abre atrás dele. Este é o motivo de 45/55 e não 90/100. */
+    --cms-z-drawer: 45;
+    --cms-z-overlay: 55;
+
+    /* ---- Mapeamento do Payload -------------------------------------------- */
+    --theme-bg: var(--cms-surface-0);
+    --theme-text: var(--cms-fg);
+    --theme-border-color: var(--cms-border);
+    --theme-input-bg: var(--cms-surface-1);
+    --theme-overlay: var(--cms-scrim);
+
+    --theme-elevation-0: var(--cms-surface-1);
+    --theme-elevation-50: #f8f6ee;
+    --theme-elevation-100: #f0ebdc;
+    --theme-elevation-150: var(--cms-border-subtle);
+    --theme-elevation-200: var(--cms-limestone-200);
+    --theme-elevation-250: #cfc5a9;
+    --theme-elevation-300: #c1b79b;
+    --theme-elevation-350: #b3a98e;
+    --theme-elevation-400: var(--cms-limestone-400);
+    --theme-elevation-450: #9a9078;
+    --theme-elevation-500: #8b8269;
+    --theme-elevation-550: #7d745c;
+    --theme-elevation-600: #6a6f5c;
+    --theme-elevation-650: #5f6452;
+    --theme-elevation-700: var(--cms-olive-600);
+    --theme-elevation-750: #434a3d;
+    --theme-elevation-800: var(--cms-olive-700);
+    --theme-elevation-850: #2f3b2e;
+    --theme-elevation-900: var(--cms-olive-900);
+    --theme-elevation-950: #131f13;
+    --theme-elevation-1000: #0d150d;
+
+    /* Rampas semânticas do Payload, em faixas por PAPEL: 25-200 fundo sutil,
+       250-450 borda, 500-550 sólido, 600+ texto. É o que garante contraste entre
+       um componente que usa o passo 100 como fundo e o 700 como texto. */
+    --theme-success-25: var(--cms-tone-success-bg);
+    --theme-success-50: var(--cms-tone-success-bg);
+    --theme-success-100: var(--cms-tone-success-bg);
+    --theme-success-150: var(--cms-tone-success-bg);
+    --theme-success-200: var(--cms-tone-success-bg);
+    --theme-success-250: var(--cms-tone-success-border);
+    --theme-success-300: var(--cms-tone-success-border);
+    --theme-success-350: var(--cms-tone-success-border);
+    --theme-success-400: var(--cms-tone-success-border);
+    --theme-success-450: var(--cms-tone-success-solid);
+    --theme-success-500: var(--cms-tone-success-solid);
+    --theme-success-550: var(--cms-tone-success-solid);
+    --theme-success-600: var(--cms-tone-success-fg);
+    --theme-success-650: var(--cms-tone-success-fg);
+    --theme-success-700: var(--cms-tone-success-fg);
+    --theme-success-750: var(--cms-tone-success-fg);
+    --theme-success-800: var(--cms-tone-success-fg);
+    --theme-success-850: var(--cms-tone-success-fg);
+    --theme-success-900: var(--cms-tone-success-fg);
+    --theme-success-950: var(--cms-tone-success-fg);
+    --theme-success-1000: var(--cms-tone-success-fg);
+
+    --theme-error-25: var(--cms-tone-error-bg);
+    --theme-error-50: var(--cms-tone-error-bg);
+    --theme-error-100: var(--cms-tone-error-bg);
+    --theme-error-150: var(--cms-tone-error-bg);
+    --theme-error-200: var(--cms-tone-error-bg);
+    --theme-error-250: var(--cms-tone-error-border);
+    --theme-error-300: var(--cms-tone-error-border);
+    --theme-error-350: var(--cms-tone-error-border);
+    --theme-error-400: var(--cms-tone-error-border);
+    --theme-error-450: var(--cms-tone-error-solid);
+    --theme-error-500: var(--cms-tone-error-solid);
+    --theme-error-550: var(--cms-tone-error-solid);
+    --theme-error-600: var(--cms-tone-error-fg);
+    --theme-error-650: var(--cms-tone-error-fg);
+    --theme-error-700: var(--cms-tone-error-fg);
+    --theme-error-750: var(--cms-tone-error-fg);
+    --theme-error-800: var(--cms-tone-error-fg);
+    --theme-error-850: var(--cms-tone-error-fg);
+    --theme-error-900: var(--cms-tone-error-fg);
+    --theme-error-950: var(--cms-tone-error-fg);
+    --theme-error-1000: var(--cms-tone-error-fg);
+
+    --theme-warning-25: var(--cms-tone-warning-bg);
+    --theme-warning-50: var(--cms-tone-warning-bg);
+    --theme-warning-100: var(--cms-tone-warning-bg);
+    --theme-warning-150: var(--cms-tone-warning-bg);
+    --theme-warning-200: var(--cms-tone-warning-bg);
+    --theme-warning-250: var(--cms-tone-warning-border);
+    --theme-warning-300: var(--cms-tone-warning-border);
+    --theme-warning-350: var(--cms-tone-warning-border);
+    --theme-warning-400: var(--cms-tone-warning-border);
+    --theme-warning-450: var(--cms-tone-warning-solid);
+    --theme-warning-500: var(--cms-tone-warning-solid);
+    --theme-warning-550: var(--cms-tone-warning-solid);
+    --theme-warning-600: var(--cms-tone-warning-fg);
+    --theme-warning-650: var(--cms-tone-warning-fg);
+    --theme-warning-700: var(--cms-tone-warning-fg);
+    --theme-warning-750: var(--cms-tone-warning-fg);
+    --theme-warning-800: var(--cms-tone-warning-fg);
+    --theme-warning-850: var(--cms-tone-warning-fg);
+    --theme-warning-900: var(--cms-tone-warning-fg);
+    --theme-warning-950: var(--cms-tone-warning-fg);
+    --theme-warning-1000: var(--cms-tone-warning-fg);
+
+    --theme-info-25: var(--cms-tone-info-bg);
+    --theme-info-50: var(--cms-tone-info-bg);
+    --theme-info-100: var(--cms-tone-info-bg);
+    --theme-info-150: var(--cms-tone-info-bg);
+    --theme-info-200: var(--cms-tone-info-bg);
+    --theme-info-250: var(--cms-tone-info-border);
+    --theme-info-300: var(--cms-tone-info-border);
+    --theme-info-350: var(--cms-tone-info-border);
+    --theme-info-400: var(--cms-tone-info-border);
+    --theme-info-450: var(--cms-tone-info-solid);
+    --theme-info-500: var(--cms-tone-info-solid);
+    --theme-info-550: var(--cms-tone-info-solid);
+    --theme-info-600: var(--cms-tone-info-fg);
+    --theme-info-650: var(--cms-tone-info-fg);
+    --theme-info-700: var(--cms-tone-info-fg);
+    --theme-info-750: var(--cms-tone-info-fg);
+    --theme-info-800: var(--cms-tone-info-fg);
+    --theme-info-850: var(--cms-tone-info-fg);
+    --theme-info-900: var(--cms-tone-info-fg);
+    --theme-info-950: var(--cms-tone-info-fg);
+    --theme-info-1000: var(--cms-tone-info-fg);
+
+    /* Compatibilidade com as telas ainda não migradas para o vocabulário novo.
+       Elas consomem `--cms-*-bg`; o alias morre com a última tela migrada. */
+    --cms-info-bg: var(--cms-tone-info-bg);
+    --cms-error-bg: var(--cms-tone-error-bg);
+    --cms-success-bg: var(--cms-tone-success-bg);
+    --cms-warning-bg: var(--cms-tone-warning-bg);
+  }
+
+  /* Modo escuro desenhado, não invertido: cada camada que empilha fica MAIS
+     CLARA que a de baixo (fundo < cartão < bloco < hover), e nenhuma tinta cai
+     abaixo de 4.5:1 sobre a superfície em que vive. */
+  html[data-theme='dark'] {
+    --cms-surface-0: #14170e;
+    --cms-surface-1: #1c2015;
+    --cms-surface-2: #222719;
+    --cms-surface-3: #2a3020;
+    --cms-surface-inset: #10130a;
+    --cms-scrim: rgb(8 10 6 / 70%);
+
+    --cms-border-subtle: #2a3020;
+    --cms-border: #3a4130;
+    --cms-border-strong: #55603f;
+
+    --cms-fg-strong: #f3f1e8;
+    --cms-fg: #e2ded1;
+    --cms-fg-muted: #adaa9a;
+    --cms-fg-faint: #8d8b7d;
+    --cms-fg-on-solid: #131a0d;
+
+    --cms-accent: #8fae6a;
+    --cms-accent-hover: #a3c07e;
+    --cms-accent-soft: #232a19;
+    --cms-accent-border: #3e4c29;
+    --cms-accent-fg: #cfe0ae;
+    --cms-accent-solid-fg: #131a0d;
+
+    --cms-tone-success-bg: #1c2a21;
+    --cms-tone-success-border: #32513c;
+    --cms-tone-success-fg: #a9d3b4;
+    --cms-tone-success-solid: #6fae82;
+    --cms-tone-error-bg: #2e1c1a;
+    --cms-tone-error-border: #5a342f;
+    --cms-tone-error-fg: #eeaaa2;
+    --cms-tone-error-solid: #d1665c;
+    --cms-tone-warning-bg: #2c2114;
+    --cms-tone-warning-border: #57401f;
+    --cms-tone-warning-fg: #e9c088;
+    --cms-tone-warning-solid: #cf9146;
+    --cms-tone-info-bg: #1a222d;
+    --cms-tone-info-border: #33475e;
+    --cms-tone-info-fg: #a9c5e1;
+    --cms-tone-info-solid: #7ba2cc;
+
+    --cms-elevation-1: 0 1px 2px rgb(0 0 0 / 45%), 0 0 0 1px rgb(255 255 255 / 4%);
+    --cms-elevation-2: 0 2px 8px rgb(0 0 0 / 50%), 0 0 0 1px rgb(255 255 255 / 5%);
+    --cms-elevation-3: 0 16px 40px rgb(0 0 0 / 60%), 0 0 0 1px rgb(255 255 255 / 6%);
+
+    --theme-bg: var(--cms-surface-0);
+    --theme-text: var(--cms-fg);
+    --theme-border-color: var(--cms-border);
+    --theme-input-bg: var(--cms-surface-1);
+    --theme-overlay: var(--cms-scrim);
+
+    --theme-elevation-0: var(--cms-surface-1);
+    --theme-elevation-50: var(--cms-surface-2);
+    --theme-elevation-100: var(--cms-surface-3);
+    --theme-elevation-150: #2f3523;
+    --theme-elevation-200: #363d29;
+    --theme-elevation-250: #3e452f;
+    --theme-elevation-300: #464e35;
+    --theme-elevation-350: #4f573c;
+    --theme-elevation-400: #586044;
+    --theme-elevation-450: #616a4c;
+    --theme-elevation-500: #6a7354;
+    --theme-elevation-550: #747d5d;
+    --theme-elevation-600: #7e8767;
+    --theme-elevation-650: #889272;
+    --theme-elevation-700: #939d7e;
+    --theme-elevation-750: #9ea88b;
+    --theme-elevation-800: #a9b399;
+    --theme-elevation-850: #b4bea7;
+    --theme-elevation-900: #c0cab6;
+    --theme-elevation-950: #ccd6c5;
+    --theme-elevation-1000: #d8e2d4;
+  }
+
+  @media (prefers-contrast: more) {
+    :root {
+      --cms-border-subtle: var(--cms-olive-900);
+      --cms-border: var(--cms-olive-900);
+      --cms-border-strong: var(--cms-olive-900);
+      --cms-fg-muted: var(--cms-olive-900);
+      --cms-fg-faint: var(--cms-olive-800);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --cms-duration-fast: 1ms;
+      --cms-duration-base: 1ms;
+      --cms-duration-slow: 1ms;
+      --cms-duration-slower: 1ms;
+    }
+  }
+}

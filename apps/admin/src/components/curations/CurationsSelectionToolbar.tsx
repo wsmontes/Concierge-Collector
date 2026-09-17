@@ -1,12 +1,19 @@
 'use client'
 
-import { Button, Pill } from '@payloadcms/ui'
+import { Button } from '@payloadcms/ui'
 import type { SelectionState } from '../../explorer/types'
+import { Chip } from '../ui/Chip'
 
 function curationCountLabel(count: number): string {
-  return `${count.toLocaleString()} ${count === 1 ? 'Curation' : 'Curations'}`
+  return `${count.toLocaleString('en-US')} ${count === 1 ? 'Curation' : 'Curations'}`
 }
 
+/**
+ * A barra de seleção. Ela é a única fonte do estado da seleção para leitor de
+ * tela (`role="status"`), e permanece presa no topo enquanto a lista rola: a
+ * intenção "all matching" vale para muito mais do que a faixa carregada, então
+ * o número do que está selecionado não pode sair de vista.
+ */
 export function CurationsSelectionToolbar({ onSelectAllMatching, onApplyToCollections, selection, total, applying }: {
   onSelectAllMatching: () => void
   onApplyToCollections: () => void
@@ -15,14 +22,14 @@ export function CurationsSelectionToolbar({ onSelectAllMatching, onApplyToCollec
   applying: boolean
 }) {
   const message = selection.mode === 'all_matching'
-    ? `${selection.previewCount?.toLocaleString() ?? 'All'} matching Curations selected`
+    ? `${selection.previewCount?.toLocaleString('en-US') ?? 'All'} matching Curations selected`
     : `${curationCountLabel(selection.selected.size)} selected`
   const hasSelection = selection.mode === 'all_matching' || selection.selected.size > 0
 
   return (
     <div className="curations-selection-toolbar">
       <div className="curations-selection-toolbar__summary" aria-live="polite" role="status">
-        <Pill pillStyle={hasSelection ? 'success' : 'light-gray'} rounded size="small">{message}</Pill>
+        <Chip size="sm" tone={hasSelection ? 'accent' : 'neutral'}>{message}</Chip>
       </div>
       {selection.mode === 'explicit' && (
         <Button buttonStyle="secondary" margin={false} onClick={onSelectAllMatching} size="small" type="button">
@@ -43,7 +50,7 @@ export function CurationsSelectionToolbar({ onSelectAllMatching, onApplyToCollec
         </span>
       )}
       <p className="curations-selection-toolbar__hint">
-        {total === null ? 'Selection is kept as a server-side intent.' : `${total.toLocaleString()} results match these filters.`}
+        {total === null ? 'Selection is kept as a server-side intent.' : `${total.toLocaleString('en-US')} results match these filters.`}
       </p>
     </div>
   )

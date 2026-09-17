@@ -13,10 +13,6 @@ export interface FieldEditorProps {
 
 export interface EditorFrameProps {
   node: FieldNode
-  /** Associates the label with its control. Read-only blocks leave it out. */
-  controlId?: string
-  /** Set while the draft cannot be committed; blocks nothing but the message. */
-  error?: string | null
   onCancel: () => void
   /** Omitted by editors that commit without a Save button. */
   onSave?: () => void
@@ -24,10 +20,16 @@ export interface EditorFrameProps {
 }
 
 /**
- * Shared chrome of every field editor: label, value slot, registry help, error
- * slot and actions. Escape always abandons the edit.
+ * Chrome of every field editor: the value slot plus the actions row. Escape
+ * always abandons the edit.
+ *
+ * Rótulo, ajuda e erro NÃO moram aqui: quem os desenha é o primitivo do kit
+ * (`Field`, `TextInput`, `SelectInput`, `CheckboxInput`) que envolve o controle.
+ * Assim `htmlFor`, `aria-describedby`, `aria-invalid` e `role="alert"` têm um
+ * dono só, em vez de cada editor reinstalar o vínculo — e o erro passa a usar o
+ * tom de erro do tema, sem vermelho literal.
  */
-export function EditorFrame({ node, controlId, error, onCancel, onSave, children }: EditorFrameProps): ReactNode {
+export function EditorFrame({ node, onCancel, onSave, children }: EditorFrameProps): ReactNode {
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== 'Escape') return
     event.stopPropagation()
@@ -36,18 +38,30 @@ export function EditorFrame({ node, controlId, error, onCancel, onSave, children
 
   return (
     <div className={`content-editor content-editor--${node.type}`} onKeyDown={handleKeyDown}>
-      {controlId
-        ? <label className="content-field__label" htmlFor={controlId}>{node.label}</label>
-        : <p className="content-field__label">{node.label}</p>}
       {children}
-      {node.descriptor?.help && <p className="content-editor__hint">{node.descriptor.help}</p>}
-      {error && <p className="content-editor__error" role="alert">{error}</p>}
       <div className="content-editor__actions">
         <Button buttonStyle="secondary" margin={false} type="button" onClick={onCancel}>Cancel</Button>
         {onSave && <Button buttonStyle="primary" margin={false} type="button" onClick={onSave}>Save</Button>}
       </div>
     </div>
   )
+}
+
+/**
+ * Vínculo que o `Field` do kit espera do seu controle, para os tipos que ele não
+ * embrulha sozinho (textarea, `datetime-local`, decimal). Espelha o que
+ * `ui/Field.tsx` faz internamente: mesmo `id`, mesmos sufixos de descrição/erro.
+ */
+export function controlAria(
+  id: string,
+  node: FieldNode,
+  error?: string | null,
+): { id: string; 'aria-describedby': string | undefined; 'aria-invalid': true | undefined } {
+  return {
+    id,
+    'aria-describedby': node.descriptor?.help ? `${id}-description` : undefined,
+    'aria-invalid': error ? true : undefined,
+  }
 }
 
 /** Text-based editors start from what the record stores, never from nothing. */

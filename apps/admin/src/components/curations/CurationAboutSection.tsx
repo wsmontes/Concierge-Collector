@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import type { FieldNode } from '../../content/field-types'
 import { AdminSection } from '../ui/AdminPage'
+import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
 import { CurationLink, type CurationNavigate } from './CurationLink'
 import { CurationFieldBlock, type CurationSectionEditProps } from './CurationFieldBlock'
@@ -25,13 +26,13 @@ function DerivedValue({
   navigate?: CurationNavigate
 }): ReactNode {
   return (
-    <div className="curation-derived" data-derived="true">
-      <h3 className="curation-derived__label">{label}</h3>
-      <p className="curation-derived__value">{value ?? 'Not set'}</p>
-      <p className="curation-derived__source">Derived from Entity</p>
+    <div className="ui-derived" data-derived="true">
+      <h3 className="ui-derived__label">{label}</h3>
+      <p className="ui-derived__value">{value ?? 'Not set'}</p>
+      <p className="ui-derived__source">Derived from Entity</p>
       {entityId !== null && (
         <CurationLink
-          className="curation-derived__link"
+          className="ui-derived__link"
           href={`/admin/entities/${encodeURIComponent(entityId)}`}
           navigate={navigate}
         >
@@ -60,28 +61,31 @@ export function CurationAboutSection({
 
   return (
     <AdminSection title="About" description="What this Curation is about, and which record owns its factual data.">
-      <div className="curation-about">
+      <div className="ui-about">
         {entity.entityId === null
           ? (
               <EmptyState
                 title="No Entity linked"
                 description="Until an Entity is linked, the restaurant name below is this Curation's working name."
                 action={
-                  <CurationLink className="curation-about__action" href="/admin/entities" navigate={navigate}>
+                  <CurationLink className="ui-about__action" href="/admin/entities" navigate={navigate}>
                     Find and link Entity
                   </CurationLink>
                 }
               />
             )
           : (
-              <div className="curation-about__entity">
-                <h3 className="curation-about__name">{entity.name ?? 'Linked Entity'}</h3>
+              <div className="ui-about__entity">
+                <div className="ui-about__headline">
+                  <h3 className="ui-about__name">{entity.name ?? 'Linked Entity'}</h3>
+                  <Chip size="sm" tone="accent">Linked Entity</Chip>
+                </div>
                 {entity.name === null && (
-                  <p className="curation-about__secondary">Entity id {entity.entityId}</p>
+                  <p className="ui-about__secondary ui-detail-mono">Entity id {entity.entityId}</p>
                 )}
-                {facts.length > 0 && <p className="curation-about__facts">{facts.join(' · ')}</p>}
+                {facts.length > 0 && <p className="ui-about__facts">{facts.join(' · ')}</p>}
                 <CurationLink
-                  className="curation-about__action"
+                  className="ui-about__action"
                   href={`/admin/entities/${encodeURIComponent(entity.entityId)}`}
                   navigate={navigate}
                 >
@@ -90,8 +94,10 @@ export function CurationAboutSection({
               </div>
             )}
         {restaurantNode !== null && <CurationFieldBlock node={restaurantNode} edit={edit} />}
-        <DerivedValue label="City" value={entity.city} entityId={entity.entityId} navigate={navigate} />
-        <DerivedValue label="Type" value={entity.type} entityId={entity.entityId} navigate={navigate} />
+        <div className="ui-about__derived">
+          <DerivedValue label="City" value={entity.city} entityId={entity.entityId} navigate={navigate} />
+          <DerivedValue label="Type" value={entity.type} entityId={entity.entityId} navigate={navigate} />
+        </div>
       </div>
     </AdminSection>
   )

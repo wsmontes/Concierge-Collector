@@ -22,6 +22,7 @@ function loadOgImageModule() {
 afterEach(() => {
   window.ApiService = undefined;
   window.caches = undefined;
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -128,5 +129,125 @@ describe('OgImageModule — persistência real no Cache Storage', () => {
     expect(String(cacheKey)).toContain('/__concierge-image-cache__/place%3AChIJ123');
     expect(response.headers.get('x-no-image')).toBe('1');
     expect(response.headers.get('x-cache-policy')).toBe('persistent');
+  });
+});
+
+describe('OgImageModule — falha transitória não dura a semana do negativo (2026-09-16)', () => {
+  /**
+   * Cache Storage de verdade (Map) + relógio controlado: o que se prova é o
+   * comportamento no TEMPO — quanto tempo depois o card volta a perguntar ao
+   * servidor. Antes, uma falha transitória (rede/5xx/timeout, o container
+   * reiniciando) ficava gravada por 10 min e o 404 definitivo por 7 dias.
+   */
+  function persistedCache() {
+    const store = new Map();
+    const fakeCache = {
+      match: vi.fn(async (key) => {
+        const response = store.get(String(key));
+        return response ? response.clone() : undefined;
+      }),
+      put: vi.fn(async (key, response) => { store.set(String(key), response.clone()); }),
+      delete: vi.fn(async (key) => { store.delete(String(key)); })
+    };
+    window.caches = { open: vi.fn().mockResolvedValue(fakeCache) };
+    return fakeCache;
+  }
+
+  test('60 s depois de uma falha de rede o card volta a perguntar (não em 7 dias)', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const fakeCache = persistedCache();
+    window.ApiService = { request: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) };
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-16T12:00:00Z'));
+    try {
+      const module = new OgImageModuleClass();
+      await expect(module._resolve('https://flaky.example.com', '', 'url:flaky')).rejects.toBeTruthy();
+
+      // Cinco minutos depois — a janela em que o container reinicia e volta. O
+      // negativo de 7 dias (e o de 10 min) ainda estaria valendo aqui.
+      vi.setSystemTime(new Date('2026-09-16T12:05:00Z'));
+      expect(await module._readCache('url:flaky')).toBeNull();
+      expect(fakeCache.delete).toHaveBeenCalledTimes(1);
+
+      // E o próximo load volta a perguntar: o card se cura quando o servidor volta.
+      const afterRecovery = vi.fn().mockResolvedValue({
+        ok: true,
+        blob: async () => new Blob(['jpeg'], { type: 'image/jpeg' })
+      });
+      window.ApiService = { request: afterRecovery };
+      vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:healed-1') });
+      const reloaded = new OgImageModuleClass();
+      expect(await reloaded._resolve('https://flaky.example.com', '', 'url:flaky')).toBe('blob:healed-1');
+      expect(afterRecovery).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('o negativo definitivo (404) vale 5 minutos e vence em 31 — não em 7 dias', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const fakeCache = persistedCache();
+    window.ApiService = { request: vi.fn().mockResolvedValue({ ok: false, status: 404 }) };
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-16T12:00:00Z'));
+    try {
+      const module = new OgImageModuleClass();
+      expect(await module._resolve('https://sem-og.example.com', '', 'url:sem-og')).toBeNull();
+
+      vi.setSystemTime(new Date('2026-09-16T12:05:00Z'));
+      expect(await module._readCache('url:sem-og')).toBe(false); // fresco: sem rede
+      expect(fakeCache.delete).not.toHaveBeenCalled();
+
+      vi.setSystemTime(new Date('2026-09-16T12:31:00Z'));
+      expect(await module._readCache('url:sem-og')).toBeNull(); // vencido: re-pergunta
+      expect(fakeCache.delete).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('o max-age=60 do servidor chega pelo throw do ApiService e encurta o negativo', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const fakeCache = persistedCache();
+    // ApiService REAL: 4xx SEMPRE lança (handleErrorResponse consome o body) e o
+    // erro leva só status/detail. Sem o bridge do módulo, o `Cache-Control` da
+    // resposta morreria nesse caminho e o cliente guardaria 30 min onde o
+    // servidor disse 60 s ("ainda não resolvi o hero").
+    const api = {
+      async request() {
+        const response = new Response('', {
+          status: 404,
+          headers: { 'Cache-Control': 'private, max-age=60' }
+        });
+        await api.handleErrorResponse(response);
+        return response;
+      },
+      async handleErrorResponse(response) {
+        const error = new Error('HTTP 404');
+        error.status = response.status;
+        error.detail = 'imagem não encontrada (og:image e Places sem resultado)';
+        throw error;
+      }
+    };
+    window.ApiService = api;
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-16T12:00:00Z'));
+    try {
+      const module = new OgImageModuleClass();
+      await module.init(); // instala o bridge no ApiService
+      await module._resolveEntityImage('e1', 0, '', '', 'entity:e1:rank:0');
+
+      const expiresIn = Number(fakeCache.put.mock.calls[0][1].headers.get('x-cache-expires')) - Date.now();
+      expect(expiresIn).toBeLessThanOrEqual(60 * 1000);
+      expect(expiresIn).toBeGreaterThan(50 * 1000);
+
+      vi.setSystemTime(new Date('2026-09-16T12:01:01Z'));
+      expect(await module._readCache('entity:e1:rank:0')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

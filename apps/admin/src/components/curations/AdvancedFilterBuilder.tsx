@@ -4,6 +4,7 @@ import { Button } from '@payloadcms/ui'
 import { useId } from 'react'
 import { descriptorsFor } from '../../content/field-registry'
 import type { FieldDescriptor, FieldType } from '../../content/field-types'
+import { Field, SelectInput } from '../ui/Field'
 import {
   isValuelessWhereOperator,
   isWhereOperator,
@@ -123,58 +124,56 @@ export function AdvancedFilterBuilder({
       const descriptor = descriptorFor(clause.field)
       const kind = valueKindFor(clause.op, descriptor?.type ?? null)
       const raw = clause.value === undefined || clause.value === null ? '' : clause.value
+      const fieldId = `${listId}-${index}-field`
+      const valueId = `${listId}-${index}-value`
       return <div className="curation-filter-builder__row" key={index}>
-        <label className="curation-filter-builder__control">
-          {`Field ${index + 1}`}
+        <Field htmlFor={fieldId} label={`Filter ${index + 1} field`}>
           <input
-            aria-label={`Filter ${index + 1} field`}
+            className="ui-input"
+            id={fieldId}
             list={listId}
             onChange={(event) => replace(index, withField(clause, event.target.value))}
             placeholder="notes.private"
             value={clause.field}
           />
-        </label>
-        <label className="curation-filter-builder__control">
-          {`Operator ${index + 1}`}
-          <select
-            aria-label={`Filter ${index + 1} operator`}
-            onChange={(event) => {
-              const op = event.target.value
-              if (isWhereOperator(op)) replace(index, withOperator(clause, op))
-            }}
-            value={clause.op}
-          >
-            {operatorsFor(clause.field).map((op) => <option key={op} value={op}>{operatorLabel(op)}</option>)}
-          </select>
-        </label>
-        {kind === null ? <span className="curation-filter-builder__novalue">No value</span> : (
-          <label className="curation-filter-builder__control">
-            {`Value ${index + 1}`}
-            {kind === 'enum' ? (
-              <select
-                aria-label={`Filter ${index + 1} value`}
-                onChange={(event) => replace(index, { ...clause, value: event.target.value })}
-                value={String(raw)}
-              >
-                <option value="">Not set</option>
-                {(descriptor?.enumValues ?? []).map((option) => <option key={option} value={option}>{option}</option>)}
-              </select>
-            ) : (
-              <input
-                aria-label={`Filter ${index + 1} value`}
-                onChange={(event) => replace(index, {
-                  ...clause,
-                  value: kind === 'number' && event.target.value !== ''
-                    ? Number(event.target.value)
-                    : kind === 'list'
-                      ? event.target.value.split(',').map((entry) => entry.trim()).filter(Boolean)
-                      : event.target.value,
-                })}
-                type={kind === 'number' ? 'number' : kind === 'date' ? 'date' : 'text'}
-                value={kind === 'list' ? (Array.isArray(raw) ? raw.join(', ') : '') : String(raw)}
-              />
-            )}
-          </label>
+        </Field>
+        <SelectInput
+          id={`${listId}-${index}-operator`}
+          label={`Filter ${index + 1} operator`}
+          onChange={(op) => {
+            if (isWhereOperator(op)) replace(index, withOperator(clause, op))
+          }}
+          options={operatorsFor(clause.field).map((op) => ({ label: operatorLabel(op), value: op }))}
+          value={clause.op}
+        />
+        {kind === null ? <p className="curation-filter-builder__novalue">No value</p> : kind === 'enum' ? (
+          <SelectInput
+            id={valueId}
+            label={`Filter ${index + 1} value`}
+            onChange={(selected) => replace(index, { ...clause, value: selected })}
+            options={[
+              { label: 'Not set', value: '' },
+              ...(descriptor?.enumValues ?? []).map((option) => ({ label: option, value: option })),
+            ]}
+            value={String(raw)}
+          />
+        ) : (
+          <Field htmlFor={valueId} label={`Filter ${index + 1} value`}>
+            <input
+              className="ui-input"
+              id={valueId}
+              onChange={(event) => replace(index, {
+                ...clause,
+                value: kind === 'number' && event.target.value !== ''
+                  ? Number(event.target.value)
+                  : kind === 'list'
+                    ? event.target.value.split(',').map((entry) => entry.trim()).filter(Boolean)
+                    : event.target.value,
+              })}
+              type={kind === 'number' ? 'number' : kind === 'date' ? 'date' : 'text'}
+              value={kind === 'list' ? (Array.isArray(raw) ? raw.join(', ') : '') : String(raw)}
+            />
+          </Field>
         )}
         <Button
           aria-label={`Remove filter ${index + 1}`}

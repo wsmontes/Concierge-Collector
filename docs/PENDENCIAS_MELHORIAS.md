@@ -344,7 +344,15 @@ cards: **150x190, 150x206 e 150x208** na mesma tela). Agora `align-self: flex-st
 
 Agora: `catch` trata o status (definitivo → negativo), falha transitória memoriza **10 min e só online**
 (offline não é "sem foto"), e o negativo definitivo tem **TTL de 7 dias** (mantém o ganho de não
-re-perguntar e deixa o card se curar). O prefetch passou a usar o MESMO rank do card (antes aquecia
+re-perguntar e deixa o card se curar).
+*NOTA (2026-09-16, retune posterior):* os dois valores acima foram encurtados — 7 dias de negativo
+definitivo faziam uma resposta velha do servidor parecer "este restaurante não tem foto" por dias, e
+10 min de transitório faziam um container reiniciando parecer a mesma coisa. Hoje: **30 min** para
+404/400 e **60 s** para rede/timeout/5xx, cada um limitado pelo `max-age` que o servidor manda junto da
+resposta (`max-age=60` no 404 de hero ainda resolvendo, `max-age=3600` quando a Entity não tem fonte —
+não sobrescrever o menor com o maior). O positivo (imagem) segue sem TTL. Ver `ogImageModule.js`
+(`_definitiveNoImageTtlMs`, `_transientNegativeTtlMs`, `_boundedNegativeTtlMs`).
+O prefetch passou a usar o MESMO rank do card (antes aquecia
 `rank:0` e o card com hero curado pagava a rede inteira — e a hero default era gravada sob a chave do
 hero escolhido). O delete de entrada vencida usava a chave lógica, que não é `Request` válida para o
 Cache API: falhava em silêncio. Medido depois: **4 requisições por reload** (contra 24/12) e o cache

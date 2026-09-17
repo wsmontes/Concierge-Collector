@@ -1,9 +1,13 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import { useId, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import type { FieldNode } from '../../content/field-types'
 import { AdminSection } from '../ui/AdminPage'
+import { Chip } from '../ui/Chip'
+import { EmptyState } from '../ui/EmptyState'
+import { TextInput } from '../ui/Field'
 import { CurationLink, type CurationNavigate } from './CurationLink'
 import type { CurationSectionEditProps } from './CurationFieldBlock'
 import type { ConceptGroup } from './curation-record-values'
@@ -28,7 +32,7 @@ function ConceptEditor({
   onCommit: (value: unknown) => void
   onCancel: () => void
 }): ReactNode {
-  const newCategoryId = useId()
+  const fieldId = useId()
   const [draft, setDraft] = useState<ConceptDraft[]>(
     () => groups.map((group) => ({ category: group.category, values: [...group.values] })),
   )
@@ -88,44 +92,51 @@ function ConceptEditor({
   }
 
   return (
-    <div className="curation-concepts__editor" onKeyDown={handleKeyDown}>
-      <ul className="curation-concepts__draft">
+    <div className="ui-concepts__editor" onKeyDown={handleKeyDown}>
+      <ul className="ui-concepts__draft">
         {draft.map((group, groupIndex) => (
-          <li key={`${groupIndex}-${group.category}`} className="curation-concepts__draft-group">
-            <div className="curation-concepts__draft-header">
+          <li key={`${groupIndex}-${group.category}`} className="ui-concepts__draft-group">
+            <div className="ui-concepts__draft-header">
               <h4>{group.category}</h4>
-              <button type="button" onClick={() => removeCategory(groupIndex)}>Remove category</button>
+              <Button buttonStyle="secondary" margin={false} onClick={() => removeCategory(groupIndex)} size="small" type="button">
+                Remove category
+              </Button>
             </div>
-            <ul className="curation-concepts__draft-values">
+            <ul className="ui-concepts__draft-values">
               {group.values.map((value, valueIndex) => (
                 <li key={valueIndex}>
-                  <input
-                    aria-label={`${group.category} value ${valueIndex + 1}`}
-                    type="text"
+                  <TextInput
+                    id={`${fieldId}-${groupIndex}-${valueIndex}`}
+                    label={`${group.category} value ${valueIndex + 1}`}
+                    onChange={(next) => setValue(groupIndex, valueIndex, next)}
                     value={value}
-                    onChange={(event) => setValue(groupIndex, valueIndex, event.target.value)}
                   />
-                  <button type="button" onClick={() => removeValue(groupIndex, valueIndex)}>Remove value</button>
+                  <Button buttonStyle="secondary" margin={false} onClick={() => removeValue(groupIndex, valueIndex)} size="small" type="button">
+                    Remove value
+                  </Button>
                 </li>
               ))}
             </ul>
-            <button type="button" onClick={() => addValue(groupIndex)}>Add value</button>
+            <Button buttonStyle="secondary" margin={false} onClick={() => addValue(groupIndex)} size="small" type="button">
+              Add value
+            </Button>
           </li>
         ))}
       </ul>
-      <div className="curation-concepts__new">
-        <label htmlFor={newCategoryId}>New category</label>
-        <input
-          id={newCategoryId}
-          type="text"
+      <div className="ui-concepts__new">
+        <TextInput
+          id={`${fieldId}-new-category`}
+          label="New category"
+          onChange={setNewCategory}
           value={newCategory}
-          onChange={(event) => setNewCategory(event.target.value)}
         />
-        <button type="button" onClick={addCategory}>Add category</button>
+        <Button buttonStyle="secondary" margin={false} onClick={addCategory} size="small" type="button">
+          Add category
+        </Button>
       </div>
-      <div className="curation-concepts__actions">
-        <button type="button" onClick={onCancel}>Cancel</button>
-        <button type="button" onClick={save}>Save</button>
+      <div className="ui-concepts__actions">
+        <Button buttonStyle="secondary" margin={false} onClick={onCancel} type="button">Cancel</Button>
+        <Button buttonStyle="primary" margin={false} onClick={save} type="button">Save</Button>
       </div>
     </div>
   )
@@ -154,22 +165,31 @@ export function CurationConceptsSection({
       title="Concepts"
       description="Concepts grouped by category. The categories come from the database, so none of them are hardcoded here."
       action={node.editable && !editing
-        ? <button type="button" onClick={() => edit.onEdit(node.path)}>Edit Concepts</button>
+        ? (
+            <Button buttonStyle="secondary" margin={false} onClick={() => edit.onEdit(node.path)} size="small" type="button">
+              Edit Concepts
+            </Button>
+          )
         : undefined}
     >
       {groups.length === 0
-        ? <p className="curation-concepts__empty">No concepts recorded.</p>
+        ? (
+            <EmptyState
+              title="No concepts recorded"
+              description="This Curation carries no category/value pairs yet. Edit Concepts adds the first one."
+            />
+          )
         : (
-            <div className="curation-concepts">
+            <div className="ui-concepts">
               {groups.map((group) => (
-                <div className="curation-concept" key={group.category}>
-                  <h3 className="curation-concept__category">{group.category}</h3>
-                  <ul className="curation-concept__values">
+                <div className="ui-concept" key={group.category}>
+                  <h3 className="ui-concept__category">{group.category}</h3>
+                  <ul className="ui-concept__values">
                     {group.values.map((value, position) => (
-                      <li className="curation-concept__value" key={position}>
-                        <span className="curation-concept__chip">{value}</span>
+                      <li className="ui-concept__value" key={position}>
+                        <Chip size="sm">{value}</Chip>
                         <CurationLink
-                          className="curation-concept__link"
+                          className="ui-concept__link"
                           href={`/admin/curations?concept.${encodeURIComponent(group.category)}=${encodeURIComponent(value)}`}
                           navigate={navigate}
                         >

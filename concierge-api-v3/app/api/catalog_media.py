@@ -7,13 +7,14 @@ moved onto the ``/catalog/*`` boundary (service credential + live CMS admin
 actor) — nothing else changes:
 
 - the source chain is the ONE tolerant chain already in use
-  (``entities._extract_image_sources``: contact/contacts/website and
+  (``display_media_service.extract_image_sources``: contact/contacts/website and
   place_id/google_place_id);
 - the bytes come from the hardened pipeline already in use
   (``og_image_service``: ``_validate_image_request_hook`` SSRF guard on every
   request of the redirect chain, byte cap, and the JPEG reencode) — there is no
   second downloader here, and the caller supplies only an Entity id and a rank,
-  never a URL.
+  never a URL. Rank 0 serves the display media persisted on the Entity, so the
+  discovery is not repeated per render; ranks 1..7 use the ranked collector.
 
 The gallery lists boundary paths, not origin URLs, so the Admin's ``<img>``
 points at its own BFF and no provider key can leak through the markup.
@@ -26,7 +27,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pymongo.database import Database
 
-from app.api.entities import _extract_image_sources, find_entity
+from app.api.entities import find_entity
 from app.core.database import get_database
 from app.core.security import verify_cms_service
 from app.models.catalog_media import (
@@ -37,15 +38,18 @@ from app.models.catalog_media import (
     EntityImagesResponse,
 )
 from app.services.catalog_service import require_current_cms_admin
-from app.services.og_image_service import (
-    get_og_image_bytes,
-    get_restaurant_image_bytes,
-    get_restaurant_images,
+from app.services.display_media_service import (
+    IMAGE_MISSING_DETAIL,
+    NO_SOURCES_CACHE_CONTROL,
+    NO_SOURCES_DETAIL,
+    PENDING_CACHE_CONTROL,
+    STATE_NO_SOURCES,
+    extract_image_sources,
+    read_hero_media,
 )
+from app.services.og_image_service import get_restaurant_image_bytes, get_restaurant_images
 
 router = APIRouter(prefix="/catalog", tags=["cms-catalog"])
-
-_NO_IMAGE_DETAIL = "imagem não encontrada (og:image e Places sem resultado)"
 
 
 def _actor(actor_id: str | None) -> str:
@@ -65,11 +69,11 @@ def _image_sources(db: Database, entity_id: str) -> tuple[str | None, str | None
     entity = find_entity(db, entity_id)
     if entity is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Entity {entity_id} not found")
-    website, place_id = _extract_image_sources(entity)
+    website, place_id = extract_image_sources(entity)
     if not website and not place_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="entity sem website nem place_id (sem fonte de imagem)",
+            detail=NO_SOURCES_DETAIL,
         )
     return website, place_id
 
@@ -125,23 +129,50 @@ async def read_entity_image(
 ) -> Response:
     """The reencoded JPEG of one ranked Entity image.
 
-    Rank 0 keeps the hero path of the curator-facing route; ranks 1..7 use the
-    ranked catalog. Both are the existing hardened paths — this route only
-    changes which credential opens the door.
+    Rank 0 (the thumbnail the Admin renders) serves the Entity's persisted
+    display media — the resolution that used to be redone on every render is now
+    a stored fact, and this route only fetches the opaque reference it stored.
+    With no fresh fact the response is a short-cached 404 and the enrichment is
+    scheduled in the background, never awaited.
+
+    Ranks 1..7 keep the ranked collector path: the gallery is on demand and the
+    pipeline already caches its catalog in memory.
     """
     require_current_cms_admin(db, _actor(actor_id))
+
+    if rank == 0:
+        entity = find_entity(db, entity_id)
+        if entity is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Entity {entity_id} not found")
+        read = await read_hero_media(db.entities, entity)
+        if read.image is not None:
+            image_data, content_type = read.image
+            return Response(
+                content=image_data,
+                media_type=content_type,
+                headers={"Cache-Control": f"private, max-age={ENTITY_IMAGE_CACHE_TTL_SECONDS}"},
+            )
+        if read.state == STATE_NO_SOURCES:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=NO_SOURCES_DETAIL,
+                headers={"Cache-Control": NO_SOURCES_CACHE_CONTROL},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=IMAGE_MISSING_DETAIL,
+            headers={"Cache-Control": PENDING_CACHE_CONTROL},
+        )
+
     website, place_id = _image_sources(db, entity_id)
 
     try:
-        if rank == 0:
-            image = await get_og_image_bytes(page_url=website, place_id=place_id)
-        else:
-            image = await get_restaurant_image_bytes(page_url=website, place_id=place_id, rank=rank)
+        image = await get_restaurant_image_bytes(page_url=website, place_id=place_id, rank=rank)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     if image is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NO_IMAGE_DETAIL)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=IMAGE_MISSING_DETAIL)
 
     image_data, content_type = image
     return Response(

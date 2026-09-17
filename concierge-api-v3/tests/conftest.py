@@ -54,6 +54,11 @@ os.environ["CMS_ADMIN_ORIGIN"] = "https://admin.concierge-collector.com"
 os.environ["CMS_ADMIN_CALLBACK_URL"] = "https://admin.concierge-collector.com/auth/callback"
 os.environ["METRICS_KEY"] = "test-metrics-key"
 
+# Display media: o enriquecimento é fire-and-forget e faria descoberta REAL
+# (rede) numa task solta do loop — nos unit tests ele fica desligado. Quem
+# precisa exercitá-lo liga a flag no próprio teste.
+os.environ["DISPLAY_MEDIA_ENRICH_ENABLED"] = "False"
+
 from main import app  # noqa: E402  (import DEPOIS do setup de env acima)
 from app.core.config import settings  # noqa: E402
 from app.core.database import get_database  # noqa: E402
@@ -109,6 +114,10 @@ class InMemoryCollection:
                 continue
             if key == "$and":
                 if not all(cls._matches(document, branch) for branch in expected):
+                    return False
+                continue
+            if key == "$nor":
+                if any(cls._matches(document, branch) for branch in expected):
                     return False
                 continue
 

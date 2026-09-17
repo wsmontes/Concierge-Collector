@@ -7,6 +7,10 @@ const health: ContentHealth = {
   unlinked: 1203,
   synthetic_drafts: 312,
   without_images: 630,
+  entities_total: 21600,
+  entities_display_media_resolved: 1500,
+  entities_no_sources: 100,
+  entities_unresolved: 20000,
   without_transcript: 4021,
   updated_today: 125,
   without_collections: 2491,
@@ -43,7 +47,7 @@ test('renders every counter the loader reports, localized', async () => {
   expect(await screen.findByRole('link', { name: '18,430 Curations' })).toBeVisible()
   expect(link('1,203 Unlinked')).toBeVisible()
   expect(link('312 Synthetic drafts')).toBeVisible()
-  expect(link('630 Without images')).toBeVisible()
+  expect(link('630 Without evidence media')).toBeVisible()
   expect(link('4,021 Without transcript')).toBeVisible()
   expect(link('125 Updated today')).toBeVisible()
   expect(link(/Without Collections/)).toBeVisible()
@@ -70,7 +74,7 @@ test('the two is_empty cards decode back to the frozen where clause', async () =
   renderWith(vi.fn().mockResolvedValue(health))
   await screen.findByRole('link', { name: '18,430 Curations' })
 
-  expect(whereClauses(link('630 Without images').getAttribute('href')))
+  expect(whereClauses(link('630 Without evidence media').getAttribute('href')))
     .toEqual([{ field: 'sources.image', op: 'is_empty' }])
   expect(whereClauses(link('4,021 Without transcript').getAttribute('href')))
     .toEqual([{ field: 'transcript', op: 'is_empty' }])
@@ -137,4 +141,20 @@ test('the default loader reads the Admin BFF route with the session cookie', asy
     '/api/admin/v1/records/content-health',
     expect.objectContaining({ credentials: 'same-origin' }),
   )
+})
+
+
+test('a cobertura de mídia de exibição aparece separada da evidência da Curation', async () => {
+  // Os dois números nomeiam fatos DIFERENTES: `without_images` conta a evidência
+  // que o curador capturou (sources.image da Curation); o grupo de mídia de
+  // exibição conta o hero que o card mostra (Entity + website/Places). Antes
+  // desta separação o painel exibia um número com o nome do outro.
+  renderWith(vi.fn().mockResolvedValue(health))
+
+  expect(await screen.findByText('Entity display media')).toBeVisible()
+  expect(screen.getByText('1,500')).toBeVisible()
+  expect(screen.getByText('With a display image')).toBeVisible()
+  expect(screen.getByText('No source at all')).toBeVisible()
+  expect(screen.getByText('Not yet resolved')).toBeVisible()
+  expect(screen.getByText('Entity display media')).toBeVisible()
 })

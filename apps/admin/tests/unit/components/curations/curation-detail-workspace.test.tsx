@@ -88,7 +88,7 @@ function setup(overrides: {
 
 /** The page's own block for a path — not the Inspector's row for it. */
 function pathBlock(path: string): HTMLElement {
-  const block = document.querySelector<HTMLElement>(`.curation-field[data-path="${path}"]`)
+  const block = document.querySelector<HTMLElement>(`.ui-field-block[data-path="${path}"]`)
   if (block === null) throw new Error(`No field block rendered for "${path}"`)
   return block
 }
@@ -114,7 +114,7 @@ describe('CurationDetailWorkspace', () => {
       'About',
       'Your curation',
       'Concepts',
-      'Media & sources',
+      'Curation evidence',
       'Collections',
       'History',
       'All fields',
@@ -191,6 +191,8 @@ describe('CurationDetailWorkspace', () => {
     setup({ loadRecord })
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Curation unavailable' })).toBeVisible()
+    // The failure says which failure it was, and offers the read again.
+    expect(screen.getByRole('alert')).toHaveTextContent('The Curations service is unavailable.')
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Ritz' })).toBeVisible()
   })
@@ -199,7 +201,7 @@ describe('CurationDetailWorkspace', () => {
     setup()
     await screen.findByRole('heading', { level: 1, name: 'Ritz' })
 
-    const derived = screen.getByRole('heading', { level: 3, name: 'City' }).closest('.curation-derived')
+    const derived = screen.getByRole('heading', { level: 3, name: 'City' }).closest('.ui-derived')
     expect(derived).not.toBeNull()
     const panel = derived as HTMLElement
     expect(within(panel).getByText('São Paulo')).toBeVisible()
@@ -307,18 +309,18 @@ describe('CurationDetailWorkspace', () => {
     setup()
     await screen.findByRole('heading', { level: 1, name: 'Ritz' })
 
-    const images = screen.getByRole('region', { name: 'Images' })
+    const images = screen.getByRole('region', { name: 'Captured images' })
     expect(within(images).getByText('1 stored')).toBeVisible()
     // The filename is both the entry title and a stored metadata row.
     expect(within(images).getAllByText('front-room.jpg').length).toBeGreaterThan(0)
     expect(within(images).getByText('1200')).toBeVisible()
     expect(within(images).getByText('800')).toBeVisible()
 
-    const audio = screen.getByRole('region', { name: 'Audio' })
+    const audio = screen.getByRole('region', { name: 'Captured audio' })
     expect(within(audio).getByText('Duration 03:42')).toBeVisible()
     expect(within(audio).getByText('Transcription available')).toBeVisible()
 
-    const other = screen.getByRole('region', { name: 'Other sources' })
+    const other = screen.getByRole('region', { name: 'Other evidence' })
     expect(within(other).getByRole('heading', { level: 4, name: 'Google places' })).toBeVisible()
 
     const transcript = pathBlock('transcript')
@@ -356,7 +358,7 @@ describe('CurationDetailWorkspace', () => {
     setup()
     await screen.findByRole('heading', { level: 1, name: 'Ritz' })
 
-    const raw = document.querySelector('.curation-raw__json')
+    const raw = document.querySelector('.ui-raw__json')
     expect(raw?.textContent).toContain(`"curation_id": "${CURATION_ID}"`)
     expect(raw?.textContent).toContain('"price_level": "$$"')
     // `sources` is a flexible value: Advanced is where its structured editor lives.
@@ -390,5 +392,92 @@ describe('CurationDetailWorkspace', () => {
 
     expect(inspectorRow('categories.Mood')).toBeVisible()
     expect(screen.queryByText('restaurant_name')).toBeNull()
+  })
+
+  test('the outline names every section of the record column and links to it', async () => {
+    setup()
+    await screen.findByRole('heading', { level: 1, name: 'Ritz' })
+
+    const outline = screen.getByRole('navigation', { name: 'On this page' })
+    const items = within(outline).getAllByRole('link')
+
+    expect(items.map((item) => item.textContent)).toEqual([
+      'About',
+      'Your curation',
+      'Concepts',
+      'Curation evidence',
+      'Collections',
+      'History',
+      'All fields',
+      'Advanced',
+    ])
+    // Each item resolves to the heading of the section it names — the anchor
+    // and the section are generated from the same title, and this is what keeps
+    // them from drifting apart.
+    for (const item of items) {
+      const heading = screen.getByRole('heading', { level: 2, name: item.textContent ?? '' })
+      expect(item).toHaveAttribute('href', `#${heading.id}`)
+    }
+  })
+
+  test('the outline follows the section the reader picks', async () => {
+    setup()
+    await screen.findByRole('heading', { level: 1, name: 'Ritz' })
+
+    const outline = screen.getByRole('navigation', { name: 'On this page' })
+    const media = within(outline).getByRole('link', { name: 'Curation evidence' })
+    expect(media).not.toHaveAttribute('aria-current')
+    expect(within(outline).getByRole('link', { name: 'About' })).toHaveAttribute('aria-current', 'location')
+
+    fireEvent.click(media)
+
+    expect(media).toHaveAttribute('aria-current', 'location')
+    expect(within(outline).getByRole('link', { name: 'About' })).not.toHaveAttribute('aria-current')
+  })
+
+  test('the rail carries the outline, the facts and the metadata of the record', async () => {
+    setup()
+    await screen.findByRole('heading', { level: 1, name: 'Ritz' })
+
+    const rail = screen.getByRole('complementary')
+    expect(within(rail).getByRole('navigation', { name: 'On this page' })).toBeVisible()
+    expect(within(rail).getByRole('heading', { level: 2, name: 'Facts' })).toBeVisible()
+    expect(within(rail).getByRole('heading', { level: 2, name: 'Metadata' })).toBeVisible()
+
+    /** The value of one fact, read the way the list pairs it with its label. */
+    function fact(label: string): string {
+      const term = within(rail).getAllByRole('term').find((node) => node.textContent === label)
+      if (term === undefined) throw new Error(`No fact labelled "${label}"`)
+      return term.nextElementSibling?.textContent ?? ''
+    }
+
+    expect(fact('Captured images')).toBe('1')
+    expect(fact('Captured audio')).toBe('1')
+    expect(fact('Other evidence')).toBe('1')
+    expect(fact('Transcript')).toBe('Stored')
+    expect(fact('Collections')).toBe('1 linked')
+    expect(fact('Concepts')).toBe('3 categories')
+  })
+
+  test('shows the stored instant relatively and keeps the absolute date in the title', async () => {
+    setup()
+    await screen.findByRole('heading', { level: 1, name: 'Ritz' })
+
+    const updated = within(headerRegion()).getByText('Updated').closest('.ui-record-identity__fact') as HTMLElement
+    const time = updated.querySelector('time')
+
+    expect(time).not.toBeNull()
+    expect(time).toHaveAttribute('datetime', '2026-09-13T12:00:00.000Z')
+    expect(time).toHaveAttribute('title', new Date('2026-09-13T12:00:00.000Z').toLocaleString())
+    expect(time?.textContent).not.toBe('2026-09-13T12:00:00.000Z')
+  })
+
+  test('keeps the Curation id in mono next to a way to copy it', async () => {
+    setup()
+    await screen.findByRole('heading', { level: 1, name: 'Ritz' })
+
+    const header = headerRegion()
+    expect(within(header).getByText(CURATION_ID)).toHaveClass('ui-detail-mono')
+    expect(within(header).getByRole('button', { name: 'Copy id' })).toBeVisible()
   })
 })

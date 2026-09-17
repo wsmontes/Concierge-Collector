@@ -20,7 +20,7 @@ test('shows consumer applications that currently allow the Collection', async ()
   expect(await screen.findByRole('heading', { name: 'Guide API' })).toBeVisible()
   expect(screen.getByText('Guide Team · active · 60/min')).toBeVisible()
   expect(screen.getByText('Published version 3 is the externally addressable Collection version.')).toBeVisible()
-  expect(screen.getByRole('link', { name: 'Manage consumer applications' })).toHaveAttribute('href', '/admin/applications')
+  expect(screen.getByRole('link', { name: 'Manage Applications' })).toHaveAttribute('href', '/admin/applications')
 })
 
 test('explains archive as a reversible distribution kill switch', async () => {

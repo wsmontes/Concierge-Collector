@@ -1,249 +1,276 @@
 'use client'
 
 import { useVirtualizer } from '@tanstack/react-virtual'
-import type { ReactNode } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useMemo, useRef, useState, useEffect, type ReactNode } from 'react'
 import { curationColumn, type CurationColumnId } from '../../content/curation-columns'
 import type { AdminCurationRow } from '../../explorer/types'
+import { Chip } from '../ui/Chip'
+import { DataTable, type DataTableColumn } from '../ui/DataTable'
 import { StatusPill } from '../ui/StatusPill'
 import { formatAbsoluteDate, formatRelativeDate } from '../ui/format-relative-date'
 
-/** Column width vocabulary: the header and every row share one template. */
-const COLUMN_WIDTH: Record<CurationColumnId, string> = {
-  curation: 'minmax(14rem, 2fr)',
-  entity: 'minmax(8rem, 1fr)',
-  curator: 'minmax(9rem, 1fr)',
-  type: 'minmax(7rem, 0.75fr)',
-  city: 'minmax(8rem, 0.9fr)',
-  concepts: 'minmax(12rem, 1.4fr)',
-  collections: 'minmax(6rem, 0.6fr)',
-  state: 'minmax(7rem, 0.7fr)',
-  updated: 'minmax(8rem, 0.9fr)',
-  created: 'minmax(8rem, 0.9fr)',
-  curation_id: 'minmax(12rem, 1.2fr)',
-  source_count: '5rem',
-  image_count: '5rem',
-  audio_count: '5rem',
-  has_transcript: '7rem',
-  version: '5rem',
-}
+/**
+ * Altura de uma linha, espelhando `--cms-row-height` e
+ * `--cms-row-height-compact` do tema: o virtualizador calcula deslocamentos em
+ * PIXEL, então ele precisa do número, enquanto o CSS precisa do token. As duas
+ * cópias vivem lado a lado de propósito — mudar o tema sem mudar esta tabela
+ * desalinha a janela virtual.
+ */
+export const CURATION_ROW_HEIGHT = { comfortable: 52, compact: 36 } as const
 
-const SELECT_WIDTH = '2.5rem'
-/** Concepts past this many become a single "+N" marker instead of chips. */
+export type CurationDensity = keyof typeof CURATION_ROW_HEIGHT
+
+/** Conceitos além deste tanto viram um único marcador `+N` em vez de chips. */
 const CONCEPT_CHIP_LIMIT = 3
 
-export interface CurationTableProps {
-  columns: readonly CurationColumnId[]
-  height: number
-  isSelected?: (row: AdminCurationRow) => boolean
-  /** A row click, or Enter on the active row, opens the preview. */
-  onOpenRow?: (row: AdminCurationRow) => void
-  onToggle?: (row: AdminCurationRow, index: number, shiftKey: boolean) => void
-  onToggleAllLoaded?: (selectAll: boolean) => void
-  rowHeight: number
-  rows: readonly AdminCurationRow[]
-  /** Header checkbox acts on the loaded range only; disabled while an all-matching intent is active. */
-  selectAllDisabled?: boolean
-}
+/** Linhas montadas acima e abaixo da janela, para a rolagem não piscar vazio. */
+const VIEWPORT_OVERSCAN = 12
 
-function textCell(value: string | null | undefined): ReactNode {
-  return value ?? '—'
+/**
+ * Abaixo de 900px o `DataTable` vira cartão e cada linha passa a ter altura
+ * própria: virtualizar por uma altura fixa mentiria, então a lista deixa de
+ * virtualizar e a página inteira rola.
+ */
+const STACKED_MEDIA_QUERY = '(max-width: 900px)'
+
+/** Teclas que movem a linha ativa (as mesmas que o `DataTable` trata). */
+const NAVIGATION_KEYS: Record<string, true> = { ArrowDown: true, ArrowUp: true, Home: true, End: true }
+
+const MISSING = '—'
+
+interface CurationColumnSpec {
+  /**
+   * Largura da coluna. Só tem efeito porque esta tabela fixa
+   * `table-layout: fixed` — `minmax()` (usado nas telas irmãs) é inválido em
+   * `width` e o navegador descarta a declaração.
+   */
+  width: string
+  align?: 'start' | 'end'
+  cell: (row: AdminCurationRow) => ReactNode
 }
 
 function countCell(value: number | null | undefined): ReactNode {
-  return typeof value === 'number' ? value.toLocaleString() : '—'
+  return typeof value === 'number' ? <span className="ui-table__num">{value.toLocaleString('en-US')}</span> : MISSING
 }
 
 function timestampCell(value: string | null | undefined): ReactNode {
-  if (!value) return '—'
+  if (!value) return MISSING
   const absolute = formatAbsoluteDate(value)
-  return <time dateTime={value} title={absolute ?? undefined}>{formatRelativeDate(value)}</time>
+  return <time className="ui-table__num" dateTime={value} title={absolute ?? undefined}>{formatRelativeDate(value)}</time>
 }
 
+/**
+ * Conceitos da Curation como chips. A célula mostra os primeiros e resume o
+ * resto em `+N`: a lista é para varredura, não para ler o vocabulário inteiro.
+ */
 function conceptCell(values: readonly string[] | null | undefined): ReactNode {
-  if (!values || values.length === 0) return '—'
+  if (!values || values.length === 0) return MISSING
   const visible = values.slice(0, CONCEPT_CHIP_LIMIT)
   const hidden = values.length - visible.length
   return (
-    <span className="curation-table__chips">
-      {visible.map((value) => <span className="curation-table__chip" key={value}>{value}</span>)}
-      {hidden > 0 && <span className="curation-table__chip curation-table__chip--more">{`+${hidden}`}</span>}
+    <span className="curations-table__chips">
+      {visible.map((value) => <Chip key={value} size="sm">{value}</Chip>)}
+      {hidden > 0 && <Chip size="sm" title={`${hidden} more concepts`}>{`+${hidden}`}</Chip>}
     </span>
   )
 }
 
-/** One cell per configured column. A field the row does not carry renders as missing. */
-function cellFor(column: CurationColumnId, row: AdminCurationRow): ReactNode {
-  switch (column) {
-    case 'curation':
-      return (
-        <span className="curation-table__identity">
-          <span className="curation-table__name">{row.restaurant_name ?? row.curation_id}</span>
-          <StatusPill status={row.status} />
-        </span>
-      )
-    case 'entity':
-      return textCell(row.entity_type)
-    case 'curator':
-      return textCell(row.curator_name ?? row.curator_id)
-    case 'type':
-      return textCell(row.entity_type)
-    case 'city':
-      return textCell(row.city)
-    case 'concepts':
-      return conceptCell(row.concepts)
-    case 'collections':
-      return countCell(row.collections_count)
-    case 'state':
-      return row.status
-    case 'updated':
-      return timestampCell(row.updated_at)
-    case 'created':
-      return timestampCell(row.created_at)
-    case 'curation_id':
-      return row.curation_id
-    case 'source_count':
-      return countCell(row.source_count)
-    case 'image_count':
-      return countCell(row.image_count)
-    case 'audio_count':
-      return countCell(row.audio_count)
-    case 'has_transcript':
-      return typeof row.has_transcript === 'boolean' ? (row.has_transcript ? 'Yes' : 'No') : '—'
-    case 'version':
-      return typeof row.version === 'number' ? String(row.version) : '—'
-  }
+/**
+ * A identidade editorial da linha: o nome do lugar que o curador reconhece,
+ * seguido do estado. O id técnico tem coluna própria (mono).
+ */
+function identityCell(row: AdminCurationRow): ReactNode {
+  return (
+    <span className="curations-table__identity">
+      <span className="curations-table__name">{row.restaurant_name ?? row.curation_id}</span>
+      <StatusPill status={row.status} />
+    </span>
+  )
 }
 
 /**
- * A viewport-sized DOM for large Curation result sets.
- *
- * The table container is keyboard-operable: ArrowUp/ArrowDown move the active
- * row, Space toggles it, Enter opens it. Row checkboxes are removed from the
- * tab order (tabIndex -1) so Tab reaches exactly one table control; the header
- * checkbox reflects the loaded-range selection and supports the indeterminate
- * state. Selecting a row must never be confused with opening it, so the
- * checkbox cell stops the click that would otherwise open the preview.
+ * Uma célula por coluna configurada. Um campo que a linha não carrega aparece
+ * como ausente — a tabela nunca inventa um valor.
  */
-export function CurationTable({
-  columns, height, isSelected, onOpenRow, onToggle, onToggleAllLoaded, rowHeight, rows, selectAllDisabled = false,
-}: CurationTableProps) {
-  const tableRef = useRef<HTMLDivElement>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const headerCheckboxRef = useRef<HTMLInputElement>(null)
-  const [activeIndex, setActiveIndex] = useState<number | null>(null)
-  // eslint-disable-next-line react-hooks/incompatible-library -- virtualization deliberately owns scroll measurements.
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => rowHeight,
-    initialRect: { height, width: 1000 },
-    overscan: 12,
-  })
-  // JSDOM and the first browser layout frame can report a zero scroll rect.
-  // Render the first viewport-sized slice until the virtualizer measures it.
-  const virtualItems = virtualizer.getVirtualItems()
-  const visibleItems = virtualItems.length > 0
-    ? virtualItems
-    : rows.slice(0, Math.ceil(height / rowHeight) + 12).map((_, index) => ({ index, key: index, size: rowHeight, start: index * rowHeight }))
+const CELLS: Record<CurationColumnId, CurationColumnSpec> = {
+  curation: { width: '20rem', cell: identityCell },
+  curator: { width: '13rem', cell: (row) => row.curator_name ?? row.curator_id ?? MISSING },
+  type: { width: '8rem', cell: (row) => row.entity_type ?? MISSING },
+  city: { width: '10rem', cell: (row) => row.city ?? MISSING },
+  concepts: { width: '17rem', cell: (row) => conceptCell(row.concepts) },
+  collections: { align: 'end', width: '7rem', cell: (row) => countCell(row.collections_count) },
+  state: { width: '9rem', cell: (row) => <StatusPill status={row.status} /> },
+  updated: { align: 'end', width: '11rem', cell: (row) => timestampCell(row.updated_at) },
+  created: { align: 'end', width: '11rem', cell: (row) => timestampCell(row.created_at) },
+  curation_id: { width: '14rem', cell: (row) => <span className="ui-table__mono">{row.curation_id}</span> },
+  source_count: { align: 'end', width: '6rem', cell: (row) => countCell(row.source_count) },
+  image_count: { align: 'end', width: '6rem', cell: (row) => countCell(row.image_count) },
+  audio_count: { align: 'end', width: '6rem', cell: (row) => countCell(row.audio_count) },
+  has_transcript: {
+    width: '7rem',
+    cell: (row) => (typeof row.has_transcript === 'boolean' ? (row.has_transcript ? 'Yes' : 'No') : MISSING),
+  },
+  version: { align: 'end', width: '6rem', cell: (row) => (typeof row.version === 'number' ? String(row.version) : MISSING) },
+}
 
-  const selectedCount = rows.reduce((count, row) => count + (isSelected?.(row) ? 1 : 0), 0)
-  const someLoadedSelected = selectedCount > 0 && selectedCount < rows.length
-  const allLoadedSelected = rows.length > 0 && selectedCount === rows.length
+export interface CurationTableProps {
+  columns: readonly CurationColumnId[]
+  density?: CurationDensity
+  /** Altura da janela de rolagem, em pixels. */
+  height: number
+  isSelected?: (row: AdminCurationRow) => boolean
+  /** Um clique na linha, ou `Enter` na linha ativa, abre a prévia. */
+  onOpenRow?: (row: AdminCurationRow) => void
+  onToggle?: (row: AdminCurationRow, index: number, shiftKey: boolean) => void
+  onToggleAllLoaded?: (selectAll: boolean) => void
+  rows: readonly AdminCurationRow[]
+  /** O checkbox do cabeçalho age só sobre a faixa carregada; fica inerte enquanto uma intenção "all matching" está ativa. */
+  selectAllDisabled?: boolean
+  loading?: boolean
+  empty?: ReactNode
+  footer?: ReactNode
+}
+
+/** `true` quando a casca está no modo cartão (a tabela deixa de ser virtualizada). */
+function useStackedLayout(): boolean {
+  // O valor inicial sai do próprio media query: sincronizar por efeito seria um
+  // segundo render só para dizer o que o primeiro já podia saber.
+  const [stacked, setStacked] = useState(
+    () => typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia(STACKED_MEDIA_QUERY).matches,
+  )
 
   useEffect(() => {
-    if (headerCheckboxRef.current) headerCheckboxRef.current.indeterminate = someLoadedSelected
-  }, [someLoadedSelected])
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const query = window.matchMedia(STACKED_MEDIA_QUERY)
+    const onChange = (event: MediaQueryListEvent) => setStacked(event.matches)
+    query.addEventListener('change', onChange)
+    return () => query.removeEventListener('change', onChange)
+  }, [])
 
-  const gridTemplateColumns = `${SELECT_WIDTH} ${columns.map((column) => COLUMN_WIDTH[column]).join(' ')}`
+  return stacked
+}
 
-  function moveActive(delta: number) {
-    if (rows.length === 0) return
-    // ArrowDown from no active row lands on the first row; ArrowUp on the last.
-    const next = activeIndex === null
-      ? (delta > 0 ? 0 : rows.length - 1)
-      : Math.min(Math.max(activeIndex + delta, 0), rows.length - 1)
-    setActiveIndex(next)
-    virtualizer.scrollToIndex(next)
+/**
+ * A lista de Curations sobre o `DataTable` do kit.
+ *
+ * A virtualização continua sendo desta tabela — o kit só desenha a janela que
+ * recebe (`rows` + `paddingTop`/`paddingBottom`) — porque a paginação é do
+ * servidor: uma página grande monta só as linhas visíveis, sem perder o
+ * cursor da página. A rolagem acontece dentro do `__scroll` do `DataTable`
+ * (é o que faz o cabeçalho ficar preso) e é o elemento que o virtualizador
+ * mede.
+ */
+export function CurationTable({
+  columns,
+  density = 'comfortable',
+  height,
+  isSelected,
+  onOpenRow,
+  onToggle,
+  onToggleAllLoaded,
+  rows,
+  selectAllDisabled = false,
+  loading = false,
+  empty,
+  footer,
+}: CurationTableProps) {
+  const hostRef = useRef<HTMLDivElement>(null)
+  const stacked = useStackedLayout()
+  const rowHeight = CURATION_ROW_HEIGHT[density]
+
+  // eslint-disable-next-line react-hooks/incompatible-library -- a virtualização mede o elemento de rolagem do kit de propósito.
+  const virtualizer = useVirtualizer({
+    count: stacked ? 0 : rows.length,
+    getScrollElement: () => hostRef.current?.querySelector<HTMLElement>('.ui-table__scroll') ?? null,
+    estimateSize: () => rowHeight,
+    initialRect: { height, width: 1000 },
+    overscan: VIEWPORT_OVERSCAN,
+  })
+
+  const tableColumns = useMemo<Array<DataTableColumn<AdminCurationRow>>>(
+    () => columns.map((id) => {
+      const spec = CELLS[id]
+      const { label } = curationColumn(id)
+      return { key: id, header: label, label, align: spec.align, width: spec.width, cell: spec.cell }
+    }),
+    [columns],
+  )
+
+  const indexByKey = useMemo(
+    () => new Map(rows.map((row, index) => [row.curation_id, index] as const)),
+    [rows],
+  )
+
+  const selectedKeys = useMemo(() => {
+    const keys = new Set<string>()
+    if (isSelected) for (const row of rows) if (isSelected(row)) keys.add(row.curation_id)
+    return keys
+  }, [isSelected, rows])
+
+  // JSDOM e o primeiro quadro do navegador medem uma viewport de rolagem zero:
+  // até o virtualizador medir, a janela é a fatia que cabe na altura pedida.
+  const virtualItems = virtualizer.getVirtualItems()
+  const visible = virtualItems.length > 0
+    ? virtualItems
+    : (stacked ? [] : rows.slice(0, Math.ceil(height / rowHeight) + VIEWPORT_OVERSCAN)
+      .map((_row, index) => ({ index, size: rowHeight, start: index * rowHeight })))
+  const first = visible[0]
+  const last = visible[visible.length - 1]
+  const windowRows = visible.map((item) => rows[item.index]).filter((row): row is AdminCurationRow => row !== undefined)
+  const paddingTop = first ? first.start : 0
+  const paddingBottom = last ? Math.max(0, virtualizer.getTotalSize() - (last.start + last.size)) : 0
+
+  /**
+   * A janela virtual é menor que a página: quando o teclado chega à borda, o
+   * `DataTable` não tem linha seguinte para focar. Aqui a janela acompanha o
+   * índice ativo — o `scrollToIndex` de uma linha já visível não faz nada, e a
+   * de uma linha fora da janela a traz para o próximo passo.
+   */
+  function followActiveRow(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (stacked || !NAVIGATION_KEYS[event.key]) return
+    const active = hostRef.current?.querySelector<HTMLElement>('.ui-table__row[data-active="true"]')
+    const index = Number(active?.dataset.index)
+    if (Number.isFinite(index)) virtualizer.scrollToIndex(index)
   }
 
-  /** Table-level shortcuts fire only while the table itself holds focus (not a nested checkbox). */
-  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.target !== tableRef.current) return
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      moveActive(1)
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      moveActive(-1)
-    } else if (event.key === ' ') {
-      const index = activeIndex ?? 0
-      const row = rows[index]
-      if (row) {
-        event.preventDefault()
-        onToggle?.(row, index, false)
-      }
-    } else if (event.key === 'Enter') {
-      const row = rows[activeIndex ?? 0]
-      if (row) {
-        event.preventDefault()
-        onOpenRow?.(row)
-      }
-    }
+  /**
+   * `Espaço` num checkbox da tabela pertence ao próprio checkbox. O handler de
+   * teclado mora na `<table>`, então sem esta captura a mesma tecla chegaria
+   * duas vezes: o checkbox marcaria e o handler marcaria de novo — a seleção
+   * voltaria ao ponto de partida. (O `DataTable` antigo guardava isso na
+   * linha; a guarda viva hoje é esta.)
+   */
+  function keepRowControlKeysFromTable(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === ' ' && event.target instanceof HTMLInputElement) event.stopPropagation()
   }
 
   return (
-    <div className="curation-table" ref={tableRef} role="table" aria-label="Curations" onKeyDown={handleKeyDown} tabIndex={0}>
-      <div className="curation-table__header" role="row" style={{ gridTemplateColumns }}>
-        <span role="columnheader">
-          <input
-            aria-label="Select all loaded Curations"
-            checked={allLoadedSelected}
-            disabled={selectAllDisabled || rows.length === 0}
-            onChange={(event) => onToggleAllLoaded?.(event.target.checked)}
-            ref={headerCheckboxRef}
-            type="checkbox"
-          />
-        </span>
-        {columns.map((column) => (
-          <span data-column={column} key={column} role="columnheader">{curationColumn(column).label}</span>
-        ))}
-      </div>
-      <div className="curation-table__viewport" ref={scrollRef} style={{ height, overflow: 'auto' }}>
-        <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-          {visibleItems.map((virtualRow) => {
-            const row = rows[virtualRow.index]
-            return (
-              <div
-                className="curation-table__row"
-                data-active={activeIndex === virtualRow.index ? 'true' : undefined}
-                data-index={virtualRow.index}
-                key={row.curation_id}
-                onClick={() => onOpenRow?.(row)}
-                role="row"
-                style={{ gridTemplateColumns, height: virtualRow.size, position: 'absolute', transform: `translateY(${virtualRow.start}px)`, width: '100%' }}
-              >
-                <span className="curation-table__select" onClick={(event) => event.stopPropagation()} role="cell">
-                  <input
-                    aria-label={`Select ${row.restaurant_name ?? row.curation_id}`}
-                    checked={isSelected?.(row) ?? false}
-                    onChange={(event) => onToggle?.(
-                      row,
-                      virtualRow.index,
-                      'shiftKey' in event.nativeEvent && Boolean(event.nativeEvent.shiftKey),
-                    )}
-                    tabIndex={-1}
-                    type="checkbox"
-                  />
-                </span>
-                {columns.map((column) => (
-                  <span data-column={column} key={column} role="cell">{cellFor(column, row)}</span>
-                ))}
-              </div>
-            )
-          })}
-        </div>
-      </div>
+    <div className="curations-table" onKeyDown={followActiveRow} onKeyDownCapture={keepRowControlKeysFromTable} ref={hostRef}>
+      <DataTable
+        allSelected={rows.length > 0 && selectedKeys.size === rows.length}
+        caption="Curations"
+        columns={tableColumns}
+        density={density}
+        empty={empty}
+        footer={footer}
+        labelWhenAllSelected="Clear selection of loaded Curations"
+        loading={loading}
+        maxHeight={`${height}px`}
+        onActivate={onOpenRow ? (row) => onOpenRow(row) : undefined}
+        onToggleAll={selectAllDisabled ? undefined : onToggleAllLoaded}
+        onToggleRow={(key, row, modifiers) => onToggle?.(row, indexByKey.get(key) ?? 0, modifiers.shiftKey)}
+        paddingBottom={paddingBottom}
+        paddingTop={paddingTop}
+        rowKey={(row) => row.curation_id}
+        rowSelectLabel={(row) => `Select ${row.restaurant_name ?? row.curation_id}`}
+        rows={windowRows}
+        selectAllLabel="Select all loaded Curations"
+        selectable
+        selectedKeys={selectedKeys}
+        someSelected={selectedKeys.size > 0 && selectedKeys.size < rows.length}
+      />
     </div>
   )
 }

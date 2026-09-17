@@ -1,4 +1,6 @@
 import type { AdminCurationRow } from '../../explorer/types'
+import { Card, FactList } from '../ui/Card'
+import { EmptyState } from '../ui/EmptyState'
 
 export interface RelationshipMember {
   curationId: string
@@ -67,17 +69,22 @@ export function CollectionRelationships({
 }) {
   const relationships = relationshipsOf(members)
   return (
-    <section className="collection-relationships" aria-labelledby="collection-relationships-title">
-      <h2 id="collection-relationships-title">Relationships</h2>
+    <Card
+      description="Over the members the page actually loaded."
+      title="Relationships"
+    >
       {relationships.curations === 0 ? (
-        <p className="collection-relationships__empty">No members loaded yet.</p>
+        <EmptyState title="No members loaded yet." />
       ) : (
         <>
-          <dl className="collection-relationships__facts">
-            <div><dt>Curations</dt><dd>{count(relationships.curations)}</dd></div>
-            <div><dt>Entities represented</dt><dd>{count(relationships.entities)}</dd></div>
-            <div><dt>Curators represented</dt><dd>{count(relationships.curators)}</dd></div>
-          </dl>
+          <FactList
+            className="collection-relationships__facts"
+            facts={[
+              { label: 'Curations', value: count(relationships.curations) },
+              { label: 'Entities represented', value: count(relationships.entities) },
+              { label: 'Curators represented', value: count(relationships.curators) },
+            ]}
+          />
           <p className="collection-relationships__note">
             {hasMore
               ? `Based on the first ${count(relationships.curations)} members.`
@@ -93,6 +100,6 @@ export function CollectionRelationships({
           )}
         </>
       )}
-    </section>
+    </Card>
   )
 }

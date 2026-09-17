@@ -4,10 +4,8 @@ import type { ReactNode } from 'react'
 import type { FieldNode } from '../../content/field-types'
 import { isRecord } from '../../content/value-guards'
 import { ContentFieldEditor } from '../content/ContentFieldEditor'
+import { Chip } from '../ui/Chip'
 import { formatRelativeDate } from '../ui/format-relative-date'
-
-/** Indentation step per tree depth, in pixels. */
-const DEPTH_STEP = 14
 
 /** Inline previews stay on one line: a longer value is clipped, never wrapped. */
 const PREVIEW_LIMIT = 80
@@ -33,6 +31,9 @@ export function describeValue(node: FieldNode): string {
  * opens the registry-driven editor on demand, and never offers an Edit
  * affordance for a system-managed field. The parent owns the edit state and
  * the save, so one field is edited at a time across the whole page.
+ *
+ * Indentation is the tree depth in `--cms-spacing-3-5` steps: a nested key reads
+ * as nested without a second spacing scale.
  */
 export function EntityFieldBlock({
   node,
@@ -53,23 +54,25 @@ export function EntityFieldBlock({
   return (
     <li
       className="entity-field"
-      data-path={node.path}
       data-owner={node.owner}
-      style={{ paddingInlineStart: `${node.depth * DEPTH_STEP}px` }}
+      data-path={node.path}
+      style={node.depth > 0
+        ? { paddingInlineStart: `calc(var(--cms-spacing-3-5) * ${node.depth})` }
+        : undefined}
     >
       <div className="entity-field__head">
         <span className="entity-field__label">{node.label}</span>
-        <span className="entity-field__path">{node.path}</span>
+        <span className="entity-field__path ui-table__mono">{node.path}</span>
         <span className="entity-field__value">{describeValue(node)}</span>
         {node.descriptor === null && (
-          <span className="entity-field__hint">Not in the field registry</span>
+          <Chip size="sm" tone="warning">Not in the field registry</Chip>
         )}
-        {node.system && <span className="entity-field__system">System managed</span>}
+        {node.system && <Chip size="sm" tone="muted">System managed</Chip>}
         {editable && onRequestEdit !== undefined && !editing && (
           <button
             className="entity-field__edit"
-            type="button"
             onClick={() => onRequestEdit(node)}
+            type="button"
           >
             Edit
           </button>

@@ -54,8 +54,7 @@ test('metadata save uses the loaded revision and replaces the displayed server s
   await screen.findByRole('heading', { name: 'Victoria' })
   fireEvent.click(screen.getByRole('button', { name: 'Edit metadata' }))
   expect(screen.getByRole('dialog', { name: 'Edit Collection metadata' })).toBeVisible()
-  expect(screen.getByText('/victoria')).toBeVisible()
-  fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Victoria 2027' } })
+  fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Victoria 2027' } })
   fireEvent.click(screen.getByRole('button', { name: 'Save metadata' }))
 
   await waitFor(() => expect(patchMetadata).toHaveBeenCalledWith(
@@ -76,7 +75,7 @@ test('stale metadata revision reloads the latest Collection instead of applying 
 
   await screen.findByRole('heading', { name: 'Victoria' })
   fireEvent.click(screen.getByRole('button', { name: 'Edit metadata' }))
-  fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'My stale edit' } })
+  fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'My stale edit' } })
   fireEvent.click(screen.getByRole('button', { name: 'Save metadata' }))
 
   expect(await screen.findByText('Collection changed on the server. The latest state has been reloaded.')).toBeVisible()

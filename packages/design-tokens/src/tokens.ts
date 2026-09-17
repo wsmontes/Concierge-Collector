@@ -92,6 +92,17 @@ export const brandTokens = {
   '--cms-shadow-inner': 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.06)',
   '--cms-shadow-hover': '0 6px 12px -2px rgba(0, 0, 0, 0.15), 0 3px 6px -2px rgba(0, 0, 0, 0.08)',
   '--cms-shadow-active': '0 2px 4px -1px rgba(0, 0, 0, 0.2), 0 1px 2px -1px rgba(0, 0, 0, 0.12)',
+  '--cms-ease-standard': 'cubic-bezier(0.2, 0, 0.38, 0.9)',
+  '--cms-ease-entrance': 'cubic-bezier(0, 0, 0.38, 0.9)',
+  '--cms-ease-exit': 'cubic-bezier(0.2, 0, 1, 0.9)',
+  '--cms-duration-fast': '70ms',
+  '--cms-duration-base': '110ms',
+  '--cms-duration-slow': '150ms',
+  '--cms-duration-slower': '240ms',
+  '--cms-focus-ring-width': '2px',
+  '--cms-focus-ring-offset': '2px',
+  '--cms-control-height': '2.5rem',
+  '--cms-control-height-compact': '2rem',
 } as const
 
 export type BrandTokenName = keyof typeof brandTokens

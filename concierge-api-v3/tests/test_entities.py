@@ -651,24 +651,27 @@ def test_list_entities_ids_filter_finds_ids_containing_comma(client, test_db, cl
 # ============================================================================
 
 
-def _call_entity_image(db_doc=None, service_result=(b"jpeg", "image/jpeg"), service_side_effect=None):
-    """Chama get_entity_image direto (sem TestClient) com db mockado e o
-    serviço de imagem patcheado — unit test sem mongo."""
+def _call_entity_image(db_doc=None, hero=None):
+    """Chama get_entity_image direto (sem TestClient) com db mockado.
+
+    Rank 0 (o default) serve a DISPLAY MEDIA persistida — a leitura é
+    `read_hero_media`, que o helper entrega pronta; ranks > 0 seguem no serviço
+    de imagens ranqueado, mockado no próprio teste.
+    """
     import asyncio
     from unittest.mock import AsyncMock, MagicMock, patch
     from fastapi import HTTPException
     from app.api.entities import get_entity_image
+    from app.services.display_media_service import HeroMediaRead, STATE_RESOLVED
 
     mock_db = MagicMock()
     # find_entity faz 3 probes (_id → entity_id → ObjectId); o mock
     # responde só ao primeiro com o doc desejado
     mock_db.entities.find_one.side_effect = lambda q: db_doc if q.get("_id") == "e1" else None
+    read = hero if hero is not None else HeroMediaRead(state=STATE_RESOLVED, image=(b"jpeg", "image/jpeg"))
 
     async def run():
-        with patch(
-            "app.api.entities.get_og_image_bytes",
-            new=AsyncMock(return_value=service_result, side_effect=service_side_effect),
-        ) as svc:
+        with patch("app.api.entities.read_hero_media", new=AsyncMock(return_value=read)) as svc:
             try:
                 return await get_entity_image("e1", db=mock_db, auth={"role": "curator"}), svc
             except HTTPException as exc:
@@ -678,10 +681,11 @@ def _call_entity_image(db_doc=None, service_result=(b"jpeg", "image/jpeg"), serv
 
 
 def test_entity_image_resolve_website_da_entity():
-    """data.contact.website (shape v3) vira page_url do serviço."""
+    """data.contact.website (shape v3) vem do doc resolvido e o rank 0 serve a
+    display media persistida — sem redescobrir a imagem."""
     doc = {"_id": "e1", "data": {"contact": {"website": "https://example.com"}}}
-    (result, svc), _ = _call_entity_image(db_doc=doc)
-    svc.assert_awaited_once_with(page_url="https://example.com", place_id=None)
+    (result, svc), mock_db = _call_entity_image(db_doc=doc)
+    assert svc.await_args.args[1] is doc
     assert result.status_code == 200
     assert result.body == b"jpeg"
     assert result.media_type == "image/jpeg"
@@ -692,7 +696,6 @@ def test_entity_image_resolve_place_id_bulk():
     """Shape bulk (data.contacts.website ausente) cai no place_id."""
     doc = {"_id": "e1", "data": {"contacts": {"phone": "x"}, "place_id": "ChIJ123"}}
     (result, svc), _ = _call_entity_image(db_doc=doc)
-    svc.assert_awaited_once_with(page_url=None, place_id="ChIJ123")
     assert result.status_code == 200
 
 
@@ -703,27 +706,54 @@ def test_entity_image_404_entity_inexistente():
 
 
 def test_entity_image_404_sem_fonte_de_imagem():
-    """Entity sem website nem place_id → 404 sem tocar o serviço."""
+    """Entity sem website nem place_id → 404 com cache LONGO (o fato é do
+    documento, não muda sem alguém editar a Entity) e sem enriquecimento."""
+    from app.services.display_media_service import HeroMediaRead, STATE_NO_SOURCES
+
     doc = {"_id": "e1", "data": {"contact": {"phone": "x"}}}
-    (result, svc), _ = _call_entity_image(db_doc=doc)
+    (result, svc), _ = _call_entity_image(db_doc=doc, hero=HeroMediaRead(state=STATE_NO_SOURCES))
     assert result.status_code == 404
-    svc.assert_not_awaited()
+    assert result.headers["Cache-Control"] == "private, max-age=3600"
+    svc.assert_awaited_once()
 
 
-def test_entity_image_404_e_400_do_servico():
-    # serviço sem imagem em nenhuma fonte → 404
+def test_entity_image_404_pendente_com_cache_curto():
+    """Sem fato fresco (ausente/failed/expirado) → 404 curto: o enriquecimento
+    acabou de ser disparado, o cliente pergunta de novo em 1 minuto."""
+    from app.services.display_media_service import HeroMediaRead, STATE_FAILED
+
     (result, _), _ = _call_entity_image(
         db_doc={"_id": "e1", "data": {"place_id": "ChIJ123"}},
-        service_result=None,
+        hero=HeroMediaRead(state=STATE_FAILED),
     )
     assert result.status_code == 404
+    assert result.headers["Cache-Control"] == "private, max-age=60"
 
-    # URL rejeitada pelo serviço → 400 (mesmo contrato do /og-image)
-    (result2, _), _ = _call_entity_image(
-        db_doc={"_id": "e1", "data": {"contact": {"website": "https://x.com"}}},
-        service_side_effect=ValueError("URL inválida"),
-    )
-    assert result2.status_code == 400
+
+def test_entity_image_gallery_keeps_400_and_404_contracts():
+    """Ranks > 0 continuam no serviço ranqueado: URL rejeitada → 400 e sem
+    imagem → 404 (mesmo contrato do /og-image)."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from fastapi import HTTPException
+    from app.api.entities import get_entity_image
+
+    db_doc = {"_id": "e1", "data": {"contact": {"website": "https://x.com"}}}
+
+    async def run(side_effect=None, result=None):
+        mock_db = MagicMock()
+        mock_db.entities.find_one.side_effect = lambda q: db_doc if q.get("_id") == "e1" else None
+        with patch(
+            "app.api.entities.get_restaurant_image_bytes",
+            new=AsyncMock(return_value=result, side_effect=side_effect),
+        ):
+            try:
+                return await get_entity_image("e1", rank=1, db=mock_db, auth={"role": "curator"})
+            except HTTPException as exc:
+                return exc
+
+    assert asyncio.run(run(side_effect=ValueError("URL inválida"))).status_code == 400
+    assert asyncio.run(run(result=None)).status_code == 404
 
 
 def test_extract_image_sources_cadeia_tolerante():

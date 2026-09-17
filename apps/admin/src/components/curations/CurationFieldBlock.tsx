@@ -1,10 +1,11 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import type { ReactNode } from 'react'
 import type { FieldNode } from '../../content/field-types'
 import { ContentFieldEditor } from '../content/ContentFieldEditor'
 import { CurationCopyButton } from './CurationCopyButton'
-import { isBlank, readableText } from './curation-record-values'
+import { isBlank, isTechnicalName, isTimestampName, readableText, timestampLabels } from './curation-record-values'
 
 /**
  * The edit protocol a block-order section shares with the workspace. The
@@ -23,11 +24,29 @@ export interface CurationSectionEditProps {
 export type CurationFieldVariant = 'default' | 'transcript'
 
 function FieldReadView({ node, variant }: { node: FieldNode; variant: CurationFieldVariant }): ReactNode {
-  if (isBlank(node.value)) return <p className="curation-field__empty">Not set.</p>
+  if (isBlank(node.value)) return <p className="ui-field-block__empty">Not set.</p>
   const text = readableText(node.value)
-  if (variant === 'transcript') return <pre className="curation-field__transcript">{text}</pre>
-  if (typeof node.value === 'string') return <p className="curation-field__text">{text}</p>
-  return <pre className="curation-field__json">{text}</pre>
+  if (variant === 'transcript') return <pre className="ui-field-block__transcript">{text}</pre>
+  if (typeof node.value === 'string') {
+    if (isTimestampName(node.path)) {
+      const timestamp = timestampLabels(node.value)
+      if (timestamp !== null) {
+        return (
+          <p className="ui-field-block__text">
+            <time dateTime={node.value} title={timestamp.absolute ?? undefined}>{timestamp.relative}</time>
+          </p>
+        )
+      }
+    }
+    // Technical values read in mono: an id, a hash or a path is compared
+    // character by character, and the proportional face is the wrong instrument.
+    return (
+      <p className={`ui-field-block__text ${isTechnicalName(node.path) ? 'ui-detail-mono' : ''}`.trim()}>
+        {text}
+      </p>
+    )
+  }
+  return <pre className="ui-field-block__json ui-detail-pre">{text}</pre>
 }
 
 /**
@@ -52,19 +71,21 @@ export function CurationFieldBlock({
   }
 
   return (
-    <div className="curation-field" data-path={node.path}>
-      <div className="curation-field__header">
-        <h3 className="curation-field__label">{node.label}</h3>
-        {saving && <span role="status">Saving…</span>}
+    <div className="ui-field-block" data-path={node.path}>
+      <div className="ui-field-block__header">
+        <h3 className="ui-field-block__label">{node.label}</h3>
+        {saving && <span className="ui-field-block__state" role="status">Saving…</span>}
         {node.editable && !editing && (
-          <button
-            className="curation-field__edit"
-            type="button"
+          <Button
+            buttonStyle="secondary"
             disabled={edit.savingPath !== null}
+            margin={false}
             onClick={() => edit.onEdit(node.path)}
+            size="small"
+            type="button"
           >
             Edit
-          </button>
+          </Button>
         )}
       </div>
       {editing

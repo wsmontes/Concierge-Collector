@@ -1,169 +1,420 @@
+/*
+ * Collections — a lista de Collections e o workspace de uma Collection.
+ *
+ * Purpose: só a composição que o kit não cobre. Tabela, cartão, chip, diálogo,
+ * gaveta, campo, esqueleto, vazio, erro e abas moram no kit (`kit.css` +
+ * `src/components/ui/**`); aqui ficam a lista de membros, os grupos do diff, a
+ * linha do tempo de atividade e os poucos encaixes de layout entre eles.
+ *
+ * Responsibilities: layout e tom dessas peças, com tokens `--cms-*` e classes
+ * `ui-*` do kit. Nenhum literal de cor, espaço, raio, sombra ou duração.
+ *
+ * Dependencies: `theme.css` (tokens semânticos) e `kit.css` (componentes).
+ *
+ * O que saiu daqui: a tabela feita à mão (a lista virou `DataTable` com
+ * `stacked`, então o cartão mobile de 900px morreu junto), o backdrop e a caixa
+ * dos quatro diálogos desta tela (agora `ui/Dialog` sobre o `Modal` do Payload),
+ * e o visual das abas (agora `ui/Tabs`).
+ */
 
+/* ---------------------------------------------------------------------------
+   1. Encaixes de página
+   --------------------------------------------------------------------------- */
 
-.collections-workspace__filters {
-  align-items: end;
-  background: var(--theme-elevation-50);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
+/* Carregamento e falha da página de detalhe, antes de existir a Collection. */
+.collection-detail-shell {
   display: grid;
-  gap: var(--cms-spacing-2-5);
-  grid-template-columns: minmax(15rem, 2fr) minmax(9rem, 1fr) minmax(9rem, 1fr);
-  padding: var(--cms-spacing-3);
-}
-
-.collections-workspace__filters label,
-.collection-dialog form label {
-  display: grid;
-  font-size: var(--cms-text-sm);
-  font-weight: 600;
-  gap: var(--cms-spacing-1);
-}
-
-.collections-workspace__filters input,
-.collections-workspace__filters select,
-.collection-dialog input,
-.collection-dialog textarea {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  color: var(--theme-text);
-  padding: var(--cms-spacing-2) var(--cms-spacing-2);
-}
-
-.collections-workspace__table-wrap {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  overflow-x: auto;
-}
-
-.collections-workspace__table {
-  border-collapse: collapse;
-  min-width: 760px;
+  gap: var(--cms-spacing-4);
+  margin: 0 auto;
+  max-width: min(1760px, 100%);
+  padding: var(--cms-spacing-5) clamp(var(--cms-spacing-4), 2vw, var(--cms-spacing-8));
   width: 100%;
 }
 
-.collections-workspace__table th,
-.collections-workspace__table td {
-  border-bottom: 1px solid var(--cms-limestone-200);
-  padding: var(--cms-spacing-2-5) var(--cms-spacing-3);
-  text-align: left;
-  vertical-align: middle;
+/* Link que age como controle secundário (as ações do cabeçalho misturam
+   `Button` do Payload com navegação; sem esta classe o link destoava). */
+.collections-link-button {
+  align-items: center;
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border);
+  border-radius: var(--cms-radius-input);
+  color: var(--cms-fg);
+  display: inline-flex;
+  font-size: var(--cms-text-sm);
+  font-weight: 600;
+  min-height: var(--cms-control-height);
+  padding: 0 var(--cms-spacing-3);
+  text-decoration: none;
+  transition: background-color var(--cms-duration-fast) var(--cms-ease-standard),
+    border-color var(--cms-duration-fast) var(--cms-ease-standard);
 }
 
-.collections-workspace__table th {
-  background: var(--cms-limestone-100);
-  color: var(--cms-olive-800);
-  font-size: var(--cms-text-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.collections-link-button:hover {
+  background: var(--cms-surface-2);
+  border-color: var(--cms-border-strong);
 }
 
-.collections-workspace__table tbody tr {
-  transition: background-color 120ms ease;
-}
-
-.collections-workspace__table tbody tr:hover {
-  background: var(--theme-elevation-50);
-}
-
-.collections-workspace__table tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.collections-workspace__table a {
-  font-weight: 700;
+/* O título da linha é um link: sublinhado por padrão dentro de tabela vira
+   ruído em 100 linhas. */
+.collections-workspace__title {
   text-decoration: none;
 }
 
-.collections-workspace__table a:hover {
+.collections-workspace__title:hover {
   text-decoration: underline;
 }
 
-.collections-workspace__slug {
-  color: var(--cms-olive-600);
-  display: block;
-  font-size: var(--cms-text-xs);
-  margin-top: var(--cms-spacing-0-5);
-}
-
-.collection-views__identity {
+/* Corpo das abas: um passo entre o bloco de dados e o controle de paginação. O
+   layout é do chamador porque `ui-section__body` é uma div sem ritmo próprio. */
+.collection-members,
+.collection-draft-diff,
+.collection-activity-view,
+.collection-distribution {
   display: grid;
-  gap: var(--cms-spacing-1);
+  gap: var(--cms-spacing-3);
+  min-width: 0;
 }
 
-.collection-views__identity h1,
-.collection-views__identity p {
+.collection-view__more {
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* ---------------------------------------------------------------------------
+   2. Diálogos desta tela (a caixa e o backdrop são do kit)
+   --------------------------------------------------------------------------- */
+
+.collections-dialog-form {
+  display: grid;
+  gap: var(--cms-spacing-3);
+  min-width: 0;
+}
+
+.collections-dialog__version {
+  color: var(--cms-fg-strong);
+  font-size: var(--cms-text-lg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
   margin: 0;
 }
 
-.collection-views__status {
+/* Publicar com Curations indisponíveis é a decisão que exige confirmação: a
+   caixa leva o tom de aviso e o texto já diz o número. */
+.collections-dialog__confirmation {
   align-items: center;
-  color: var(--cms-olive-600);
+  background: var(--cms-tone-warning-bg);
+  border: 1px solid var(--cms-tone-warning-border);
+  border-radius: var(--cms-radius-input);
+  color: var(--cms-tone-warning-fg);
   display: flex;
-  flex-wrap: wrap;
+  gap: var(--cms-spacing-2);
+  padding: var(--cms-spacing-2-5);
+}
+
+.collections-dialog__confirmation .ui-field {
+  gap: var(--cms-spacing-0-5);
+}
+
+/* ---------------------------------------------------------------------------
+   3. Membros de uma Collection
+   --------------------------------------------------------------------------- */
+
+.collection-members__list {
+  display: grid;
+  gap: var(--cms-spacing-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.collection-members__card {
+  align-items: start;
+  gap: var(--cms-spacing-2) var(--cms-spacing-4);
+  grid-template-columns: minmax(0, 2fr) minmax(9rem, 1fr) auto;
+}
+
+.collection-members__card > .collection-technical {
+  grid-column: 1 / -1;
+}
+
+.collection-members__updated,
+.collection-members__unknown {
+  color: var(--cms-fg-muted);
   font-size: var(--cms-text-sm);
-  gap: var(--cms-spacing-1-5);
-}
-
-.collection-views__status > span:not([data-status]) + span:not([data-status])::before {
-  color: var(--cms-limestone-500);
-  content: '·';
-  margin-right: var(--cms-spacing-1-5);
-}
-
-.collection-views__actions,
-.collection-dialog__header,
-.collection-dialog__footer {
-  align-items: center;
-  display: flex;
-  gap: var(--cms-spacing-2-5);
-  justify-content: space-between;
-}
-
-.collection-dialog__header h2,
-.collection-dialog__header p {
   margin: 0;
 }
 
-.collection-views__actions {
-  flex-wrap: wrap;
+.collection-members__unknown {
+  font-style: italic;
+}
+
+.collection-members__actions {
+  align-items: center;
+  display: flex;
+  gap: var(--cms-spacing-2);
   justify-content: flex-end;
 }
 
-.collection-views__link-button {
-  align-items: center;
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius);
-  color: var(--theme-text);
-  display: inline-flex;
+.collection-members__open {
   font-weight: 600;
-  min-height: 40px;
-  padding: 0 var(--cms-spacing-3);
+}
+
+/* A gaveta de pré-visualização pertence à lista de Curations e cobre a tela; o
+   caminho de volta viaja com ela, preso na borda inferior. */
+.collection-member-preview__back {
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border);
+  border-radius: var(--cms-radius-full);
+  bottom: var(--cms-spacing-4);
+  box-shadow: var(--cms-elevation-2);
+  font-weight: 600;
+  left: var(--cms-spacing-4);
+  padding: var(--cms-spacing-1-5) var(--cms-spacing-3);
+  position: fixed;
   text-decoration: none;
+  z-index: var(--cms-z-drawer);
 }
 
-.collection-views__link-button:hover {
-  background: var(--theme-elevation-50);
+.collection-member-preview__back:hover {
+  text-decoration: underline;
 }
 
-.collection-views__tabs {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg) var(--cms-radius-lg) 0 0;
+/* ---------------------------------------------------------------------------
+   4. Diff do rascunho: adição e remoção com tom E sinal
+   --------------------------------------------------------------------------- */
+
+.collection-draft-diff__group {
+  background: var(--collection-group-bg, var(--cms-surface-1));
+  border: 1px solid var(--collection-group-border, var(--cms-border-subtle));
+  border-left-width: 4px;
+  border-radius: var(--cms-radius-card);
+  display: grid;
+  gap: var(--cms-spacing-2);
+  padding: var(--cms-spacing-3);
+}
+
+.collection-draft-diff__group[data-tone='add'] {
+  --collection-group-bg: var(--cms-tone-success-bg);
+  --collection-group-border: var(--cms-tone-success-border);
+  --collection-group-fg: var(--cms-tone-success-fg);
+}
+
+.collection-draft-diff__group[data-tone='remove'] {
+  --collection-group-bg: var(--cms-tone-error-bg);
+  --collection-group-border: var(--cms-tone-error-border);
+  --collection-group-fg: var(--cms-tone-error-fg);
+}
+
+.collection-draft-diff__heading {
+  align-items: baseline;
+  color: var(--collection-group-fg, var(--cms-fg-strong));
+  display: flex;
+  font-size: var(--cms-text-xs);
+  font-variant-numeric: tabular-nums;
+  gap: var(--cms-spacing-1-5);
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+
+.collection-draft-diff__count {
+  color: var(--collection-group-fg, var(--cms-fg-muted));
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.collection-draft-diff__list {
+  display: grid;
+  gap: var(--cms-spacing-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.collection-draft-diff__row {
+  align-items: start;
+  border-top: 1px solid var(--collection-group-border, var(--cms-border-subtle));
+  display: grid;
+  gap: var(--cms-spacing-1) var(--cms-spacing-2);
+  grid-template-columns: auto minmax(0, 1fr);
+  padding-top: var(--cms-spacing-2);
+}
+
+.collection-draft-diff__row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.collection-draft-diff__row > .collection-technical {
+  grid-column: 2;
+}
+
+.collection-draft-diff__sign {
+  color: var(--collection-group-fg, var(--cms-fg-strong));
+  font-size: var(--cms-text-lg);
+  font-weight: 700;
+  line-height: 1;
+  min-width: 1ch;
+  text-align: center;
+}
+
+.collection-draft-diff__empty {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   5. Identidade da Curation e detalhes técnicos
+   --------------------------------------------------------------------------- */
+
+.collection-curation {
+  display: grid;
+  gap: var(--cms-spacing-0-5);
+  min-width: 0;
+}
+
+.collection-curation__name,
+.collection-curation__curator,
+.collection-curation__place,
+.collection-curation__missing {
+  margin: 0;
+}
+
+.collection-curation__name {
+  color: var(--cms-fg-strong);
+  font-weight: 600;
+}
+
+.collection-curation__curator {
+  color: var(--cms-fg);
+}
+
+.collection-curation__place,
+.collection-curation__missing {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+}
+
+.collection-curation__missing {
+  font-style: italic;
+}
+
+.collection-curation__id {
+  font-family: var(--cms-font-mono);
+  font-size: var(--cms-text-xs);
+}
+
+.collection-curation__concepts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-1);
+  list-style: none;
+  margin: var(--cms-spacing-1) 0 0;
+  padding: 0;
+}
+
+.collection-curation__concepts li {
+  background: var(--cms-surface-2);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-full);
+  color: var(--cms-fg);
+  font-size: var(--cms-text-xs);
+  padding: var(--cms-spacing-0-5) var(--cms-spacing-2);
+}
+
+.collection-technical {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-xs);
+}
+
+.collection-technical summary {
+  cursor: pointer;
+}
+
+.collection-technical .ui-facts {
+  margin-top: var(--cms-spacing-1-5);
+}
+
+.collection-technical .ui-facts dt {
+  font-size: var(--cms-text-xs);
+}
+
+/* ---------------------------------------------------------------------------
+   6. Relacionamentos e distribuição
+   --------------------------------------------------------------------------- */
+
+.collection-relationships__note {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+  margin: 0;
+}
+
+.collection-distribution__applications {
+  display: grid;
+  gap: var(--cms-spacing-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.collection-distribution__applications p {
+  color: var(--cms-fg-muted);
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   7. Atividade
+   --------------------------------------------------------------------------- */
+
+.collection-activity {
+  display: grid;
   gap: 0;
-  overflow-x: auto;
-  padding: 0 var(--cms-spacing-1-5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-.collection-views__tabs [role='tab'] {
-  min-width: max-content;
+.collection-activity__row {
+  align-items: baseline;
+  border-bottom: 1px solid var(--cms-border-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2);
+  min-height: var(--cms-row-height-compact);
+  padding: var(--cms-spacing-2) 0;
 }
 
-.collection-views__panel {
-  border-radius: 0 0 var(--cms-radius-lg) var(--cms-radius-lg);
+.collection-activity__row:last-child {
+  border-bottom: 0;
 }
+
+.collection-activity__event {
+  color: var(--cms-fg-strong);
+  font-family: var(--cms-font-mono);
+  font-size: var(--cms-text-xs);
+}
+
+.collection-activity__actor {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+}
+
+.collection-activity__when {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  margin-left: auto;
+}
+
+.collection-activity__empty {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+  padding: var(--cms-spacing-3) 0;
+}
+
+/* ---------------------------------------------------------------------------
+   8. Overview — as regras vivem aqui até `OverviewView` virar widget de painel
+      (o componente é de outra tela e ainda lê estas classes).
+   --------------------------------------------------------------------------- */
 
 .overview-view {
   display: grid;
@@ -173,9 +424,9 @@
 
 .overview-view > section {
   align-content: start;
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
   display: grid;
   gap: var(--cms-spacing-2-5);
   min-width: 0;
@@ -196,7 +447,7 @@
 
 .overview-view__meta,
 .overview-view__empty {
-  color: var(--cms-olive-600);
+  color: var(--cms-fg-muted);
   font-size: var(--cms-text-sm);
 }
 
@@ -216,7 +467,7 @@
 }
 
 .overview-view__list--text li {
-  border-bottom: 1px solid var(--cms-limestone-200);
+  border-bottom: 1px solid var(--cms-border-subtle);
   padding-bottom: var(--cms-spacing-1-5);
 }
 
@@ -225,533 +476,20 @@
   padding-bottom: 0;
 }
 
-.collection-dialog-backdrop {
-  align-items: center;
-  background: rgb(24 38 24 / 55%);
-  display: flex;
-  inset: 0;
-  justify-content: center;
-  padding: var(--cms-spacing-3);
-  position: fixed;
-  z-index: 110;
-}
-
-.collection-dialog {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-xl);
-  box-shadow: 0 24px 64px rgb(24 38 24 / 18%);
-  display: grid;
-  gap: var(--cms-spacing-3);
-  max-height: min(88vh, 48rem);
-  max-width: 640px;
-  overflow-y: auto;
-  padding: var(--cms-spacing-5);
-  width: 100%;
-}
-
-.collection-dialog form {
-  display: grid;
-  gap: var(--cms-spacing-3);
-}
-
-.collection-dialog__header {
-  align-items: start;
-}
-
-.collection-dialog__footer {
-  justify-content: flex-end;
-}
-
-.collection-dialog__version {
-  font-size: var(--cms-text-lg);
-  font-weight: 700;
-  margin: 0;
-}
-
-.collection-dialog__summary {
-  display: grid;
-  gap: var(--cms-spacing-1-5);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 0;
-}
-
-.collection-dialog__summary div {
-  background: var(--cms-limestone-100);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  display: grid;
-  gap: var(--cms-spacing-0-5);
-  padding: var(--cms-spacing-2);
-}
-
-.collection-dialog__summary dt {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.collection-dialog__summary dd {
-  margin: 0;
-}
-
-.collection-dialog__confirmation {
-  align-items: center;
-  background: var(--cms-limestone-100);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  display: flex;
-  font-weight: 600;
-  gap: var(--cms-spacing-2);
-  padding: var(--cms-spacing-2-5);
-}
-
-.collection-dialog__confirmation input {
-  min-height: auto;
-}
-
-.collection-dialog__hint {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-  margin: 0;
-}
-
-.collection-views [aria-label='Published versions'] li,
-.collection-views [aria-label='Collection members'] li,
-.collection-views [aria-label='Draft changes'] li,
-.collection-views [aria-label='Collection activity'] li {
-  margin-bottom: var(--cms-spacing-1-5);
-}
-
-.collection-views [aria-label='Published versions'] li button {
-  margin-left: var(--cms-spacing-2-5);
-}
-
-.collection-distribution {
-  display: grid;
-  gap: var(--cms-spacing-3);
-}
-
-.collection-distribution header h2,
-.collection-distribution header p,
-.collection-distribution__heading h3 {
-  margin: 0;
-}
-
-.collection-distribution header {
-  display: grid;
-  gap: var(--cms-spacing-1);
-}
-
-.collection-distribution__heading {
-  align-items: baseline;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-2-5);
-  justify-content: space-between;
-}
-
-.collection-distribution__applications {
-  display: grid;
-  gap: var(--cms-spacing-2);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.collection-distribution__applications li {
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  padding: var(--cms-spacing-2-5);
-}
-
-.collection-distribution__applications h3,
-.collection-distribution__applications p {
-  margin: 0;
-}
-
-.collection-distribution__applications p {
-  color: var(--cms-olive-600);
-  margin-top: var(--cms-spacing-1);
-}
+/* ---------------------------------------------------------------------------
+   9. Responsivo
+   --------------------------------------------------------------------------- */
 
 @media (max-width: 900px) {
   .overview-view {
     grid-template-columns: 1fr;
   }
-}
 
-@media (max-width: 720px) {
-  .collection-views {
-    padding: var(--cms-spacing-3);
-  }
-
-  .collection-views__header {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .collections-workspace__filters {
-    grid-template-columns: 1fr;
-  }
-
-  .collection-views__actions {
-    justify-content: flex-start;
-  }
-
-  .collection-dialog__summary {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Humanized Collection content (plan §12/§24/§25/§26): member rows, draft diff
-   groups, the relationship summary and the member preview's way back. Same
-   visual language and tokens as the rest of this file. */
-
-.collection-relationships {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  padding: var(--cms-spacing-3);
-}
-
-.collection-relationships h2,
-.collection-relationships p {
-  margin: 0;
-}
-
-.collection-relationships h2 {
-  font-size: var(--cms-text-base);
-}
-
-.collection-relationships__facts {
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin: 0;
-}
-
-.collection-relationships__facts div {
-  background: var(--cms-limestone-100);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  display: grid;
-  gap: var(--cms-spacing-0-5);
-  padding: var(--cms-spacing-2);
-}
-
-.collection-relationships__facts dt {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.collection-relationships__facts dd {
-  font-size: var(--cms-text-xl);
-  margin: 0;
-}
-
-.collection-relationships__note,
-.collection-relationships__empty {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-}
-
-.collection-curation {
-  display: grid;
-  gap: var(--cms-spacing-0-5);
-}
-
-.collection-curation__name,
-.collection-curation__curator,
-.collection-curation__place,
-.collection-curation__missing {
-  margin: 0;
-}
-
-.collection-curation__name {
-  font-weight: 700;
-}
-
-.collection-curation__curator {
-  color: var(--cms-olive-700);
-}
-
-.collection-curation__place,
-.collection-curation__missing {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-}
-
-.collection-curation__missing {
-  font-style: italic;
-}
-
-.collection-curation__id,
-.collection-technical code {
-  font-size: var(--cms-text-xs);
-}
-
-.collection-curation__concepts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-1);
-  list-style: none;
-  margin: var(--cms-spacing-1) 0 0;
-  padding: 0;
-}
-
-.collection-curation__concepts li {
-  background: var(--cms-limestone-100);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-full);
-  font-size: var(--cms-text-xs);
-  padding: var(--cms-spacing-px) var(--cms-spacing-2);
-}
-
-.collection-technical {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-xs);
-}
-
-.collection-technical summary {
-  cursor: pointer;
-}
-
-.collection-technical__list {
-  display: grid;
-  gap: var(--cms-spacing-1);
-  margin: var(--cms-spacing-1-5) 0 0;
-}
-
-.collection-technical__list div {
-  display: grid;
-  gap: var(--cms-spacing-1-5);
-  grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
-}
-
-.collection-technical__list dt {
-  font-weight: 600;
-}
-
-.collection-technical__list dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.collection-members__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.collection-members__row {
-  align-items: start;
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  display: grid;
-  gap: var(--cms-spacing-1-5) var(--cms-spacing-3);
-  grid-template-columns: minmax(0, 2fr) minmax(9rem, 1fr) auto;
-  margin-bottom: var(--cms-spacing-2-5);
-  padding: var(--cms-spacing-3);
-}
-
-.collection-members__facts {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-1-5);
-}
-
-.collection-members__updated,
-.collection-members__unknown {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-  margin: 0;
-}
-
-.collection-members__actions {
-  align-items: center;
-  display: flex;
-  gap: var(--cms-spacing-1-5);
-  justify-content: flex-end;
-}
-
-.collection-members__open {
-  font-weight: 600;
-}
-
-.collection-members__row > .collection-technical {
-  grid-column: 1 / -1;
-}
-
-.collection-members__empty,
-.collection-draft-diff__empty {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-}
-
-.collection-draft-diff {
-  display: grid;
-  gap: var(--cms-spacing-3);
-}
-
-.collection-draft-diff__group {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  display: grid;
-  gap: var(--cms-spacing-2);
-  padding: var(--cms-spacing-3);
-}
-
-.collection-draft-diff__heading {
-  align-items: baseline;
-  display: flex;
-  font-size: var(--cms-text-xs);
-  gap: var(--cms-spacing-1-5);
-  letter-spacing: 0.06em;
-  margin: 0;
-}
-
-.collection-draft-diff__count {
-  color: var(--cms-olive-600);
-  font-weight: 400;
-}
-
-.collection-draft-diff__list {
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.collection-draft-diff__row {
-  align-items: start;
-  border-top: 1px solid var(--cms-limestone-200);
-  display: grid;
-  gap: var(--cms-spacing-1) var(--cms-spacing-2);
-  grid-template-columns: auto minmax(0, 1fr);
-  padding-top: var(--cms-spacing-2);
-}
-
-.collection-draft-diff__row:first-child {
-  border-top: 0;
-  padding-top: 0;
-}
-
-.collection-draft-diff__sign {
-  color: var(--cms-olive-800);
-  font-size: var(--cms-text-lg);
-  font-weight: 700;
-  line-height: 1;
-  padding-top: var(--cms-spacing-0-5);
-}
-
-.collection-draft-diff__row > .collection-technical {
-  grid-column: 2;
-}
-
-.collection-member-preview__back {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-full);
-  bottom: 1rem;
-  box-shadow: 0 8px 24px rgb(24 38 24 / 12%);
-  font-weight: 600;
-  left: 1rem;
-  padding: var(--cms-spacing-1-5) var(--cms-spacing-3);
-  position: fixed;
-  text-decoration: none;
-  z-index: 81;
-}
-
-.collection-member-preview__back:hover {
-  text-decoration: underline;
-}
-
-@media (max-width: 720px) {
-  .collection-members__row,
-  .collection-relationships__facts {
+  .collection-members__card {
     grid-template-columns: 1fr;
   }
 
   .collection-members__actions {
     justify-content: flex-start;
-  }
-}
-
-/* Abaixo do min-width da tabela (760px) ela não cabe: medido a 390px, a lista
-   rolava 396px de lado e mostrava 1 das 5 colunas. Em vez de rolagem horizontal,
-   cada linha vira um cartão — os rótulos vêm de `data-label`, então a informação
-   continua legível sem esconder coluna nenhuma.
-
-   O limite é 900px, não 760: a tabela precisa de 760px de largura própria mais a
-   moldura, então a 768px (medido) ela ainda rolava 25px. Abaixo de 900 o cartão
-   entra e a rolagem some em qualquer largura. */
-@media (max-width: 900px) {
-  .collections-workspace__table-wrap {
-    border: 0;
-    background: transparent;
-    overflow-x: visible;
-  }
-
-  .collections-workspace__table,
-  .collections-workspace__table tbody {
-    display: block;
-    min-width: 0;
-  }
-
-  .collections-workspace__table thead {
-    display: none;
-  }
-
-  .collections-workspace__table tr {
-    display: grid;
-    gap: var(--cms-spacing-1-5);
-    padding: var(--cms-spacing-3);
-    margin-bottom: var(--cms-spacing-2);
-    background: var(--theme-elevation-0);
-    border: 1px solid var(--theme-border-color);
-    border-radius: var(--cms-radius-lg);
-  }
-
-  .collections-workspace__table td {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--cms-spacing-2-5);
-    border-bottom: 0;
-    padding: 0;
-    text-align: right;
-  }
-
-  .collections-workspace__table td::before {
-    content: attr(data-label);
-    color: var(--cms-olive-600);
-    font-size: var(--cms-text-xs);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    text-align: left;
-  }
-
-  /* A primeira célula é o título do cartão: ocupa a linha inteira, à esquerda. */
-  .collections-workspace__table td:first-child {
-    display: block;
-    text-align: left;
-    padding-bottom: var(--cms-spacing-1);
-    border-bottom: 1px solid var(--cms-limestone-200);
-  }
-
-  .collections-workspace__table td:first-child::before {
-    content: none;
   }
 }

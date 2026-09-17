@@ -2,7 +2,8 @@
 
 import { useId, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import { EditorFrame, type FieldEditorProps } from './EditorFrame'
+import { Field } from '../../ui/Field'
+import { EditorFrame, controlAria, type FieldEditorProps } from './EditorFrame'
 
 /** Pretty-prints whatever the record holds; a JSON editor must not hide data. */
 function jsonDraft(value: unknown): string {
@@ -40,19 +41,26 @@ export function StructuredEditor({ node, onCommit, onCancel }: FieldEditorProps)
   }
 
   return (
-    <EditorFrame node={node} controlId={controlId} error={error} onCancel={onCancel} onSave={save}>
-      <textarea
-        className="content-editor__input"
-        id={controlId}
-        rows={10}
-        spellCheck={false}
-        value={draft}
-        onChange={(event) => {
-          setDraft(event.target.value)
-          setError(null)
-        }}
-        onKeyDown={handleKeyDown}
-      />
+    <EditorFrame node={node} onCancel={onCancel} onSave={save}>
+      <Field
+        description={node.descriptor?.help}
+        error={error ?? undefined}
+        htmlFor={controlId}
+        label={node.label}
+      >
+        <textarea
+          {...controlAria(controlId, node, error)}
+          className="ui-textarea content-editor__json"
+          onChange={(event) => {
+            setDraft(event.target.value)
+            setError(null)
+          }}
+          onKeyDown={handleKeyDown}
+          rows={10}
+          spellCheck={false}
+          value={draft}
+        />
+      </Field>
     </EditorFrame>
   )
 }

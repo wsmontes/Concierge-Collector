@@ -1,20 +1,13 @@
-/* Curations list, preview drawer, saved views and selection (plan §4/§11/§12/§27/§28/§29).
-   Visual language shared with the other admin surfaces: theme custom properties
-   from admin.css, limestone/olive accents from @concierge/design-tokens. */
-
+/* A lista de Curations: a faixa de filtros vive em curation-filters-admin.css e
+   a tabela é o `DataTable` do kit (`ui-table`), que já desenha borda, cabeçalho,
+   hover, seleção e o modo cartão. Aqui ficam só o arranjo da tela, as células
+   editoriais, a barra de seleção e as views salvas. Nenhum literal de cor,
+   espaço ou raio — tudo por token. */
 
 .curations-workspace__workspace {
   display: grid;
   gap: var(--cms-spacing-3);
   min-width: 0;
-}
-
-.curations-workspace__controls {
-  align-items: end;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-2-5);
-  justify-content: space-between;
 }
 
 .curations-workspace__notice-actions {
@@ -24,237 +17,68 @@
   gap: var(--cms-spacing-2-5);
 }
 
-.curations-workspace__notice-actions a,
-.admin-notice__action > a {
+.curations-workspace__notice-actions a {
   font-weight: 600;
   text-decoration: none;
 }
 
-.curations-workspace__notice-actions a:hover,
-.admin-notice__action > a:hover {
+.curations-workspace__notice-actions a:hover {
   text-decoration: underline;
 }
 
-.curations-workspace__pagination {
-  display: flex;
-  justify-content: flex-end;
+.curations-workspace__density {
+  min-width: min(11rem, 100%);
 }
 
-.curations-filter-form,
-.curations-saved-views {
-  background: var(--theme-elevation-0, #fff);
-  border: 1px solid var(--theme-elevation-150, #d7d7d7);
-  border-radius: var(--cms-radius-lg);
-  display: grid;
-  gap: var(--cms-spacing-3);
-  margin: 0;
-  padding: var(--cms-spacing-3);
-}
-
-.curations-filter-form__header h2,
-.curations-filter-form__header p {
-  margin: 0;
-}
-
-.curations-filter-form__header h2 {
-  font-size: var(--cms-text-base);
-}
-
-.curations-filter-form__header p {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-  margin-top: var(--cms-spacing-0-5);
-}
-
-.curations-filter-form__fields {
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  grid-template-columns: minmax(240px, 1.6fr) repeat(3, minmax(160px, 1fr));
-}
-
-.curations-filter-form label,
-.curations-saved-views label,
 .curation-sort-picker {
-  display: grid;
-  font-size: var(--cms-text-sm);
-  font-weight: 600;
-  gap: var(--cms-spacing-1);
+  min-width: min(13rem, 100%);
 }
 
-.curations-filter-form input,
-.curations-saved-views input,
-.curations-saved-views select,
-.curation-sort-picker select {
-  background: var(--theme-elevation-0, #fff);
-  border: 1px solid var(--theme-elevation-250, #c7c7c7);
-  border-radius: var(--cms-radius-md);
-  color: inherit;
-  min-height: 40px;
-  padding: var(--cms-spacing-1-5) var(--cms-spacing-2);
-  width: 100%;
+/* A largura de cada coluna é declarada em `DataTableColumn.width`, o que só
+   tem efeito com layout fixo — e é o que faz um nome longo truncar em vez de
+   empurrar as outras colunas para fora da viewport. */
+.curations-table {
+  min-width: 0;
 }
 
-.curations-filter-form input:disabled {
-  background: var(--theme-elevation-50);
-  color: var(--cms-olive-600);
+.curations-table .ui-table__table {
+  table-layout: fixed;
 }
 
-.curations-filter-form__statuses,
-.curations-filter-form__collections {
-  align-items: center;
-  border: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-1-5) var(--cms-spacing-3);
-  margin: 0;
-  padding: 0;
-}
-
-.curations-filter-form__statuses legend,
-.curations-filter-form__collections legend {
-  font-size: var(--cms-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  margin-bottom: var(--cms-spacing-1-5);
-  text-transform: uppercase;
-  width: 100%;
-}
-
-.curations-filter-form__statuses label,
-.curations-filter-form__collections label {
-  align-items: center;
-  display: inline-flex;
-  font-weight: 500;
-  gap: var(--cms-spacing-1-5);
-}
-
-.curations-filter-form__statuses input,
-.curations-filter-form__collections input {
-  min-height: auto;
-  width: auto;
-}
-
-.curations-filter-form__concepts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-1-5);
-}
-
-.curations-filter-form__concept {
-  align-items: center;
-  background: var(--cms-limestone-100);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-full);
-  display: inline-flex;
-  font-size: var(--cms-text-xs);
-  gap: var(--cms-spacing-1);
-  padding: var(--cms-spacing-0-5) var(--cms-spacing-1) var(--cms-spacing-0-5) var(--cms-spacing-2);
-}
-
-.curations-filter-form__concept button {
-  align-items: center;
-  background: none;
-  border: 0;
-  border-radius: var(--cms-radius-full);
-  color: var(--cms-olive-700);
-  cursor: pointer;
-  display: inline-flex;
-  font-size: var(--cms-text-base);
-  height: 1.25rem;
-  justify-content: center;
-  line-height: 1;
-  min-height: 1.25rem;
-  padding: 0;
-  width: 1.25rem;
-}
-
-.curations-filter-form__actions,
-.curations-saved-views__controls,
-.curations-saved-views__save {
+.curations-table__identity {
   align-items: center;
   display: flex;
-  flex-wrap: wrap;
   gap: var(--cms-spacing-2);
-  margin-top: var(--cms-spacing-1);
+  min-width: 0;
 }
 
-.curations-filter-form__actions > *,
-.curations-saved-views__controls > button,
-.curations-saved-views__save > button {
-  margin: 0;
+.curations-table__name {
+  color: var(--cms-fg-strong);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.curations-saved-views h2 {
-  font-size: var(--cms-text-base);
-  margin: 0;
-}
-
-.curations-saved-views p {
-  color: var(--cms-olive-600);
-  margin: var(--cms-spacing-0-5) 0 0;
-}
-
-.curations-saved-views__controls label,
-.curations-saved-views__save label {
-  flex: 1;
-  min-width: min(320px, 100%);
-}
-
-.curation-sort-picker {
-  min-width: min(280px, 100%);
-}
-
-.curation-column-picker {
-  min-width: min(320px, 100%);
-}
-
-.curation-column-picker summary {
-  cursor: pointer;
-  font-size: var(--cms-text-sm);
-  font-weight: 700;
-}
-
-.curation-column-picker fieldset {
-  background: var(--theme-elevation-0, #fff);
-  border: 1px solid var(--theme-elevation-150, #d7d7d7);
-  border-radius: var(--cms-radius-lg);
-  display: grid;
-  gap: var(--cms-spacing-1);
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  margin: var(--cms-spacing-1-5) 0 0;
-  padding: var(--cms-spacing-2-5);
-}
-
-.curation-column-picker__legend {
-  font-size: var(--cms-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.curation-column-picker label {
-  align-items: center;
+.curations-table__chips {
   display: flex;
-  font-size: var(--cms-text-sm);
-  gap: var(--cms-spacing-1-5);
+  gap: var(--cms-spacing-1);
+  overflow: hidden;
 }
 
-.curation-column-picker input {
-  min-height: auto;
-  width: auto;
-}
-
+/* A barra de seleção: a intenção "all matching" vale para muito mais do que a
+   faixa carregada, então ela fica presa no topo enquanto a lista rola. */
 .curations-selection-toolbar {
   align-items: center;
-  background: var(--cms-limestone-100);
-  border: 1px solid var(--theme-border-color);
+  background: var(--cms-surface-2);
+  border: 1px solid var(--cms-border-subtle);
   border-radius: var(--cms-radius-lg);
   display: flex;
   flex-wrap: wrap;
   gap: var(--cms-spacing-2);
-  padding: var(--cms-spacing-2) var(--cms-spacing-2-5);
+  padding: var(--cms-spacing-2) var(--cms-spacing-3);
   position: sticky;
-  top: 0.75rem;
+  top: var(--cms-spacing-3);
   z-index: 5;
 }
 
@@ -272,280 +96,97 @@
 }
 
 .curations-selection-toolbar__hint {
-  color: var(--cms-olive-600);
+  color: var(--cms-fg-muted);
   flex-basis: 100%;
   font-size: var(--cms-text-xs);
   margin: 0;
 }
 
-/* The table's border, row grid and focus ring live in admin.css; the Curations
-   surface adds the editorial cells. */
-.curation-table {
-  background: var(--theme-elevation-0);
-  border-radius: var(--cms-radius-lg);
-  overflow: hidden;
-}
-
-.curation-table__header {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-}
-
-.curation-table__row {
-  cursor: pointer;
-}
-
-.curation-table__row:hover {
-  background: var(--theme-elevation-50);
-}
-
-.curation-table__row > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.curation-table__viewport {
-  min-width: 0;
-}
-
-.curation-table__select {
-  display: flex;
-}
-
-.curation-table__identity {
+.curations-saved-views {
   align-items: center;
-  display: flex;
-  gap: var(--cms-spacing-1-5);
-  min-width: 0;
-}
-
-.curation-table__name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.curation-table__chips {
-  display: flex;
-  gap: var(--cms-spacing-1);
-  overflow: hidden;
-}
-
-.curation-table__chip {
-  background: var(--cms-limestone-100);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-full);
-  font-size: var(--cms-text-xs);
-  padding: var(--cms-spacing-px) var(--cms-spacing-1-5);
-  white-space: nowrap;
-}
-
-.curation-table__chip--more {
-  color: var(--cms-olive-700);
-  font-weight: 700;
-}
-
-.curation-drawer {
-  background: var(--theme-elevation-0);
-  border-left: 1px solid var(--theme-border-color);
-  box-shadow: -12px 0 32px rgb(24 38 24 / 12%);
-  display: flex;
-  flex-direction: column;
-  gap: var(--cms-spacing-3);
-  inset-block: 0;
-  overflow-y: auto;
-  padding: var(--cms-spacing-4);
-  position: fixed;
-  right: 0;
-  width: min(30rem, 100vw);
-  z-index: 80;
-}
-
-.curation-drawer__header {
-  align-items: flex-start;
-  border-bottom: 1px solid var(--theme-border-color);
-  display: flex;
-  gap: var(--cms-spacing-3);
-  justify-content: space-between;
-  padding-bottom: var(--cms-spacing-3);
-}
-
-.curation-drawer__heading h2 {
-  font-family: var(--cms-font-display);
-  font-weight: 600;
-  font-size: var(--cms-text-lg);
-  margin: 0;
-}
-
-.curation-drawer__subtitle {
-  align-items: center;
-  color: var(--cms-olive-700);
-  display: flex;
-  flex-wrap: wrap;
-  font-size: var(--cms-text-sm);
-  gap: var(--cms-spacing-1);
-  margin: var(--cms-spacing-1) 0 0;
-}
-
-.curation-drawer__close {
-  background: none;
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  cursor: pointer;
-  min-height: 32px;
-  padding: var(--cms-spacing-1) var(--cms-spacing-2-5);
-}
-
-.curation-drawer__body {
-  display: grid;
-  gap: var(--cms-spacing-3-5);
-}
-
-.curation-drawer__state {
-  color: var(--cms-olive-600);
-  margin: 0;
-}
-
-.curation-drawer__state--error,
-.curation-drawer__value,
-.curation-drawer__summary {
-  color: var(--theme-text);
-}
-
-.curation-drawer__state--error {
-  font-weight: 600;
-}
-
-.curation-drawer__value,
-.curation-drawer__summary,
-.curation-drawer__muted,
-.curation-drawer__label {
-  margin: 0;
-}
-
-.curation-drawer__label {
-  color: var(--cms-olive-700);
-  font-size: var(--cms-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.curation-drawer__muted {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-}
-
-.curation-drawer__link {
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.curation-drawer__link:hover {
-  text-decoration: underline;
-}
-
-.curation-drawer__summary {
-  line-height: 1.55;
-  white-space: pre-wrap;
-}
-
-.curation-drawer__concepts,
-.curation-drawer__facts {
-  display: grid;
-  gap: var(--cms-spacing-1-5);
-  margin: 0;
-}
-
-.curation-drawer__facts {
-  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
-}
-
-.curation-drawer__concept dt {
-  color: var(--cms-olive-700);
-  font-size: var(--cms-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.curation-drawer__concept dd {
-  margin: var(--cms-spacing-0-5) 0 0;
-}
-
-.curation-drawer__facts dt {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-xs);
-}
-
-.curation-drawer__facts dd {
-  font-weight: 700;
-  margin: var(--cms-spacing-px) 0 0;
-}
-
-.curation-drawer__collections {
-  display: grid;
-  gap: var(--cms-spacing-1);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.curation-drawer__collections li {
-  align-items: baseline;
-  display: flex;
-  gap: var(--cms-spacing-1-5);
-}
-
-.curation-drawer__actions {
-  border-top: 1px solid var(--theme-border-color);
   display: flex;
   gap: var(--cms-spacing-2);
-  margin-top: auto;
-  padding-top: var(--cms-spacing-3);
+  min-width: 0;
 }
 
-.curation-drawer__primary,
-.curation-drawer__secondary {
-  border-radius: var(--cms-radius-md);
-  font-weight: 600;
-  padding: var(--cms-spacing-1-5) var(--cms-spacing-3);
-  text-decoration: none;
+.curations-saved-views__error {
+  color: var(--cms-tone-error-fg);
+  font-size: var(--cms-text-xs);
+  margin: 0;
 }
 
-.curation-drawer__primary {
-  background: var(--cms-olive-800);
-  color: var(--cms-limestone-50);
+/* O desenho único de um controle da faixa — o seletor de colunas e o gatilho do
+   menu de views. O gatilho do `Menu` é o wrapper do próprio Payload (foco e
+   teclado são dele), então o visual vive no elemento que passamos como trigger. */
+.curations-control {
+  align-items: center;
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border);
+  border-radius: var(--cms-radius-input);
+  color: var(--cms-fg);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--cms-text-sm);
+  gap: var(--cms-spacing-2);
+  min-height: var(--cms-control-height-compact);
+  padding: var(--cms-spacing-1) var(--cms-spacing-3);
+  white-space: nowrap;
 }
 
-.curation-drawer__secondary {
-  border: 1px solid var(--theme-border-color);
+.curations-control:hover {
+  border-color: var(--cms-border-strong);
 }
 
-@media (max-width: 980px) {
-  .curations-filter-form__fields {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+/* Colunas: um `details` nativo (teclado e leitor de tela de graça) com o painel
+   flutuando à direita do gatilho, porque o gatilho vive no fim da faixa. */
+.curation-column-picker {
+  position: relative;
 }
 
-@media (max-width: 680px) {
-  .curations-filter-form__fields {
-    grid-template-columns: 1fr;
-  }
+.curation-column-picker__summary:focus-visible,
+.curation-column-picker[open] .curation-column-picker__summary {
+  border-color: var(--cms-accent);
+  box-shadow: 0 0 0 var(--cms-focus-ring-width) var(--cms-accent-soft);
+  outline: none;
+}
 
-  .curations-filter-form__actions,
-  .curations-saved-views__controls,
-  .curations-saved-views__save {
-    align-items: stretch;
-    flex-direction: column;
-  }
+.curation-column-picker__panel {
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-lg);
+  box-shadow: var(--cms-elevation-2);
+  display: grid;
+  gap: var(--cms-spacing-2);
+  inset-block-start: calc(100% + var(--cms-spacing-1));
+  inset-inline-end: 0;
+  margin: 0;
+  max-width: min(34rem, 90vw);
+  padding: var(--cms-spacing-3);
+  position: absolute;
+  width: max-content;
+  z-index: var(--cms-z-overlay);
+}
 
-  .curations-saved-views__controls label,
-  .curations-saved-views__save label {
-    min-width: 0;
+.curation-column-picker__grid {
+  display: grid;
+  gap: var(--cms-spacing-2);
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+}
+
+.curation-column-picker__legend {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .curation-column-picker__panel {
+    inset: auto;
+    max-width: 100%;
+    position: static;
+    width: auto;
   }
 
   .curations-selection-toolbar {
@@ -555,9 +196,5 @@
 
   .curations-selection-toolbar__apply {
     margin-left: 0;
-  }
-
-  .curation-drawer {
-    width: 100vw;
   }
 }

@@ -34,7 +34,7 @@ test('filter draft changes do not reload until Apply; Apply normalizes and Clear
   fireEvent.click(screen.getByLabelText('Select Restaurant 1'))
   expect(screen.getByRole('status').textContent).toMatch(/1 Curation selected/)
 
-  fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Clear all' }))
   await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(3))
   expect(loadPage.mock.calls[2][0]).toEqual({ cursor: null, filters: {}, sort: 'updated_at_desc' })
   expect(screen.getByRole('status').textContent).toMatch(/0 Curations selected/)
@@ -55,8 +55,8 @@ test('applying a saved view uses its normalized filters and resets explicit sele
   fireEvent.click(screen.getByLabelText('Select Restaurant 1'))
   expect(screen.getByRole('status').textContent).toMatch(/1 Curation selected/)
 
-  fireEvent.change(await screen.findByLabelText('Saved view'), { target: { value: 'view-1' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Apply saved view' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Views' }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: /Linked Victoria/ }))
 
   await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(2))
   expect(loadPage.mock.calls[1][0]).toEqual({

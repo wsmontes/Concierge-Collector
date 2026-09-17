@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import type { FieldNode } from '../../content/field-types'
 import { humanizeFieldName } from '../../content/field-types'
 import { AdminSection } from '../ui/AdminPage'
+import { EmptyState } from '../ui/EmptyState'
 import { CurationFieldBlock, type CurationSectionEditProps } from './CurationFieldBlock'
 import {
   durationLabel,
@@ -24,11 +25,11 @@ const KIND_LABEL: Record<SourceKind, string> = {
 function MetadataList({ rows }: { rows: MetadataRow[] }): ReactNode {
   if (rows.length === 0) return null
   return (
-    <dl className="curation-source__meta">
+    <dl className="ui-source__meta">
       {rows.map((row, position) => (
-        <div key={position} className="curation-source__meta-row">
+        <div key={position} className="ui-source__meta-row">
           <dt>{row.label}</dt>
-          <dd>{row.value}</dd>
+          <dd className={row.mono ? 'ui-detail-mono' : undefined} title={row.title}>{row.value}</dd>
         </div>
       ))}
     </dl>
@@ -44,26 +45,28 @@ function MetadataList({ rows }: { rows: MetadataRow[] }): ReactNode {
 function SourceEntry({ entry, index, kind }: { entry: unknown; index: number; kind: SourceKind }): ReactNode {
   const view = sourceEntryView(entry)
   return (
-    <li className="curation-source__entry" data-kind={kind}>
-      <p className="curation-source__entry-title">{view.filename ?? `${KIND_LABEL[kind]} ${index + 1}`}</p>
+    <li className="ui-source__entry" data-kind={kind}>
+      <p className="ui-source__entry-title">{view.filename ?? `${KIND_LABEL[kind]} ${index + 1}`}</p>
       {view.url === null
-        ? <p className="curation-source__note">No stored URL for this item; its provenance is listed instead.</p>
+        ? <p className="ui-source__note">No stored URL for this item; its provenance is listed instead.</p>
         : (
-            <p className="curation-source__links">
+            <p className="ui-source__links">
               <a href={view.url} rel="noreferrer" target="_blank">Open original</a>
               <a href={view.url} download>Download original</a>
             </p>
           )}
-      <ul className="curation-source__facts">
-        {view.durationSeconds !== null && <li>Duration {durationLabel(view.durationSeconds)}</li>}
+      <ul className="ui-source__facts">
+        {view.durationSeconds !== null && (
+          <li className="ui-detail-mono">Duration {durationLabel(view.durationSeconds)}</li>
+        )}
         {view.status !== null && <li>Processing: {view.status}</li>}
         {kind === 'audio' && <li>{view.transcript === null ? 'No transcription stored' : 'Transcription available'}</li>}
       </ul>
       <MetadataList rows={view.rows} />
       {view.transcript !== null && (
-        <details className="curation-source__transcription">
+        <details className="ui-source__transcription">
           <summary>Stored transcription</summary>
-          <pre>{view.transcript}</pre>
+          <pre className="ui-detail-pre">{view.transcript}</pre>
         </details>
       )}
     </li>
@@ -87,13 +90,13 @@ function MediaList({
 }): ReactNode {
   const entries = bucketEntries(buckets)
   return (
-    <section className="curation-source" aria-label={title}>
-      <h3 className="curation-source__title">{title}</h3>
-      <p className="curation-source__count">{entries.length} stored</p>
+    <section className="ui-source" aria-label={`Captured ${title.toLocaleLowerCase()}`}>
+      <h3 className="ui-source__title">{title}</h3>
+      <p className="ui-source__count">{entries.length} stored</p>
       {entries.length === 0
-        ? <p className="curation-source__empty">No {title.toLocaleLowerCase()} stored.</p>
+        ? <p className="ui-source__empty">No captured {title.toLocaleLowerCase()} stored for this Curation.</p>
         : (
-            <ol className="curation-source__entries">
+            <ol className="ui-source__entries">
               {entries.map((entry, index) => <SourceEntry key={index} entry={entry} index={index} kind={kind} />)}
             </ol>
           )}
@@ -104,15 +107,15 @@ function MediaList({
 /** Sources the page has no media vocabulary for still surface, under their own key. */
 function OtherSources({ buckets }: { buckets: readonly SourceBucket[] }): ReactNode {
   return (
-    <section className="curation-source" aria-label="Other sources">
-      <h3 className="curation-source__title">Other sources</h3>
+    <section className="ui-source" aria-label="Other evidence">
+      <h3 className="ui-source__title">Other evidence</h3>
       {buckets.length === 0
-        ? <p className="curation-source__empty">No other sources stored.</p>
+        ? <p className="ui-source__empty">No other evidence stored for this Curation.</p>
         : buckets.map((bucket) => (
-            <div className="curation-source__bucket" key={bucket.key}>
-              <h4 className="curation-source__bucket-title">{humanizeFieldName(bucket.key)}</h4>
-              <p className="curation-source__count">{bucket.entries.length} stored</p>
-              <ol className="curation-source__entries">
+            <div className="ui-source__bucket" key={bucket.key}>
+              <h4 className="ui-source__bucket-title">{humanizeFieldName(bucket.key)}</h4>
+              <p className="ui-source__count">{bucket.entries.length} stored</p>
+              <ol className="ui-source__entries">
                 {bucket.entries.map((entry, index) => (
                   <SourceEntry key={index} entry={entry} index={index} kind="other" />
                 ))}
@@ -141,16 +144,31 @@ export function CurationMediaSection({
   const audio = buckets.filter((bucket) => bucket.kind === 'audio')
   const other = buckets.filter((bucket) => bucket.kind === 'other')
   const hasTranscript = transcriptNode !== null && !isBlank(transcriptNode.value)
+  const stored = bucketEntries(buckets).length
 
   return (
-    <AdminSection title="Media & sources" description="What this Curation was built from, exactly as the record stores it.">
-      <div className="curation-media">
-        {buckets.length === 0 && <p className="curation-media__empty">No sources recorded.</p>}
-        <MediaList title="Images" kind="image" buckets={images} />
-        <MediaList title="Audio" kind="audio" buckets={audio} />
-        <OtherSources buckets={other} />
-        <section className="curation-transcript" aria-label="Transcript">
-          <p className="curation-transcript__availability">
+    <AdminSection
+      title="Curation evidence"
+      description="The photos, audio and text the curator captured for this Curation, exactly as the record stores them. The Entity's own display media is another record and never shows up here."
+      action={stored > 0 ? <p className="ui-section-count">{stored} stored</p> : undefined}
+    >
+      <div className="ui-media">
+        {buckets.length === 0
+          ? (
+              <EmptyState
+                title="No Curation evidence"
+                description="This Curation stores no captured photo, audio or other evidence. Advanced is where a structured value can be added."
+              />
+            )
+          : (
+              <>
+                <MediaList title="Images" kind="image" buckets={images} />
+                <MediaList title="Audio" kind="audio" buckets={audio} />
+                <OtherSources buckets={other} />
+              </>
+            )}
+        <section className="ui-transcript" aria-label="Transcript">
+          <p className="ui-transcript__availability">
             {hasTranscript ? 'A transcript is stored for this Curation.' : 'No transcript stored.'}
           </p>
           {transcriptNode !== null && <CurationFieldBlock node={transcriptNode} edit={edit} variant="transcript" />}

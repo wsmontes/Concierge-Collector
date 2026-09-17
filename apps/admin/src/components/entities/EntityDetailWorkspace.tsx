@@ -16,8 +16,11 @@ import {
 import { ContentFieldEditor } from '../content/ContentFieldEditor'
 import { ContentFieldInspector } from '../content/ContentFieldInspector'
 import { AdminPage, AdminSection } from '../ui/AdminPage'
+import { FactList } from '../ui/Card'
 import { EmptyState } from '../ui/EmptyState'
+import { ErrorState } from '../ui/ErrorState'
 import { InlineNotice } from '../ui/InlineNotice'
+import { Skeleton, SkeletonRows } from '../ui/Skeleton'
 import { StatusPill } from '../ui/StatusPill'
 import { EntityCurationsSection, type EntityCurationsState } from './EntityCurationsSection'
 import { EntityFieldSection } from './EntityFieldSection'
@@ -111,6 +114,44 @@ function humanError(error: unknown): string {
     return error.code
   }
   return error instanceof Error ? error.message : 'request_failed'
+}
+
+/**
+ * The website the record stores, as a link the operator can follow. A stored
+ * bare host (`ritz.example`) is a website, not a scheme, so it is completed
+ * here instead of rendered as a dead relative link.
+ */
+function websiteHref(record: Record<string, unknown>): string | null {
+  const value = getFieldValue(record, 'data.website')
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return null
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+}
+
+/** A link to the place on a map: stored coordinates first, else the address string. */
+function mapHref(record: Record<string, unknown>): string | null {
+  const latitude = getFieldValue(record, 'data.latitude')
+  const longitude = getFieldValue(record, 'data.longitude')
+  if (typeof latitude === 'number' && typeof longitude === 'number') {
+    return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+  }
+  for (const path of ['data.formattedAddress', 'data.formatted_address', 'data.address']) {
+    const value = getFieldValue(record, path)
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value.trim())}`
+    }
+  }
+  return null
+}
+
+/** What a link is called: the host, so the operator sees where it goes. */
+function hostOf(href: string): string {
+  try {
+    return new URL(href).host
+  } catch {
+    return href
+  }
 }
 
 function nodeAt(nodes: readonly FieldNode[], path: string): FieldNode | null {
@@ -244,8 +285,9 @@ function EntityDetailBody({ entityId, loadRecord, saveRecord, loadCurations, loa
       (page) => {
         if (cancelled) return
         // The gallery is ascending by rank, so the first row is the hero (rank 0)
-        // the rest of the Admin renders as the thumbnail.
-        setImage({ status: 'ready', image: page.items[0] ?? null })
+        // the rest of the Admin renders as the thumbnail; the remaining rows are
+        // the thumbnails the Media section shows beside it.
+        setImage({ status: 'ready', gallery: page.items, image: page.items[0] ?? null })
       },
       (cause: unknown) => {
         if (cancelled) return
@@ -361,7 +403,13 @@ function EntityDetailBody({ entityId, loadRecord, saveRecord, loadCurations, loa
   if (phase === 'loading') {
     return (
       <AdminPage eyebrow="Entity" title="Entity">
-        <p className="entity-detail__status" role="status">Loading Entity…</p>
+        {/* O esqueleto é o estado visual; a linha `status` é o que o leitor de
+            tela anuncia, já que esqueleto é decorativo. */}
+        <p className="ui-visually-hidden" role="status">Loading Entity…</p>
+        <div className="entity-detail__loading">
+          <Skeleton width="30%" />
+          <SkeletonRows rows={5} />
+        </div>
       </AdminPage>
     )
   }
@@ -393,16 +441,12 @@ function EntityDetailBody({ entityId, loadRecord, saveRecord, loadCurations, loa
   if (phase === 'error' || record === null) {
     return (
       <AdminPage eyebrow="Entity" title="Entity">
-        <InlineNotice tone="error">
-          {loadError ?? 'The Entity could not be loaded.'}
-        </InlineNotice>
-        <button
-          className="entity-detail__retry"
-          type="button"
-          onClick={retryLoad}
-        >
-          Try again
-        </button>
+        <ErrorState
+          description={loadError ?? 'The Entity could not be loaded.'}
+          onRetry={retryLoad}
+          retryLabel="Try again"
+          title="Unable to load this Entity"
+        />
       </AdminPage>
     )
   }
@@ -431,6 +475,39 @@ function EntityDetailBody({ entityId, loadRecord, saveRecord, loadCurations, loa
   const mediaNodes = dataChildNodes(dataNode, MEDIA_KEYS)
   const systemNodes = tree.filter((node) => node.system)
 
+  const website = websiteHref(record)
+  const map = mapHref(record)
+  /*
+   * O cabeçalho responde "o que é, onde fica e como chego lá" de uma vez:
+   * identidade (tipo, estado, id externo) mais os fatos de endereçamento e
+   * contato que o registro guarda — com link de mapa quando ele tem um.
+   */
+  const headerFacts: Array<{ label: string; value: ReactNode }> = [
+    { label: 'Type', value: typeof type === 'string' ? humanizeFieldName(type) : 'Not set' },
+    { label: 'Status', value: typeof status === 'string' ? <StatusPill status={status} /> : 'Not set' },
+    { label: 'City', value: typeof city === 'string' && city.length > 0 ? city : 'Not set' },
+    {
+      label: 'External id',
+      value: (
+        <span className="ui-table__mono">
+          {typeof externalId === 'string' && externalId.length > 0 ? externalId : 'Not set'}
+        </span>
+      ),
+    },
+  ]
+  if (website !== null) {
+    headerFacts.push({
+      label: 'Website',
+      value: <a href={website} rel="noreferrer" target="_blank">{hostOf(website)}</a>,
+    })
+  }
+  if (map !== null) {
+    headerFacts.push({
+      label: 'Map',
+      value: <a href={map} rel="noreferrer" target="_blank">Open in maps</a>,
+    })
+  }
+
   return (
     <AdminPage
       eyebrow="Entity"
@@ -439,24 +516,9 @@ function EntityDetailBody({ entityId, loadRecord, saveRecord, loadCurations, loa
       actions={typeof status === 'string' ? <StatusPill status={status} /> : undefined}
     >
       <section className="entity-detail__header" aria-label="Entity header">
-        <dl className="entity-detail__facts">
-          <div className="entity-detail__fact">
-            <dt>Type</dt>
-            <dd>{typeof type === 'string' ? humanizeFieldName(type) : 'Not set'}</dd>
-          </div>
-          <div className="entity-detail__fact">
-            <dt>Status</dt>
-            <dd>{typeof status === 'string' ? <StatusPill status={status} /> : 'Not set'}</dd>
-          </div>
-          <div className="entity-detail__fact">
-            <dt>City</dt>
-            <dd>{typeof city === 'string' && city.length > 0 ? city : 'Not set'}</dd>
-          </div>
-          <div className="entity-detail__fact">
-            <dt>External id</dt>
-            <dd>{typeof externalId === 'string' && externalId.length > 0 ? externalId : 'Not set'}</dd>
-          </div>
-        </dl>
+        <FactList
+          facts={headerFacts}
+        />
       </section>
 
       {notice !== null && <InlineNotice tone="success">{notice}</InlineNotice>}
@@ -535,7 +597,7 @@ function EntityDetailBody({ entityId, loadRecord, saveRecord, loadCurations, loa
 
       <AdminSection
         title="Media"
-        description="The image the domain resolves from this Entity's website or Place, plus the media its data blob stores."
+        description="Entity display media — the hero and gallery the Collector card resolves from this Entity's website or Place, plus the media its own data blob stores. Curation evidence lives on the Curation, never here."
       >
         <EntityImageThumbnail state={image} />
         {mediaNodes.length > 0
@@ -550,8 +612,8 @@ function EntityDetailBody({ entityId, loadRecord, saveRecord, loadCurations, loa
             )
           : (
               <EmptyState
-                title="No media stored"
-                description="This Entity record stores no images, logos or galleries."
+                title="No display media stored"
+                description="This Entity record stores no image, logo or gallery of its own."
               />
             )}
       </AdminSection>

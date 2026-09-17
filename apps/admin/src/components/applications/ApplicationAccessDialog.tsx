@@ -1,8 +1,12 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import { useState } from 'react'
-import type { ApplicationRecord } from './ApplicationViews'
+import { Dialog } from '../ui/Dialog'
+import { InlineNotice } from '../ui/InlineNotice'
+import { TextInput } from '../ui/Field'
 import { CollectionAccessPicker } from './CollectionAccessPicker'
+import type { ApplicationRecord } from './ApplicationViews'
 
 export function ApplicationAccessDialog({
   application,
@@ -18,8 +22,10 @@ export function ApplicationAccessDialog({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const rateIsValid = Number.isInteger(rate) && rate >= 1 && rate <= 100000
+
   async function save() {
-    if (pending || !Number.isInteger(rate) || rate < 1 || rate > 100000) return
+    if (pending || !rateIsValid) return
     setPending(true)
     setError(null)
     try {
@@ -31,41 +37,44 @@ export function ApplicationAccessDialog({
   }
 
   return (
-    <div className="application-access-dialog-backdrop" role="presentation">
-      <section
-        aria-labelledby="application-access-dialog-title"
-        aria-modal="true"
-        className="application-access-dialog"
-        role="dialog"
-      >
-        <header>
-          <div>
-            <p className="collection-views__eyebrow">Distribution</p>
-            <h2 id="application-access-dialog-title">Edit {application.name} access</h2>
-          </div>
-          <button type="button" disabled={pending} onClick={onClose}>Close</button>
-        </header>
-
-        <CollectionAccessPicker value={collectionIds} onChange={setCollectionIds} disabled={pending} />
-        <label>
-          Requests per minute
-          <input
-            type="number"
-            min="1"
-            max="100000"
-            value={rate}
-            disabled={pending}
-            onChange={(event) => setRate(Number(event.target.value))}
-          />
-        </label>
-        {error && <p role="alert">{error}</p>}
-        <footer>
-          <button type="button" disabled={pending} onClick={onClose}>Cancel</button>
-          <button type="button" disabled={pending || !Number.isInteger(rate) || rate < 1 || rate > 100000} onClick={() => void save()}>
+    <Dialog
+      description={`Grant only the Collections this consumer needs. ${application.allowedCollectionIds.length.toLocaleString('en-US')} granted today.`}
+      footer={(
+        <>
+          <Button buttonStyle="secondary" disabled={pending} margin={false} onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button disabled={pending || !rateIsValid} margin={false} onClick={() => void save()} type="button">
             {pending ? 'Saving…' : 'Save access'}
-          </button>
-        </footer>
-      </section>
-    </div>
+          </Button>
+        </>
+      )}
+      onClose={() => { if (!pending) onClose() }}
+      open
+      title={`Edit ${application.name} access`}
+      width="46rem"
+    >
+      <div className="application-access">
+        <TextInput
+          description="Default request budget for this consumer."
+          error={rateIsValid ? undefined : 'Enter a whole number between 1 and 100000.'}
+          id="application-access-rate"
+          label="Requests per minute"
+          onChange={(value) => setRate(Number(value))}
+          type="number"
+          value={String(rate)}
+        />
+        <CollectionAccessPicker
+          disabled={pending}
+          onChange={setCollectionIds}
+          value={collectionIds}
+        />
+        {error && (
+          <InlineNotice tone="error">
+            <p>{error}</p>
+          </InlineNotice>
+        )}
+      </div>
+    </Dialog>
   )
 }

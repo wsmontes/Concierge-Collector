@@ -1,293 +1,488 @@
-/* Curation full record page: header, section blocks, concept chips, media
-   provenance, transcript reading area and the raw-record block. The class
-   vocabulary is frozen — see docs/Concierge Admin — Plano completo de CMS
-   editorial…, sections 13–19, 26, 32–34 and 46. Colour comes only from the
-   Concierge brand tokens and Payload's --theme-* mapping; no palette value is
-   hardcoded here. */
+/*
+ * Curation full-record page — a coluna do registro e o rail.
+ *
+ * Purpose: dar ao detalhe da Curation o layout de leitura que o plano pede
+ * (§13–§19, §26, §32–§34, §46): cabeçalho de identidade, coluna principal com
+ * as seções, rail com fatos/metadados/outline acima de 1200px e empilhado
+ * abaixo disso.
+ *
+ * Responsibilities: só o que é COMPOSIÇÃO desta tela. Caixa de diálogo, gaveta,
+ * tabela, chip, campo, esqueleto e vazio vêm do kit (`kit.css`) — aqui não há
+ * uma segunda versão de nenhum deles. Nenhum valor de cor, espaço, raio, sombra
+ * ou duração é literal: tudo sai de `theme.css` e da escala compartilhada.
+ *
+ * Dependencies: `theme.css` (tokens `--cms-*`) e `kit.css` (classes `ui-*`).
+ */
 
+.ui-detail {
+  max-width: min(1600px, 100%);
+}
 
-.curation-detail__notices {
+.ui-detail-notices {
   display: grid;
   gap: var(--cms-spacing-2-5);
 }
 
-/* Header ------------------------------------------------------------------ */
-
-.curation-header__meta {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
+/* Carregamento: o esqueleto mantém a altura da página, para o dado que chega
+   não empurrar a leitura. */
+.ui-detail-loading {
   display: grid;
-  gap: var(--cms-spacing-2-5) var(--cms-spacing-5);
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-  margin: 0;
-  padding: var(--cms-spacing-3);
+  gap: var(--cms-spacing-4);
 }
 
-.curation-header__item dt {
-  color: var(--cms-olive-800);
+.ui-detail-loading__identity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-3);
+}
+
+/* ---------------------------------------------------------------------------
+   Layout: coluna do registro + rail (1200px para cima)
+   --------------------------------------------------------------------------- */
+
+.ui-detail-layout {
+  display: grid;
+  gap: var(--cms-spacing-5);
+  min-width: 0;
+}
+
+.ui-detail-column {
+  display: grid;
+  gap: var(--cms-spacing-6);
+  min-width: 0;
+}
+
+.ui-detail-rail {
+  display: grid;
+  gap: var(--cms-spacing-4);
+  min-width: 0;
+}
+
+.ui-record-rail {
+  display: grid;
+  gap: var(--cms-spacing-4);
+  min-width: 0;
+}
+
+@media (min-width: 1200px) {
+  .ui-detail-layout {
+    align-items: start;
+    gap: var(--cms-spacing-8);
+    grid-template-columns: minmax(0, 1fr) minmax(17rem, 21rem);
+  }
+
+  /* O rail acompanha a leitura de uma seção longa, começando abaixo do
+     cabeçalho de página preso (que ocupa ~6rem quando rola). */
+  .ui-detail-rail {
+    position: sticky;
+    top: var(--cms-spacing-24);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Identidade: chips + fatos do registro
+   --------------------------------------------------------------------------- */
+
+.ui-record-identity {
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
+  box-shadow: var(--cms-elevation-1);
+  display: grid;
+  gap: var(--cms-spacing-3);
+  padding: var(--cms-spacing-4);
+}
+
+.ui-record-identity__chips {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2);
+}
+
+.ui-record-identity__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-3) var(--cms-spacing-6);
+  margin: 0;
+  min-width: 0;
+}
+
+.ui-record-identity__fact {
+  display: grid;
+  gap: var(--cms-spacing-0-5);
+  min-width: 0;
+}
+
+.ui-record-identity__fact dt {
+  color: var(--cms-fg-faint);
   font-size: var(--cms-text-xs);
-  letter-spacing: 0.06em;
+  font-weight: 600;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
-.curation-header__item dd {
-  margin: var(--cms-spacing-1) 0 0;
-}
-
-.curation-header__id {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--cms-text-sm);
+.ui-record-identity__fact dd {
+  align-items: center;
+  color: var(--cms-fg);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-1-5);
+  margin: 0;
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
-/* Field blocks (About + Your curation + structured editing) ---------------- */
+/* ---------------------------------------------------------------------------
+   Outline "On this page"
+   --------------------------------------------------------------------------- */
 
-.curation-field {
-  border-bottom: 1px solid var(--cms-limestone-200);
+.ui-outline {
   display: grid;
-  gap: var(--cms-spacing-1);
-  min-width: 0;
-  padding: var(--cms-spacing-2-5) 0;
+  gap: var(--cms-spacing-2);
 }
 
-.curation-field:last-child {
+.ui-outline__title {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.ui-outline__list {
+  display: grid;
+  gap: var(--cms-spacing-0-5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ui-outline__link {
+  border-left: 2px solid transparent;
+  color: var(--cms-fg-muted);
+  display: block;
+  font-size: var(--cms-text-sm);
+  padding: var(--cms-spacing-1) var(--cms-spacing-1) var(--cms-spacing-1) var(--cms-spacing-3);
+  text-decoration: none;
+  transition: color var(--cms-duration-base) var(--cms-ease-standard);
+}
+
+.ui-outline__link:hover {
+  color: var(--cms-fg-strong);
+}
+
+.ui-outline__link[data-active='true'] {
+  border-left-color: var(--cms-accent);
+  color: var(--cms-accent-fg);
+  font-weight: 600;
+}
+
+/* Abaixo de 1200px o rail deixa de ser coluna: o outline sai de cena em vez de
+   virar uma lista de atalhos acima do conteúdo. */
+@media (max-width: 1199px) {
+  .ui-outline {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Valores: mono para o técnico, quebra para o longo
+   --------------------------------------------------------------------------- */
+
+.ui-detail-mono {
+  color: var(--cms-fg-muted);
+  font-family: var(--cms-font-mono);
+  font-size: var(--cms-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.ui-detail-pre {
+  background: var(--cms-surface-inset);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-md);
+  color: var(--cms-fg);
+  font-family: var(--cms-font-mono);
+  font-size: var(--cms-text-xs);
+  line-height: 1.6;
+  margin: 0;
+  max-height: 24rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: var(--cms-spacing-3);
+  white-space: pre-wrap;
+}
+
+.ui-section-count {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  margin: 0;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Bloco de campo (About + Your curation + edição estruturada)
+   --------------------------------------------------------------------------- */
+
+.ui-field-block {
+  border-bottom: 1px solid var(--cms-border-subtle);
+  display: grid;
+  gap: var(--cms-spacing-1-5);
+  min-width: 0;
+  padding: var(--cms-spacing-3) 0;
+}
+
+.ui-field-block:last-child {
   border-bottom: 0;
 }
 
-.curation-field__header {
-  align-items: baseline;
+.ui-field-block__header {
+  align-items: center;
   display: flex;
   gap: var(--cms-spacing-2-5);
   justify-content: space-between;
 }
 
-.curation-field__label {
+.ui-field-block__label {
+  color: var(--cms-fg-strong);
   font-size: var(--cms-text-sm);
+  font-weight: 600;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
-.curation-field__text,
-.curation-field__value,
-.curation-field__empty {
-  color: var(--cms-olive-800);
+.ui-field-block__state {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+}
+
+.ui-field-block__text,
+.ui-field-block__empty {
   margin: 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
-.curation-field__empty {
-  color: var(--cms-olive-600);
+.ui-field-block__empty {
+  color: var(--cms-fg-faint);
   font-style: italic;
 }
 
-.curation-field__json {
-  background: var(--theme-elevation-50);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
+.ui-field-block__json,
+.ui-field-block__transcript {
   margin: 0;
-  max-height: 22rem;
+  max-height: 30rem;
   overflow: auto;
-  padding: var(--cms-spacing-2);
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
-/* About ------------------------------------------------------------------- */
-
-.curation-about,
-.curation-editorial {
-  display: grid;
-  gap: var(--cms-spacing-1-5);
+.ui-field-block__transcript {
+  background: var(--cms-surface-inset);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-md);
+  line-height: 1.7;
+  padding: var(--cms-spacing-4);
 }
 
-.curation-about__entity {
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  display: grid;
-  gap: var(--cms-spacing-1);
-  padding: var(--cms-spacing-3);
-}
-
-.curation-about__name,
-.curation-about__secondary,
-.curation-about__facts {
-  margin: 0;
-}
-
-.curation-about__secondary {
-  color: var(--cms-olive-600);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--cms-text-sm);
-}
-
-.curation-about__facts {
-  color: var(--cms-olive-600);
-}
-
-.curation-derived {
-  border: 1px dashed var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  display: grid;
-  gap: var(--cms-spacing-0-5);
-  padding: var(--cms-spacing-2-5) var(--cms-spacing-3);
-}
-
-.curation-derived__label {
-  font-size: var(--cms-text-xs);
-  letter-spacing: 0.06em;
-  margin: 0;
-  text-transform: uppercase;
-}
-
-.curation-derived__value,
-.curation-derived__source {
-  margin: 0;
-}
-
-.curation-derived__source {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-}
-
-/* Concepts ---------------------------------------------------------------- */
-
-.curation-concepts {
-  display: grid;
-  gap: var(--cms-spacing-3);
-}
-
-.curation-concept {
-  display: grid;
-  gap: var(--cms-spacing-1-5);
-}
-
-.curation-concept__category {
-  font-size: var(--cms-text-xs);
-  letter-spacing: 0.06em;
-  margin: 0;
-  text-transform: uppercase;
-}
-
-.curation-concept__values {
+.ui-copy {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--cms-spacing-1-5) var(--cms-spacing-3);
-  list-style: none;
-  margin: 0;
-  padding: 0;
+  gap: var(--cms-spacing-2);
 }
 
-.curation-concept__value {
+.ui-copy__state {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+}
+
+/* ---------------------------------------------------------------------------
+   About
+   --------------------------------------------------------------------------- */
+
+.ui-about,
+.ui-editorial {
+  display: grid;
+  gap: var(--cms-spacing-2);
+  min-width: 0;
+}
+
+.ui-about__entity {
+  background: var(--cms-surface-2);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
+  display: grid;
+  gap: var(--cms-spacing-1-5);
+  padding: var(--cms-spacing-4);
+}
+
+.ui-about__headline {
   align-items: center;
   display: flex;
-  gap: var(--cms-spacing-1-5);
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2-5);
 }
 
-.curation-concept__chip {
-  background: var(--cms-limestone-100);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-full);
-  padding: var(--cms-spacing-0-5) var(--cms-spacing-2);
+.ui-about__name,
+.ui-about__secondary,
+.ui-about__facts {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
-.curation-concept__link {
+.ui-about__name {
+  color: var(--cms-fg-strong);
+  font-size: var(--cms-text-base);
+  font-weight: 600;
+}
+
+.ui-about__secondary,
+.ui-about__facts {
+  color: var(--cms-fg-muted);
   font-size: var(--cms-text-sm);
 }
 
-.curation-concepts__empty,
-.curation-media__empty,
-.curation-structured__empty {
-  color: var(--cms-olive-600);
-  margin: 0;
-}
-
-.curation-concepts__editor {
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
+.ui-about__derived {
   display: grid;
   gap: var(--cms-spacing-2-5);
-  padding: var(--cms-spacing-3);
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
 }
 
-.curation-concepts__draft,
-.curation-concepts__draft-values {
+.ui-derived {
+  background: var(--cms-surface-2);
+  border: 1px dashed var(--cms-border);
+  border-radius: var(--cms-radius-card);
   display: grid;
-  gap: var(--cms-spacing-1-5);
+  gap: var(--cms-spacing-1);
+  padding: var(--cms-spacing-3) var(--cms-spacing-4);
+}
+
+.ui-derived__label {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.ui-derived__value,
+.ui-derived__source {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ui-derived__source {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-xs);
+}
+
+/* Ação em forma de link: um tratamento só para os três papéis — sair do estado
+   vazio, ir até a Entity, abrir o registro completo. Sem sublinhado em repouso:
+   a tinta do acento já diz que é acionável. */
+.ui-about__action,
+.ui-derived__link,
+.ui-preview__secondary {
+  color: var(--cms-accent-fg);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.ui-about__action:hover,
+.ui-derived__link:hover,
+.ui-preview__secondary:hover {
+  text-decoration: underline;
+}
+
+.ui-editorial__hint {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-sm);
+  margin: var(--cms-spacing-2) 0 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Concepts
+   --------------------------------------------------------------------------- */
+
+.ui-concepts {
+  display: grid;
+  gap: var(--cms-spacing-4);
+}
+
+.ui-concept {
+  display: grid;
+  gap: var(--cms-spacing-2);
+}
+
+.ui-concept__category {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.ui-concept__values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2) var(--cms-spacing-4);
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.curation-concepts__draft-header,
-.curation-concepts__draft-values li {
+.ui-concept__value {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: var(--cms-spacing-1-5);
+}
+
+.ui-concept__link {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+}
+
+.ui-concepts__editor {
+  background: var(--cms-surface-2);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
+  display: grid;
+  gap: var(--cms-spacing-3);
+  margin-top: var(--cms-spacing-3);
+  padding: var(--cms-spacing-4);
+}
+
+.ui-concepts__draft {
+  display: grid;
+  gap: var(--cms-spacing-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ui-concepts__draft-group {
+  display: grid;
+  gap: var(--cms-spacing-2);
+}
+
+.ui-concepts__draft-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2);
   justify-content: space-between;
 }
 
-.curation-concepts__draft-header h4 {
+.ui-concepts__draft-header h4 {
+  color: var(--cms-fg-strong);
   margin: 0;
 }
 
-.curation-concepts__draft-values input,
-.curation-concepts__new input {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  color: var(--theme-text);
-  flex: 1;
-  min-width: 8rem;
-  padding: var(--cms-spacing-1-5) var(--cms-spacing-2);
-}
-
-.curation-concepts__new {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-1-5);
-}
-
-.curation-concepts__actions {
-  display: flex;
-  gap: var(--cms-spacing-1-5);
-  justify-content: flex-end;
-}
-
-/* Media & sources --------------------------------------------------------- */
-
-.curation-media {
-  display: grid;
-  gap: var(--cms-spacing-3);
-}
-
-.curation-source {
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  display: grid;
-  gap: var(--cms-spacing-1-5);
-  padding: var(--cms-spacing-3);
-}
-
-.curation-source__title,
-.curation-source__bucket-title {
-  margin: 0;
-}
-
-.curation-source__bucket-title {
-  color: var(--cms-olive-800);
-  font-size: var(--cms-text-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.curation-source__count {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-  margin: 0;
-}
-
-.curation-source__entries {
+.ui-concepts__draft-values {
   display: grid;
   gap: var(--cms-spacing-2);
   list-style: none;
@@ -295,32 +490,101 @@
   padding: 0;
 }
 
-.curation-source__entry {
-  background: var(--theme-elevation-50);
-  border-radius: var(--cms-radius-md);
+.ui-concepts__draft-values li {
+  align-items: end;
   display: grid;
-  gap: var(--cms-spacing-1);
-  padding: var(--cms-spacing-2) var(--cms-spacing-2-5);
+  gap: var(--cms-spacing-2);
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.curation-source__entry-title,
-.curation-source__note,
-.curation-source__status {
-  margin: 0;
+.ui-concepts__new {
+  align-items: end;
+  display: grid;
+  gap: var(--cms-spacing-2);
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.curation-source__note {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-}
-
-.curation-source__links {
+.ui-concepts__actions {
   display: flex;
-  gap: var(--cms-spacing-2-5);
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2);
+  justify-content: flex-end;
+}
+
+/* ---------------------------------------------------------------------------
+   Mídia e procedência
+   --------------------------------------------------------------------------- */
+
+.ui-media {
+  display: grid;
+  gap: var(--cms-spacing-4);
+}
+
+.ui-source {
+  display: grid;
+  gap: var(--cms-spacing-2);
+}
+
+.ui-source__title,
+.ui-source__bucket-title {
+  color: var(--cms-fg-strong);
+  font-size: var(--cms-text-sm);
+  font-weight: 600;
   margin: 0;
 }
 
-.curation-source__facts {
+.ui-source__bucket-title {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.ui-source__bucket {
+  display: grid;
+  gap: var(--cms-spacing-2);
+}
+
+.ui-source__count,
+.ui-source__empty,
+.ui-source__note {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+  margin: 0;
+}
+
+.ui-source__entries {
+  display: grid;
+  gap: var(--cms-spacing-2-5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ui-source__entry {
+  background: var(--cms-surface-2);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
+  display: grid;
+  gap: var(--cms-spacing-1-5);
+  padding: var(--cms-spacing-3);
+}
+
+.ui-source__entry-title {
+  color: var(--cms-fg-strong);
+  font-weight: 600;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ui-source__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-3);
+  margin: 0;
+}
+
+.ui-source__facts {
   display: flex;
   flex-wrap: wrap;
   gap: var(--cms-spacing-1) var(--cms-spacing-3);
@@ -329,77 +593,264 @@
   padding: 0;
 }
 
-.curation-source__meta {
+.ui-source__meta {
   display: grid;
-  gap: var(--cms-spacing-0-5) var(--cms-spacing-3);
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--cms-spacing-1) var(--cms-spacing-3);
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   margin: 0;
 }
 
-.curation-source__meta-row {
+.ui-source__meta-row {
   display: flex;
   gap: var(--cms-spacing-1-5);
+  min-width: 0;
 }
 
-.curation-source__meta-row dt {
-  color: var(--cms-olive-600);
+.ui-source__meta-row dt {
+  color: var(--cms-fg-faint);
+  flex: 0 0 auto;
   font-size: var(--cms-text-xs);
 }
 
-.curation-source__meta-row dd {
+.ui-source__meta-row dd {
   margin: 0;
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.curation-source__transcription pre {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  margin: var(--cms-spacing-1-5) 0 0;
-  max-height: 18rem;
-  overflow: auto;
-  padding: var(--cms-spacing-2);
-  white-space: pre-wrap;
+.ui-source__transcription summary {
+  color: var(--cms-fg-muted);
+  cursor: pointer;
+  font-size: var(--cms-text-sm);
 }
 
-/* Transcript: the one value with a reading area of its own (plan §18). */
+.ui-source__transcription pre {
+  margin-top: var(--cms-spacing-1-5);
+}
 
-.curation-transcript {
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
+/* Transcrição: o único valor com área de leitura própria (§18). */
+
+.ui-transcript {
+  border-top: 1px solid var(--cms-border-subtle);
   display: grid;
-  gap: var(--cms-spacing-1-5);
-  padding: var(--cms-spacing-3);
+  gap: var(--cms-spacing-2);
+  padding-top: var(--cms-spacing-4);
 }
 
-.curation-transcript__availability {
-  color: var(--cms-olive-600);
+.ui-transcript__availability {
+  color: var(--cms-fg-muted);
   font-size: var(--cms-text-sm);
   margin: 0;
 }
 
-.curation-field__transcript {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--cms-limestone-200);
-  border-radius: var(--cms-radius-md);
-  font-family: inherit;
-  line-height: 1.65;
+/* ---------------------------------------------------------------------------
+   Collections (§26)
+   --------------------------------------------------------------------------- */
+
+.ui-collection-links {
+  display: grid;
+  gap: var(--cms-spacing-2);
+  list-style: none;
   margin: 0;
-  max-height: 30rem;
-  overflow: auto;
-  padding: var(--cms-spacing-3);
-  white-space: pre-wrap;
+  padding: 0;
 }
 
-.curation-copy {
+.ui-collection-links__item {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2) var(--cms-spacing-3);
+}
+
+.ui-collection-links__title {
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+   History (§46): linha do tempo + autoria
+   --------------------------------------------------------------------------- */
+
+.ui-timeline {
+  display: grid;
+  gap: var(--cms-spacing-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ui-timeline__item {
+  display: grid;
+  gap: var(--cms-spacing-3);
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.ui-timeline__marker {
+  align-self: start;
+  background: var(--cms-accent);
+  border-radius: var(--cms-radius-full);
+  height: var(--cms-spacing-2);
+  margin-top: var(--cms-spacing-1-5);
+  width: var(--cms-spacing-2);
+}
+
+.ui-timeline__body {
+  display: grid;
+  gap: var(--cms-spacing-0-5);
+  min-width: 0;
+}
+
+.ui-timeline__title,
+.ui-timeline__time,
+.ui-timeline__by {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ui-timeline__title {
+  color: var(--cms-fg-strong);
+  font-weight: 600;
+}
+
+.ui-timeline__time {
+  color: var(--cms-fg);
+}
+
+.ui-history__none {
+  color: var(--cms-fg-muted);
+  margin: 0;
+}
+
+.ui-history__facts {
+  margin-top: var(--cms-spacing-3);
+}
+
+.ui-history__stored {
+  display: grid;
+  gap: var(--cms-spacing-2);
+  margin-top: var(--cms-spacing-3);
+}
+
+.ui-history__entry {
+  display: grid;
   gap: var(--cms-spacing-1-5);
 }
 
-/* Collections (plan §26) -------------------------------------------------- */
+.ui-history__entry h4 {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  letter-spacing: 0.03em;
+  margin: 0;
+  text-transform: uppercase;
+}
 
-.curation-collections {
+/* ---------------------------------------------------------------------------
+   Advanced (§34)
+   --------------------------------------------------------------------------- */
+
+.ui-raw,
+.ui-structured {
+  display: grid;
+  gap: var(--cms-spacing-2-5);
+}
+
+.ui-raw__header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-3);
+  justify-content: space-between;
+}
+
+.ui-raw__title,
+.ui-structured__title {
+  color: var(--cms-fg-strong);
+  font-size: var(--cms-text-sm);
+  font-weight: 600;
+  margin: 0;
+}
+
+/* O registro cru ganha mais altura que os outros blocos: quem abre esta seção
+   quer ler o documento inteiro de uma vez, não rolar três janelinhas. */
+.ui-raw__json {
+  max-height: 32rem;
+}
+
+.ui-structured {
+  border-top: 1px solid var(--cms-border-subtle);
+  padding-top: var(--cms-spacing-4);
+}
+
+/* ---------------------------------------------------------------------------
+   Conflito de escrita (§33)
+   --------------------------------------------------------------------------- */
+
+.ui-conflict {
+  display: grid;
+  gap: var(--cms-spacing-3);
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  margin-top: var(--cms-spacing-2-5);
+}
+
+.ui-conflict__side {
+  display: grid;
+  gap: var(--cms-spacing-1-5);
+}
+
+.ui-conflict__side h3 {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  letter-spacing: 0.03em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------------------------
+   Gaveta de pré-visualização
+   --------------------------------------------------------------------------- */
+
+.ui-preview {
+  display: grid;
+  gap: var(--cms-spacing-4);
+  min-width: 0;
+}
+
+.ui-preview__chips {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2);
+}
+
+.ui-preview__value,
+.ui-preview__muted,
+.ui-preview__label,
+.ui-preview__summary {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ui-preview__value {
+  color: var(--cms-fg-strong);
+}
+
+.ui-preview__label {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.ui-preview__muted {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+}
+
+.ui-preview__summary {
+  line-height: 1.6;
+}
+
+.ui-preview__collections {
   display: grid;
   gap: var(--cms-spacing-1-5);
   list-style: none;
@@ -407,128 +858,30 @@
   padding: 0;
 }
 
-.curation-collections__item {
-  align-items: baseline;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-1-5) var(--cms-spacing-3);
-}
-
-.curation-collections__version {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-}
-
-/* History (plan §46) ------------------------------------------------------ */
-
-.curation-history {
-  display: grid;
-  gap: var(--cms-spacing-1-5) var(--cms-spacing-5);
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-  margin: 0 0 var(--cms-spacing-2-5);
-}
-
-.curation-history__row dt {
-  color: var(--cms-olive-800);
-  font-size: var(--cms-text-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.curation-history__row dd {
-  margin: var(--cms-spacing-0-5) 0 0;
-}
-
-.curation-history__stored pre {
-  background: var(--theme-elevation-50);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  margin: 0;
-  max-height: 18rem;
-  overflow: auto;
-  padding: var(--cms-spacing-2);
-  white-space: pre-wrap;
-}
-
-/* Advanced (plan §34) ----------------------------------------------------- */
-
-.curation-raw,
-.curation-structured {
-  display: grid;
-  gap: var(--cms-spacing-1-5);
-}
-
-.curation-raw__header {
+.ui-preview__collection {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2);
+}
+
+.ui-preview__actions {
+  align-items: center;
+  border-top: 1px solid var(--cms-border-subtle);
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--cms-spacing-3);
-  justify-content: space-between;
+  padding-top: var(--cms-spacing-4);
 }
 
-.curation-raw__title,
-.curation-structured__title {
-  margin: 0;
+.ui-preview__primary {
+  font-weight: 600;
 }
 
-.curation-raw__json {
-  background: var(--theme-elevation-50);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  margin: 0;
-  max-height: 30rem;
-  overflow: auto;
-  padding: var(--cms-spacing-3);
-  white-space: pre-wrap;
-}
+/* ---------------------------------------------------------------------------
+   Espaço para o cabeçalho preso ao rolar o registro
+   --------------------------------------------------------------------------- */
 
-/* Conflict panel (plan §33) ----------------------------------------------- */
-
-.curation-conflict {
-  display: grid;
-  gap: var(--cms-spacing-3);
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-}
-
-.curation-conflict__side h3 {
-  font-size: var(--cms-text-xs);
-  letter-spacing: 0.06em;
-  margin: 0 0 var(--cms-spacing-1);
-  text-transform: uppercase;
-}
-
-.curation-conflict__side pre {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  margin: 0;
-  max-height: 12rem;
-  overflow: auto;
-  padding: var(--cms-spacing-2);
-  white-space: pre-wrap;
-}
-
-@media (max-width: 720px) {
-  .curation-detail {
-    padding: var(--cms-spacing-3);
-  }
-
-  .curation-header__meta,
-  .curation-source__meta,
-  .curation-history,
-  .curation-conflict {
-    grid-template-columns: 1fr;
-  }
-
-  .curation-field__header,
-  .curation-raw__header,
-  .curation-concepts__draft-header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .curation-concept__value {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: var(--cms-spacing-0-5);
-  }
+.ui-section[id] {
+  scroll-margin-top: var(--cms-spacing-16);
 }

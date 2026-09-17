@@ -11,6 +11,15 @@ export const CmsUsers: CollectionConfig = {
   },
   admin: {
     useAsTitle: 'email',
+    // O menu do Admin é curado (`CMS_NAV_GROUPS`): o grupo declara a seção a que
+    // esta collection pertence quando o Payload desenha a própria nav.
+    group: 'Operations',
+    description: 'Admin identities and the access level each one holds. Read-only: access is granted at sign-in.',
+    // A lista responde "quem pode entrar, com que papel, e quando foi confirmado":
+    // `fastapiUserId` fica de fora porque é chave de join com o FastAPI, não fato
+    // de operação — a ficha do usuário o mostra.
+    defaultColumns: ['email', 'name', 'role', 'authorized', 'lastIntrospectedAt'],
+    listSearchableFields: ['email', 'name'],
   },
   access: {
     admin: ({ req }) => isAuthorizedAdmin(req.user),
@@ -29,7 +38,12 @@ export const CmsUsers: CollectionConfig = {
       type: 'text',
       required: true,
       unique: true,
-      admin: { readOnly: true },
+      // Rótulo de produto: o nome do campo é jargão interno e vira rótulo visível.
+      label: 'Sign-in user id',
+      admin: {
+        readOnly: true,
+        description: 'Identifier of this user in the authorization service.',
+      },
     },
     {
       name: 'email',
@@ -66,18 +80,32 @@ export const CmsUsers: CollectionConfig = {
       type: 'checkbox',
       required: true,
       defaultValue: false,
-      admin: { readOnly: true },
+      admin: {
+        readOnly: true,
+        // Booleano como chip (`Yes`/`No`), não como o `<code>true</code>` cru da
+        // lista nativa.
+        components: { Cell: '/src/components/content/cells/BooleanCell#BooleanCell' },
+      },
     },
     {
       name: 'authzRevision',
       type: 'text',
       required: true,
-      admin: { readOnly: true },
+      label: 'Authorization revision',
+      admin: {
+        readOnly: true,
+        description: 'Revision of the authorization state this copy was synced from.',
+      },
     },
     {
       name: 'lastIntrospectedAt',
       type: 'date',
-      admin: { readOnly: true },
+      label: 'Access confirmed',
+      admin: {
+        readOnly: true,
+        description: 'When the FastAPI authorization service last confirmed this identity.',
+        components: { Cell: '/src/components/content/cells/RelativeDateCell#RelativeDateCell' },
+      },
     },
   ],
 }

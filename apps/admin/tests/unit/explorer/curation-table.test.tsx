@@ -9,7 +9,7 @@ describe('CurationTable', () => {
   afterEach(cleanup)
 
   test('keeps the DOM bounded for a 50k-row result', () => {
-    render(<CurationTable columns={DEFAULT_CURATION_COLUMNS} height={600} rowHeight={44} rows={makeRows(50_000)} />)
+    render(<CurationTable columns={DEFAULT_CURATION_COLUMNS} height={600} rows={makeRows(50_000)} />)
 
     expect(screen.getAllByRole('row').length).toBeLessThan(100)
     expect(screen.getByText('Restaurant 1')).toBeTruthy()
@@ -18,7 +18,7 @@ describe('CurationTable', () => {
   test('header checkbox is indeterminate when only some loaded rows are selected', () => {
     const rows = makeRows(3)
     const isSelected = (row: AdminCurationRow) => row.curation_id === rows[0].curation_id
-    render(<CurationTable columns={DEFAULT_CURATION_COLUMNS} height={600} isSelected={isSelected} rowHeight={44} rows={rows} />)
+    render(<CurationTable columns={DEFAULT_CURATION_COLUMNS} height={600} isSelected={isSelected} rows={rows} />)
 
     const header = screen.getByLabelText('Select all loaded Curations') as HTMLInputElement
     expect(header.indeterminate).toBe(true)
@@ -32,11 +32,11 @@ describe('CurationTable', () => {
       height={600}
       isSelected={() => true}
       onToggleAllLoaded={onToggleAllLoaded}
-      rowHeight={44}
       rows={makeRows(2)}
     />)
 
-    const header = screen.getByLabelText('Select all loaded Curations') as HTMLInputElement
+    // Com tudo selecionado o nome acessível passa a ser o de limpar a seleção.
+    const header = screen.getByLabelText('Clear selection of loaded Curations') as HTMLInputElement
     expect(header.indeterminate).toBe(false)
     expect(header.checked).toBe(true)
 
@@ -46,7 +46,7 @@ describe('CurationTable', () => {
 
   test('arrow keys move the active row and space toggles it', () => {
     const onToggle = vi.fn()
-    const { container } = render(<CurationTable columns={DEFAULT_CURATION_COLUMNS} height={600} onToggle={onToggle} rowHeight={44} rows={makeRows(3)} />)
+    const { container } = render(<CurationTable columns={DEFAULT_CURATION_COLUMNS} height={600} onToggle={onToggle} rows={makeRows(3)} />)
     const table = screen.getByRole('table')
 
     fireEvent.keyDown(table, { key: 'ArrowDown' })
@@ -66,7 +66,7 @@ describe('CurationTable', () => {
 
   test('space while a nested checkbox is focused does not double-toggle', () => {
     const onToggle = vi.fn()
-    render(<CurationTable columns={DEFAULT_CURATION_COLUMNS} height={600} onToggle={onToggle} rowHeight={44} rows={makeRows(1)} />)
+    render(<CurationTable columns={DEFAULT_CURATION_COLUMNS} height={600} onToggle={onToggle} rows={makeRows(1)} />)
     const rowCheckbox = screen.getByLabelText('Select Restaurant 1')
 
     fireEvent.keyDown(rowCheckbox, { key: ' ' })
@@ -75,7 +75,7 @@ describe('CurationTable', () => {
 
   test('Enter opens the active row and a checkbox click never does', () => {
     const onOpenRow = vi.fn()
-    render(<CurationTable columns={DEFAULT_CURATION_COLUMNS} height={600} onOpenRow={onOpenRow} onToggle={vi.fn()} rowHeight={44} rows={makeRows(2)} />)
+    render(<CurationTable columns={DEFAULT_CURATION_COLUMNS} height={600} onOpenRow={onOpenRow} onToggle={vi.fn()} rows={makeRows(2)} />)
 
     fireEvent.click(screen.getByLabelText('Select Restaurant 1'))
     expect(onOpenRow).not.toHaveBeenCalled()

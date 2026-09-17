@@ -59,6 +59,16 @@ class Settings(BaseSettings):
     # Google Places API
     google_places_api_key: str = ""
 
+    # Display media (o hero do card da Entity). O resultado da resolução fica
+    # PERSISTIDO no documento da Entity como referência opaca (nunca bytes,
+    # nunca URL assinada): a descoberta — HTML do site, og:image, Places,
+    # download e ranking — deixa de acontecer a cada render de card.
+    display_media_ttl_days: int = 14
+    display_media_failure_retry_seconds: int = 3600
+    # O enriquecimento é disparado em background pela própria leitura; nos
+    # testes fica desligado (sem rede e sem tarefa solta no loop).
+    display_media_enrich_enabled: bool = True
+
     # OpenAI API
     openai_api_key: str = ""
 

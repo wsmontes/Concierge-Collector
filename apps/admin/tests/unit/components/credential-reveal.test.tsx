@@ -14,4 +14,16 @@ describe('CredentialRevealDialog', () => {
     view.unmount()
     expect(screen.queryByLabelText('Credential secret')).toBeNull()
   })
+
+  test('copies the secret on demand and confirms the copy', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    render(<CredentialRevealDialog credential={{ id: 'credential-2', name: 'Production', prefix: 'cck_abc' }} secretOnce="cck_abc_secret" onClose={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy secret' }))
+
+    expect(writeText).toHaveBeenCalledWith('cck_abc_secret')
+    expect(await screen.findByText('Secret copied to the clipboard.')).toBeVisible()
+    expect(screen.getByLabelText('Credential secret')).toHaveTextContent('cck_abc_secret')
+  })
 })

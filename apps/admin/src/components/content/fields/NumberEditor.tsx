@@ -2,7 +2,8 @@
 
 import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
-import { EditorFrame, type FieldEditorProps } from './EditorFrame'
+import { Field } from '../../ui/Field'
+import { EditorFrame, controlAria, type FieldEditorProps } from './EditorFrame'
 
 /**
  * `numberDraft` keeps a stored string/number visible; anything else starts empty.
@@ -14,7 +15,8 @@ function numberDraft(value: unknown): string {
 
 /**
  * Numeric input. A `number` input would refuse the keystrokes before the editor
- * can explain itself, so this is a text input that parses on save.
+ * can explain itself, so this is a text control with a decimal keypad that
+ * parses on save.
  */
 export function NumberEditor({ node, onCommit, onCancel }: FieldEditorProps): ReactNode {
   const controlId = useId()
@@ -38,18 +40,25 @@ export function NumberEditor({ node, onCommit, onCancel }: FieldEditorProps): Re
   }
 
   return (
-    <EditorFrame node={node} controlId={controlId} error={error} onCancel={onCancel} onSave={save}>
-      <input
-        className="content-editor__input"
-        id={controlId}
-        type="text"
-        inputMode="decimal"
-        value={draft}
-        onChange={(event) => {
-          setDraft(event.target.value)
-          setError(null)
-        }}
-      />
+    <EditorFrame node={node} onCancel={onCancel} onSave={save}>
+      <Field
+        description={node.descriptor?.help}
+        error={error ?? undefined}
+        htmlFor={controlId}
+        label={node.label}
+      >
+        <input
+          {...controlAria(controlId, node, error)}
+          className="ui-input"
+          inputMode="decimal"
+          onChange={(event) => {
+            setDraft(event.target.value)
+            setError(null)
+          }}
+          type="text"
+          value={draft}
+        />
+      </Field>
     </EditorFrame>
   )
 }

@@ -2,18 +2,22 @@
 
 import { Button } from '@payloadcms/ui'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { CollectionDistributionClient } from '../../collections/distribution-client'
 import type { LoadCurationRecord } from '../../content/record-types'
+import { OverviewView } from '../overview/OverviewView'
+import { AdminPage } from '../ui/AdminPage'
+import { Chip, statusTone } from '../ui/Chip'
+import { ErrorBoundary } from '../ui/ErrorBoundary'
 import { InlineNotice } from '../ui/InlineNotice'
 import { StatusPill } from '../ui/StatusPill'
+import { Tabs, type TabSpec } from '../ui/Tabs'
 import { ActivityView, type ActivityRow } from './ActivityView'
 import { CollectionDistributionView } from './CollectionDistributionView'
 import { CollectionRelationships } from './CollectionRelationships'
 import { DraftDiffView, type DraftDiffRow } from './DraftDiffView'
 import { MembersView, type MemberRow } from './MembersView'
 import { VersionsView, type VersionRow } from './VersionsView'
-import { OverviewView } from '../overview/OverviewView'
 
 export interface CollectionViewRecord {
   id: string
@@ -55,13 +59,25 @@ export interface CollectionViewActions {
   onRestoreVersionAsDraft?: (version: number) => void
 }
 
-const TABS: readonly CollectionTab[] = ['Overview', 'Members', 'Draft Changes', 'Versions', 'Distribution', 'Activity']
+/* O `id` é slug porque vira parte do `id` do DOM (uma aba com espaço no id é
+   inválido); o `label` é o nome acessível que os testes e a E2E leem. */
+const TABS: Array<{ id: string; label: CollectionTab }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'members', label: 'Members' },
+  { id: 'draft-changes', label: 'Draft Changes' },
+  { id: 'versions', label: 'Versions' },
+  { id: 'distribution', label: 'Distribution' },
+  { id: 'activity', label: 'Activity' },
+]
 
-function count(value: number) {
-  return new Intl.NumberFormat('en-US').format(value)
-}
-
-/** Compact, keyboard-accessible Collection review shell. All lists remain paginated server reads. */
+/**
+ * The Collection review shell: identity and actions at the top, then the tabs
+ * that read the cursor endpoints.
+ *
+ * Everything here is presentational — the caller owns the reads, the commands and
+ * the notices it passes in — and the tab strip is the kit `Tabs` (WAI-ARIA
+ * tablist with arrow/Home/End keys) instead of a hand-rolled button row.
+ */
 export function CollectionViews({
   collection,
   preview = {},
@@ -69,6 +85,7 @@ export function CollectionViews({
   actions = {},
   distributionClient,
   loadRecord,
+  notices,
 }: {
   collection: CollectionViewRecord
   preview?: CollectionReadPreview
@@ -77,104 +94,165 @@ export function CollectionViews({
   distributionClient?: CollectionDistributionClient
   /** Loader of one Curation record for the member preview; the browser BFF one by default. */
   loadRecord?: LoadCurationRecord
+  /** Avisos e erros de comando da página, logo abaixo do cabeçalho. */
+  notices?: ReactNode
 }) {
   const [tab, setTab] = useState<CollectionTab>('Overview')
   const archived = collection.lifecycle === 'archived'
   const publishing = collection.draftState === 'publishing'
+  const activeId = TABS.find((entry) => entry.label === tab)?.id ?? TABS[0].id
+
+  const tabs: TabSpec[] = [
+    {
+      id: 'overview',
+      label: 'Overview',
+      content: (
+        <OverviewView
+          activity={preview.activity ?? []}
+          collection={collection}
+          diff={preview.diff ?? []}
+          onNavigate={setTab}
+          versions={preview.versions ?? []}
+        />
+      ),
+    },
+    {
+      id: 'members',
+      label: 'Members',
+      content: (
+        <MembersView
+          collectionId={collection.id}
+          hasMore={pagination.members?.hasMore}
+          items={preview.members ?? []}
+          loadRecord={loadRecord}
+          loading={pagination.members?.loading}
+          onLoadMore={actions.onLoadMoreMembers}
+        />
+      ),
+    },
+    {
+      id: 'draft-changes',
+      label: 'Draft Changes',
+      content: (
+        <DraftDiffView
+          hasMore={pagination.diff?.hasMore}
+          items={preview.diff ?? []}
+          loading={pagination.diff?.loading}
+          onLoadMore={actions.onLoadMoreDiff}
+        />
+      ),
+    },
+    {
+      id: 'versions',
+      label: 'Versions',
+      content: (
+        <VersionsView
+          currentPublishedVersion={collection.currentPublishedVersion}
+          hasMore={pagination.versions?.hasMore}
+          items={preview.versions ?? []}
+          loading={pagination.versions?.loading}
+          onLoadMore={actions.onLoadMoreVersions}
+          onRestoreAsDraft={actions.onRestoreVersionAsDraft}
+        />
+      ),
+    },
+    {
+      id: 'distribution',
+      label: 'Distribution',
+      content: (
+        <CollectionDistributionView
+          client={distributionClient}
+          collectionId={collection.id}
+          currentPublishedVersion={collection.currentPublishedVersion}
+          lifecycle={collection.lifecycle}
+        />
+      ),
+    },
+    {
+      id: 'activity',
+      label: 'Activity',
+      content: (
+        <ActivityView
+          hasMore={pagination.activity?.hasMore}
+          items={preview.activity ?? []}
+          loading={pagination.activity?.loading}
+          onLoadMore={actions.onLoadMoreActivity}
+        />
+      ),
+    },
+  ]
 
   return (
-    <section className="collection-views" aria-labelledby="collection-title">
-      <header className="collection-views__header">
-        <div className="collection-views__identity">
-          <p className="collection-views__eyebrow">Collection</p>
-          <h1 id="collection-title">{collection.title}</h1>
-          <div className="collection-views__status" aria-label="Collection status">
-            <StatusPill status={collection.lifecycle} label={collection.lifecycle} />
-            <StatusPill status={collection.draftState} label={collection.draftState} />
-            <span>{count(collection.draftSelectedCount)} selected</span>
-            <span>draft revision {collection.draftRevision}</span>
-          </div>
-        </div>
-        <div className="collection-views__actions">
-          {archived ? (
-            <Button margin={false} onClick={actions.onRestore} type="button">Restore collection</Button>
-          ) : <>
-            <Link className="collection-views__link-button" href={`/admin/curations?collection=${encodeURIComponent(collection.id)}`}>
-              Add Curations
-            </Link>
-            <Button buttonStyle="secondary" margin={false} onClick={actions.onEditMetadata} type="button">Edit metadata</Button>
-            <Button buttonStyle="secondary" margin={false} onClick={actions.onArchive} type="button">Archive collection</Button>
-            <Button
-              disabled={publishing}
-              margin={false}
-              aria-label="Publish new version"
-              onClick={actions.onPublish}
-              type="button"
-            >
-              {publishing ? 'Publishing…' : 'Publish new version'}
-            </Button>
-          </>}
-        </div>
-      </header>
+    <AdminPage
+      actions={archived ? (
+        <Button margin={false} onClick={actions.onRestore} type="button">Restore collection</Button>
+      ) : (
+        <>
+          <Link
+            className="collections-link-button"
+            href={`/admin/curations?collection=${encodeURIComponent(collection.id)}`}
+          >
+            Add Curations
+          </Link>
+          <Button buttonStyle="secondary" margin={false} onClick={actions.onEditMetadata} type="button">
+            Edit metadata
+          </Button>
+          <Button buttonStyle="secondary" margin={false} onClick={actions.onArchive} type="button">
+            Archive collection
+          </Button>
+          <Button
+            aria-label="Publish new version"
+            disabled={publishing}
+            margin={false}
+            onClick={actions.onPublish}
+            type="button"
+          >
+            {publishing ? 'Publishing…' : 'Publish new version'}
+          </Button>
+        </>
+      )}
+      breadcrumb={[{ href: '/admin/collections/collections', label: 'Collections' }]}
+      eyebrow="Collection"
+      sticky
+      title={collection.title}
+      width="wide"
+    >
+      <div aria-label="Collection status" className="ui-chip-group" role="group">
+        <StatusPill label={collection.lifecycle} status={collection.lifecycle} />
+        <StatusPill label={collection.draftState} status={collection.draftState} />
+        <Chip size="sm" tone={statusTone(collection.draftState)} title="Curations selected in the draft">
+          {collection.draftSelectedCount.toLocaleString('en-US')} selected
+        </Chip>
+        <Chip size="sm" title="Revision of the pending draft">
+          draft revision {collection.draftRevision.toLocaleString('en-US')}
+        </Chip>
+      </div>
+
+      {notices}
+
       {archived && (
         <InlineNotice tone="warning">
           <p>Archived collections are read-only until restored.</p>
         </InlineNotice>
       )}
+
       <CollectionRelationships
-        members={preview.members ?? []}
         hasMore={pagination.members?.hasMore ?? false}
+        members={preview.members ?? []}
       />
-      <div role="tablist" aria-label="Collection review" className="collection-views__tabs">
-        {TABS.map((item) => (
-          <button key={item} type="button" role="tab" aria-selected={tab === item} onClick={() => setTab(item)}>
-            {item}
-          </button>
-        ))}
-      </div>
-      <div role="tabpanel" aria-label={tab} className="collection-views__panel">
-        {tab === 'Overview' && <OverviewView
-          collection={collection}
-          versions={preview.versions ?? []}
-          activity={preview.activity ?? []}
-          diff={preview.diff ?? []}
-          onNavigate={setTab}
-        />}
-        {tab === 'Members' && <MembersView
-          items={preview.members ?? []}
-          collectionId={collection.id}
-          hasMore={pagination.members?.hasMore}
-          loading={pagination.members?.loading}
-          loadRecord={loadRecord}
-          onLoadMore={actions.onLoadMoreMembers}
-        />}
-        {tab === 'Draft Changes' && <DraftDiffView
-          items={preview.diff ?? []}
-          hasMore={pagination.diff?.hasMore}
-          loading={pagination.diff?.loading}
-          onLoadMore={actions.onLoadMoreDiff}
-        />}
-        {tab === 'Versions' && <VersionsView
-          items={preview.versions ?? []}
-          currentPublishedVersion={collection.currentPublishedVersion}
-          hasMore={pagination.versions?.hasMore}
-          loading={pagination.versions?.loading}
-          onLoadMore={actions.onLoadMoreVersions}
-          onRestoreAsDraft={actions.onRestoreVersionAsDraft}
-        />}
-        {tab === 'Distribution' && <CollectionDistributionView
-          collectionId={collection.id}
-          lifecycle={collection.lifecycle}
-          currentPublishedVersion={collection.currentPublishedVersion}
-          client={distributionClient}
-        />}
-        {tab === 'Activity' && <ActivityView
-          items={preview.activity ?? []}
-          hasMore={pagination.activity?.hasMore}
-          loading={pagination.activity?.loading}
-          onLoadMore={actions.onLoadMoreActivity}
-        />}
-      </div>
-    </section>
+
+      {/* `Tabs` é não-controlado no kit: a navegação vinda do Overview pede uma
+          aba, e a identidade (`key`) é o que remonta o strip no pedido novo.
+          A fronteira de erro fica aqui porque as seis abas leem dado remoto: uma
+          linha malformada derruba um painel, não o Admin inteiro. */}
+      <ErrorBoundary title="This Collection panel could not be displayed">
+        <Tabs
+          defaultTabId={activeId}
+          key={activeId}
+          label="Collection review"
+          tabs={tabs}
+        />
+      </ErrorBoundary>
+    </AdminPage>
   )
 }

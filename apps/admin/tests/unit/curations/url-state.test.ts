@@ -71,7 +71,7 @@ describe('Curation list URL state', () => {
     const state = parseCurationListState('')
 
     expect(state.sort).toBe('updated_at_desc')
-    expect(state.columns).toEqual(['curation', 'entity', 'curator', 'type', 'city', 'concepts', 'collections', 'state', 'updated'])
+    expect(state.columns).toEqual(['curation', 'curator', 'type', 'city', 'concepts', 'collections', 'state', 'updated'])
     expect(serializeCurationListState(state)).toBe('')
   })
 

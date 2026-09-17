@@ -1,0 +1,200 @@
+/*
+ * Casca do Admin: navegação, bloco de conta e ações do cabeçalho.
+ *
+ * Purpose: dar à casca a mesma linguagem do conteúdo — marca no topo, uma entrada
+ * de busca que não é um campo de formulário (é um gatilho para a paleta), grupos
+ * com um símbolo por seção, e quem está operando no rodapé, sempre visível.
+ *
+ * A casca em si (largura, altura, `inert` quando fechada, transição) continua
+ * sendo a do Payload via `NavWrapper`: este arquivo não redefine nenhuma dessas
+ * medidas, só o conteúdo e o ritmo interno. É deliberado — foi reescrever a casca
+ * à mão que, em uma tentativa anterior, jogou a coluna do grid a zero.
+ *
+ * Dependencies: `theme.css` (tokens) e `kit.css` (keyhint, menu).
+ */
+
+.cms-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cms-spacing-4);
+  height: 100%;
+  padding: var(--cms-spacing-3);
+}
+
+/* A marca: palavra em serifada + o papel da tela. */
+.cms-nav__brand {
+  display: grid;
+  gap: 2px;
+  padding: var(--cms-spacing-1) var(--cms-spacing-1) 0;
+}
+
+.cms-nav__brand .cms-brand {
+  color: var(--cms-fg-strong);
+  font-family: var(--cms-font-display);
+  font-size: var(--cms-text-xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.cms-nav__tagline {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+/* Gatilho da paleta: parece um campo, age como botão. O rótulo e o atalho
+   ficam visíveis porque um ícone sozinho não ensina que existe busca. */
+.cms-nav__search {
+  align-items: center;
+  background: var(--cms-surface-2);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-input);
+  color: var(--cms-fg-muted);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-size: var(--cms-text-sm);
+  gap: var(--cms-spacing-2);
+  min-height: var(--cms-control-height-compact);
+  padding: var(--cms-spacing-1-5) var(--cms-spacing-2-5);
+  text-align: left;
+  transition: border-color var(--cms-duration-base) var(--cms-ease-standard);
+  width: 100%;
+}
+
+.cms-nav__search:hover {
+  border-color: var(--cms-border-strong);
+  color: var(--cms-fg);
+}
+
+.cms-nav__search-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Só os grupos rolam: marca, busca e conta ficam parados. */
+.cms-nav__groups {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--cms-spacing-4);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.cms-nav-group {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+}
+
+.cms-nav-group h2 {
+  align-items: center;
+  color: var(--cms-fg-faint);
+  display: flex;
+  font-size: var(--cms-text-xs);
+  font-weight: 700;
+  gap: var(--cms-spacing-1-5);
+  letter-spacing: 0.08em;
+  margin: 0 0 var(--cms-spacing-1);
+  padding: 0 var(--cms-spacing-1);
+  text-transform: uppercase;
+}
+
+.cms-nav-group__icon {
+  align-items: center;
+  color: var(--cms-fg-faint);
+  display: inline-flex;
+}
+
+/* Bloco de conta: quem opera e as saídas, sempre no rodapé da coluna. */
+.cms-nav__account {
+  border-top: 1px solid var(--cms-border-subtle);
+  padding-top: var(--cms-spacing-3);
+}
+
+.cms-nav__account-trigger {
+  align-items: center;
+  display: flex;
+  gap: var(--cms-spacing-2);
+  min-width: 0;
+  width: 100%;
+}
+
+.cms-nav__avatar {
+  align-items: center;
+  background: var(--cms-accent-soft);
+  border: 1px solid var(--cms-accent-border);
+  border-radius: var(--cms-radius-full);
+  color: var(--cms-accent-fg);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: var(--cms-text-sm);
+  font-weight: 700;
+  height: 2rem;
+  justify-content: center;
+  width: 2rem;
+}
+
+.cms-nav__account-id {
+  display: grid;
+  min-width: 0;
+}
+
+.cms-nav__account-name {
+  color: var(--cms-fg);
+  font-size: var(--cms-text-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cms-nav__account-email {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ações do cabeçalho (slot `admin.components.actions`). */
+.cms-header-actions {
+  align-items: center;
+  display: flex;
+  gap: var(--cms-spacing-1);
+}
+
+.cms-header-actions__button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--cms-radius-md);
+  color: var(--cms-fg-muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 2rem;
+  justify-content: center;
+  transition:
+    background var(--cms-duration-base) var(--cms-ease-standard),
+    color var(--cms-duration-base) var(--cms-ease-standard);
+  width: 2rem;
+}
+
+.cms-header-actions__button:hover {
+  background: var(--cms-surface-2);
+  color: var(--cms-fg-strong);
+}
+
+@media (max-width: 720px) {
+  .cms-nav__tagline,
+  .cms-nav__account-email {
+    display: none;
+  }
+}

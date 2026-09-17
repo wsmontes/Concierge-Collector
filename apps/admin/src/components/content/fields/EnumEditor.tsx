@@ -2,7 +2,11 @@
 
 import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
+import { SelectInput, TextInput } from '../../ui/Field'
 import { EditorFrame, textDraft, type FieldEditorProps } from './EditorFrame'
+
+/** A select needs a named empty row: a blank option is unreadable. */
+const NO_VALUE = ''
 
 /**
  * Constrained vocabulary when the registry knows one, free text when it does
@@ -19,26 +23,28 @@ export function EnumEditor({ node, onCommit, onCancel }: FieldEditorProps): Reac
   }
 
   return (
-    <EditorFrame node={node} controlId={controlId} onCancel={onCancel} onSave={save}>
+    <EditorFrame node={node} onCancel={onCancel} onSave={save}>
       {values.length > 0
         ? (
-            <select
-              className="content-editor__input"
+            <SelectInput
+              description={node.descriptor?.help}
               id={controlId}
+              label={node.label}
+              onChange={setDraft}
+              options={[
+                { label: 'No value', value: NO_VALUE },
+                ...values.map((value) => ({ label: value, value })),
+              ]}
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-            >
-              <option value="" />
-              {values.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
+            />
           )
         : (
-            <input
-              className="content-editor__input"
+            <TextInput
+              description={node.descriptor?.help}
               id={controlId}
-              type="text"
+              label={node.label}
+              onChange={setDraft}
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
             />
           )}
     </EditorFrame>

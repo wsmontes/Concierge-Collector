@@ -1,5 +1,6 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import { useCallback, useEffect, useState } from 'react'
 import {
   CollectionsAdminError,
@@ -12,6 +13,10 @@ import {
   type PublishPreviewDto,
   type VersionRowDto,
 } from '../../collections/admin-client'
+import { Dialog } from '../ui/Dialog'
+import { ErrorState } from '../ui/ErrorState'
+import { InlineNotice } from '../ui/InlineNotice'
+import { Skeleton, SkeletonRows } from '../ui/Skeleton'
 import { CollectionMetadataForm } from './CollectionMetadataForm'
 import { CollectionViews } from './CollectionViews'
 import { PublishCollectionDialog } from './PublishCollectionDialog'
@@ -61,6 +66,7 @@ function plural(count: number, singular: string, pluralForm = `${singular}s`) {
   return count === 1 ? singular : pluralForm
 }
 
+/** Confirmação de archive/restore: as duas mudam o que a distribuição entrega. */
 function LifecycleConfirmationDialog({
   kind,
   pending,
@@ -73,25 +79,35 @@ function LifecycleConfirmationDialog({
   onConfirm: () => void
 }) {
   const archive = kind === 'archive'
-  const title = archive ? 'Archive Collection' : 'Restore Collection'
-  return <div className="collection-dialog-backdrop" role="presentation">
-    <section aria-labelledby="collection-lifecycle-title" aria-modal="true" className="collection-dialog" role="dialog">
-      <header className="collection-dialog__header">
-        <h2 id="collection-lifecycle-title">{title}</h2>
-      </header>
-      <p>{archive
+  return (
+    <Dialog
+      description={archive
         ? 'Archiving is an external kill switch: this Collection becomes unavailable to distribution immediately.'
-        : 'Restoring returns this Collection to published state using exactly the same current published version.'}</p>
-      <footer className="collection-dialog__footer">
-        <button type="button" onClick={onCancel} disabled={pending}>Cancel</button>
-        <button type="button" onClick={onConfirm} disabled={pending}>
-          {pending ? 'Working…' : archive ? 'Confirm archive' : 'Confirm restore'}
-        </button>
-      </footer>
-    </section>
-  </div>
+        : 'Restoring returns this Collection to published state using exactly the same current published version.'}
+      footer={(
+        <>
+          <Button buttonStyle="secondary" disabled={pending} margin={false} onClick={onCancel} type="button">
+            Cancel
+          </Button>
+          <Button disabled={pending} margin={false} onClick={onConfirm} type="button">
+            {pending ? 'Working…' : archive ? 'Confirm archive' : 'Confirm restore'}
+          </Button>
+        </>
+      )}
+      onClose={() => { if (!pending) onCancel() }}
+      open
+      title={archive ? 'Archive Collection' : 'Restore Collection'}
+    >
+      <p>
+        {archive
+          ? 'The published version stays stored; nothing is deleted.'
+          : 'The published pointer does not move until you publish a new version.'}
+      </p>
+    </Dialog>
+  )
 }
 
+/** Trazer uma versão histórica de volta como rascunho, nunca como publicado. */
 function HistoricalRestoreDialog({
   version,
   pending,
@@ -103,28 +119,29 @@ function HistoricalRestoreDialog({
   onCancel: () => void
   onConfirm: () => void
 }) {
-  return <div className="collection-dialog-backdrop" role="presentation">
-    <section
-      aria-labelledby="historical-restore-title"
-      aria-modal="true"
-      className="collection-dialog"
-      role="dialog"
+  return (
+    <Dialog
+      description={`This compares version ${version} with the currently published membership and enqueues the difference as draft changes. The published pointer does not move until you publish a new version.`}
+      footer={(
+        <>
+          <Button buttonStyle="secondary" disabled={pending} margin={false} onClick={onCancel} type="button">
+            Cancel
+          </Button>
+          <Button disabled={pending} margin={false} onClick={onConfirm} type="button">
+            {pending ? 'Queuing…' : 'Confirm restore as draft'}
+          </Button>
+        </>
+      )}
+      onClose={() => { if (!pending) onCancel() }}
+      open
+      title={`Restore version ${version} as draft`}
     >
-      <header className="collection-dialog__header">
-        <h2 id="historical-restore-title">Restore version {version} as draft</h2>
-      </header>
       <p>
-        This compares version {version} with the currently published membership and enqueues the difference as draft changes.
-        The published pointer does not move until you publish a new version.
+        Nothing is published by this command: it queues an operation and the draft revision moves once
+        the operation commits.
       </p>
-      <footer className="collection-dialog__footer">
-        <button type="button" onClick={onCancel} disabled={pending}>Cancel</button>
-        <button type="button" onClick={onConfirm} disabled={pending}>
-          {pending ? 'Queuing…' : 'Confirm restore as draft'}
-        </button>
-      </footer>
-    </section>
-  </div>
+    </Dialog>
+  )
 }
 
 export interface CollectionDetailWorkspaceProps {
@@ -413,17 +430,36 @@ export function CollectionDetailWorkspace({
   }
 
   if (loading && !collection) {
-    return <main className="collection-views"><p role="status">Loading Collection…</p></main>
+    return (
+      <div aria-busy="true" className="collection-detail-shell">
+        <p className="ui-visually-hidden" role="status">Loading Collection…</p>
+        <Skeleton width="18rem" />
+        <SkeletonRows rows={5} />
+      </div>
+    )
   }
 
   if (error && !collection) {
-    return <main className="collection-views">
-      <p role="alert">{error}</p>
-      <button type="button" onClick={() => void loadInitial()}>Try again</button>
-    </main>
+    return (
+      <div className="collection-detail-shell">
+        <ErrorState
+          description={error}
+          onRetry={() => void loadInitial()}
+          retryLabel="Try again"
+          title="This Collection could not load"
+        />
+      </div>
+    )
   }
 
   if (!collection) return null
+
+  const readFailures = [
+    members.error ? `Members: ${members.error}` : null,
+    diff.error ? `Draft changes: ${diff.error}` : null,
+    versions.error ? `Versions: ${versions.error}` : null,
+    activity.error ? `Activity: ${activity.error}` : null,
+  ].filter((failure): failure is string => failure !== null)
 
   return <>
     <CollectionViews
@@ -451,14 +487,37 @@ export function CollectionDetailWorkspace({
         onLoadMoreVersions: () => void loadMoreVersions(),
         onLoadMoreActivity: () => void loadMoreActivity(),
       }}
+      notices={<>
+        {publishPreviewLoading && (
+          <InlineNotice tone="info">
+            <p>Checking publish availability…</p>
+          </InlineNotice>
+        )}
+        {commandNotice && (
+          <InlineNotice tone="success">
+            <p>{commandNotice}</p>
+          </InlineNotice>
+        )}
+        {commandError && (
+          <InlineNotice tone="error">
+            <p>{commandError}</p>
+          </InlineNotice>
+        )}
+        {readFailures.map((failure) => (
+          <InlineNotice
+            action={(
+              <Button buttonStyle="secondary" margin={false} onClick={() => void loadInitial()} size="small" type="button">
+                Try again
+              </Button>
+            )}
+            key={failure}
+            tone="error"
+          >
+            <p>{failure}</p>
+          </InlineNotice>
+        ))}
+      </>}
     />
-    {publishPreviewLoading && <p className="collection-views" role="status">Checking publish availability…</p>}
-    {commandNotice && <p className="collection-views" role="status">{commandNotice}</p>}
-    {commandError && <p className="collection-views" role="alert">{commandError}</p>}
-    {members.error && <p className="collection-views" role="alert">Members: {members.error}</p>}
-    {diff.error && <p className="collection-views" role="alert">Draft changes: {diff.error}</p>}
-    {versions.error && <p className="collection-views" role="alert">Versions: {versions.error}</p>}
-    {activity.error && <p className="collection-views" role="alert">Activity: {activity.error}</p>}
     {metadataOpen && <CollectionMetadataForm
       collection={collection}
       onCancel={() => setMetadataOpen(false)}

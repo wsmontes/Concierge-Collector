@@ -5,9 +5,14 @@
  * through the column picker and persisted with the saved view.
  */
 
+/**
+ * Não há coluna `entity`: a projeção da linha expõe UM fato da Entity — o
+ * `entity_type` — e as duas colunas (`entity` e `type`) renderizavam esse mesmo
+ * valor. A identidade da Entity que o operador reconhece é o nome do lugar, que
+ * já é a célula primária da Curation; `type` continua sendo o tipo.
+ */
 export type CurationColumnId =
   | 'curation'
-  | 'entity'
   | 'curator'
   | 'type'
   | 'city'
@@ -34,7 +39,6 @@ export interface CurationColumn {
 
 export const CURATION_COLUMNS: readonly CurationColumn[] = [
   { id: 'curation', label: 'Curation', default: true, fixed: true },
-  { id: 'entity', label: 'Entity', default: true },
   { id: 'curator', label: 'Curator', default: true },
   { id: 'type', label: 'Type', default: true },
   { id: 'city', label: 'City', default: true },

@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import type { EntityRow, EntitySearchPage, LoadEntityPage, LoadEntityRecord } from '../../content/record-types'
 import { AdminPage } from '../ui/AdminPage'
 import { EmptyState } from '../ui/EmptyState'
-import { InlineNotice } from '../ui/InlineNotice'
+import { ErrorState } from '../ui/ErrorState'
 import { EntitiesFilterForm, type EntityFilterDraft } from './EntitiesFilterForm'
 import { EntityPreviewDrawer } from './EntityPreviewDrawer'
 import { EntityTable } from './EntityTable'
@@ -74,7 +74,7 @@ export function EntitiesWorkspace({
       },
       () => {
         if (!active) return
-        setError('Unable to load Entities. Try again.')
+        setError('The Entity service did not answer this read.')
         setLoading(false)
       },
     )
@@ -107,54 +107,76 @@ export function EntitiesWorkspace({
 
   return (
     <AdminPage
+      breadcrumb={[{ href: '/admin', label: 'Dashboard' }, { label: 'Entities' }]}
       className="entities-workspace"
-      eyebrow="Content"
-      title="Entities"
       description="Every place, hotel and venue the platform knows about — find it, filter it, and open the full record."
+      eyebrow="Content"
+      sticky
+      title="Entities"
+      width="wide"
     >
       <EntitiesFilterForm value={draft} onChange={setDraft} onApply={applyFilters} onReset={resetFilters} />
 
-      {error && (
-        <InlineNotice
-          tone="error"
-          action={(
-            <Button buttonStyle="secondary" margin={false} onClick={reload} size="small" type="button">
-              Try again
-            </Button>
-          )}
-        >
-          <p>{error}</p>
-        </InlineNotice>
-      )}
-
-      {loading ? (
-        <p role="status">Loading Entities…</p>
-      ) : page.items.length === 0 ? (
-        <EmptyState
-          title={filtered ? 'No Entities match' : 'No Entities yet'}
-          description={filtered
-            ? 'Change the current filters, or reset them to browse the whole catalog.'
-            : 'Nothing has been captured into the catalog yet.'}
+      {error !== null ? (
+        <ErrorState
+          description={error}
+          onRetry={reload}
+          retryLabel="Try again"
+          title="Unable to load Entities"
         />
       ) : (
-        <EntityTable
-          height={TABLE_HEIGHT}
-          navigate={navigate}
-          onOpenRow={setPreview}
-          rowHeight={ROW_HEIGHT}
-          rows={page.items}
-        />
+        <>
+          {loading && (
+            <p className="ui-visually-hidden" role="status">Loading Entities…</p>
+          )}
+          <EntityTable
+            empty={(
+              <EmptyState
+                action={filtered
+                  ? (
+                      <Button buttonStyle="secondary" margin={false} onClick={resetFilters} type="button">
+                        Clear filters
+                      </Button>
+                    )
+                  : undefined}
+                description={filtered
+                  ? 'Change the current filters, or clear them to browse the whole catalog.'
+                  : 'Nothing has been captured into the catalog yet.'}
+                title={filtered ? 'No Entities match' : 'No Entities yet'}
+              />
+            )}
+            footer={(
+              <>
+                <span className="entity-table__count">
+                  {typeof page.total === 'number'
+                    ? `${page.items.length.toLocaleString()} of ${page.total.toLocaleString()} Entities`
+                    : `${page.items.length.toLocaleString()} Entities`}
+                </span>
+                {page.next_cursor !== null && (
+                  <Button
+                    buttonStyle="secondary"
+                    disabled={loading}
+                    margin={false}
+                    onClick={nextPage}
+                    size="small"
+                    type="button"
+                  >
+                    Next page
+                  </Button>
+                )}
+              </>
+            )}
+            height={TABLE_HEIGHT}
+            loading={loading}
+            navigate={navigate}
+            onOpenRow={setPreview}
+            rowHeight={ROW_HEIGHT}
+            rows={loading ? [] : page.items}
+          />
+        </>
       )}
 
-      {page.next_cursor && (
-        <div className="entities-workspace__pagination">
-          <Button buttonStyle="secondary" margin={false} onClick={nextPage} type="button">
-            Next page
-          </Button>
-        </div>
-      )}
-
-      {preview && (
+      {preview !== null && (
         <EntityPreviewDrawer
           entity={preview}
           key={preview.id}

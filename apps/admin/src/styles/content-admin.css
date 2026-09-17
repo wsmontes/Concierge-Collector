@@ -2,8 +2,22 @@
    field rows and the generic per-type field editors. The class vocabulary is
    frozen — see docs/Concierge Admin — Plano completo de CMS editorial…,
    sections 9 (Field Registry), 10 (Universal Record Inspector) and 31
-   (Editing Engine). Only the Concierge brand tokens and Payload's --theme-*
-   mapping carry colour; no palette value is hardcoded here. */
+   (Editing Engine) — because the Curation and Entity record pages render these
+   rows: renaming a class here is renaming the markup of a screen this file
+   does not own.
+ *
+ * What changed: colour, space, radius and type come only from the theme tokens
+ * (`--cms-fg*`, `--cms-surface-*`, `--cms-border*`, `--cms-spacing-*`,
+ * `--cms-radius-*`, `--cms-text-*`, `--cms-font-*`). Payload's
+ * `--theme-elevation-*` is no longer read here, and the mono face is the shared
+ * token instead of a stack repeated per rule.
+ *
+ * What this file does NOT restate any more: the box of a control, the rótulo, a
+ * ajuda, o erro e o selo de dono. Os editores passaram a embrulhar o controle
+ * nos primitivos do kit (`Field`, `TextInput`, `SelectInput`, `CheckboxInput`) e
+ * a busca do Inspector é o `SearchInput` — quem desenha essas caixas é o
+ * `kit.css`. Aqui fica só o que é desta tela: a árvore de campos, a linha, o
+ * encaixe do seletor de curador e o bloco de valor somente-leitura. */
 
 .content-inspector {
   display: grid;
@@ -12,22 +26,22 @@
 }
 
 .content-inspector__heading {
+  color: var(--cms-fg-strong);
   font-size: var(--cms-text-base);
   margin: 0;
 }
 
+/* A caixa da busca é do kit (`.ui-search`) e vem com `min-width: 14rem` própria:
+   o invólucro existe para o item de grade poder encolher abaixo disso no rail
+   estreito (`min-width: 0`), em vez de estourar a coluna. */
 .content-inspector__search {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  color: var(--theme-text);
-  padding: var(--cms-spacing-2);
-  width: 100%;
+  min-width: 0;
 }
 
 .content-inspector__tree,
 .content-inspector__declared ul {
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
   display: grid;
   list-style: none;
   margin: 0;
@@ -41,11 +55,11 @@
 
 .content-inspector__row {
   align-items: baseline;
-  border-top: 1px solid var(--theme-elevation-100);
+  border-top: 1px solid var(--cms-border-subtle);
   display: flex;
   flex-wrap: wrap;
   gap: var(--cms-spacing-1) var(--cms-spacing-2-5);
-  min-height: 40px;
+  min-height: var(--cms-control-height);
   min-width: 0;
   padding: var(--cms-spacing-1-5) var(--cms-spacing-2-5);
 }
@@ -55,11 +69,12 @@
 }
 
 .content-inspector__row:hover {
-  background: var(--theme-elevation-50);
+  background: var(--cms-surface-2);
 }
 
 .content-inspector__empty {
-  color: var(--cms-olive-600);
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
   margin: 0;
   padding: var(--cms-spacing-2-5);
 }
@@ -71,7 +86,7 @@
 }
 
 .content-inspector__declared h3 {
-  color: var(--cms-olive-700);
+  color: var(--cms-fg-faint);
   font-size: var(--cms-text-xs);
   font-weight: 700;
   letter-spacing: 0.09em;
@@ -86,7 +101,7 @@
 /* A declared-but-empty row carries neither a value nor an editor: it only
    proves the registry knows a field the record does not hold. */
 .content-inspector__declared .content-inspector__row {
-  color: var(--cms-olive-600);
+  color: var(--cms-fg-muted);
 }
 
 .content-field {
@@ -94,49 +109,36 @@
 }
 
 .content-field__label {
+  color: var(--cms-fg);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .content-field__path {
-  color: var(--cms-olive-600);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--cms-fg-muted);
+  font-family: var(--cms-font-mono);
   font-size: var(--cms-text-xs);
 }
 
 .content-field__value {
+  color: var(--cms-fg);
   font-size: var(--cms-text-sm);
   overflow-wrap: anywhere;
 }
 
-/* Owner is the record family the field belongs to; `system` rows are the
-   only ones an editor can never write. */
-.content-field__owner {
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-full);
-  color: var(--cms-olive-700);
-  font-size: var(--cms-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  padding: var(--cms-spacing-px) var(--cms-spacing-1-5);
-  text-transform: uppercase;
-}
-
-.content-inspector__row[data-owner='system'] .content-field__owner {
-  border-color: var(--cms-olive-900);
-  color: var(--cms-olive-900);
-}
+/* Valor ausente: o traço e a cor vêm do `.ui-no-value` do kit — o olho passa
+   reto por "não tem", em vez de ler "null"/"empty" como se fosse conteúdo. */
 
 .content-field__derived,
 .content-field__system {
-  color: var(--cms-olive-600);
+  color: var(--cms-fg-muted);
   font-size: var(--cms-text-xs);
   font-style: italic;
 }
 
 /* A field the registry has never heard of: shown, explained, never flagged. */
 .content-field__hint {
-  color: var(--cms-olive-600);
+  color: var(--cms-fg-faint);
   font-size: var(--cms-text-xs);
 }
 
@@ -163,27 +165,9 @@
    value can claim more room without every editor restating the box. */
 .content-editor {
   display: grid;
-  gap: var(--cms-spacing-1-5);
+  gap: var(--cms-spacing-2);
   min-width: 0;
   width: 100%;
-}
-
-.content-editor__input {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  color: var(--theme-text);
-  min-height: 40px;
-  padding: var(--cms-spacing-1-5) var(--cms-spacing-2);
-  width: 100%;
-}
-
-/* A rendered value rather than a control: the field is shown, never written. */
-p.content-editor__input {
-  background: var(--theme-elevation-50);
-  border-style: dashed;
-  margin: 0;
-  overflow-wrap: anywhere;
-  padding: var(--cms-spacing-2);
 }
 
 .content-editor__actions {
@@ -196,33 +180,74 @@ p.content-editor__input {
   margin: 0;
 }
 
-.content-editor__hint {
-  color: var(--cms-olive-600);
+/* A rendered value rather than a control: the field is shown, never written. */
+.content-editor__value {
+  background: var(--cms-surface-inset);
+  border: 1px dashed var(--cms-border);
+  border-radius: var(--cms-radius-input);
+  color: var(--cms-fg);
+  font-family: var(--cms-font-mono);
+  font-size: var(--cms-text-sm);
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: var(--cms-spacing-2) var(--cms-spacing-2-5);
+}
+
+/* JSON cru se lê em coluna: quebrar linha num objeto esconde a estrutura. */
+.content-editor__json {
+  font-family: var(--cms-font-mono);
+  white-space: pre;
+}
+
+/* O seletor de curador: busca no diretório real e aplica a identidade escolhida. */
+.curator-picker__current {
+  color: var(--cms-fg-muted);
   font-size: var(--cms-text-xs);
   margin: 0;
 }
 
-.content-editor__error {
-  color: var(--theme-error-500, var(--cms-olive-900));
-  font-size: var(--cms-text-xs);
+.curator-picker__status,
+.curator-picker__empty {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-sm);
   margin: 0;
 }
 
-.content-editor--longText .content-editor__input,
-.content-editor--json .content-editor__input {
-  min-height: 7rem;
-  resize: vertical;
+.curator-picker__results {
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-md);
+  display: grid;
+  list-style: none;
+  margin: 0;
+  max-height: calc(var(--cms-row-height) * 6);
+  overflow-y: auto;
+  padding: 0;
 }
 
-.content-editor--boolean .content-editor__input {
-  accent-color: var(--cms-olive-700);
-  justify-self: start;
-  min-height: auto;
-  width: auto;
+.curator-picker__results > li + li {
+  border-top: 1px solid var(--cms-border-subtle);
 }
 
-.content-editor--binary .content-editor__input {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+.curator-picker__result {
+  background: transparent;
+  border: 0;
+  color: var(--cms-fg);
+  cursor: pointer;
+  display: block;
+  min-height: var(--cms-row-height-compact);
+  padding: var(--cms-spacing-1-5) var(--cms-spacing-2-5);
+  text-align: left;
+  transition: background var(--cms-duration-fast) var(--cms-ease-standard);
+  width: 100%;
+}
+
+.curator-picker__result:hover {
+  background: var(--cms-surface-2);
+}
+
+.curator-picker__result[aria-pressed='true'] {
+  background: var(--cms-accent-soft);
+  color: var(--cms-accent-fg);
 }
 
 /* Mirrors admin.css: stack the row's own controls once the fields column is

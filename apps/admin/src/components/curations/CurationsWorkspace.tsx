@@ -1,6 +1,6 @@
 'use client'
 
-import { Button, Pill } from '@payloadcms/ui'
+import { Button } from '@payloadcms/ui'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { normalizeCurationColumns, type CurationColumnId } from '../../content/curation-columns'
@@ -22,12 +22,15 @@ import type {
 import { BulkActionDialog } from '../operations/BulkActionDialog'
 import { JobDrawer } from '../operations/JobDrawer'
 import { AdminPage } from '../ui/AdminPage'
+import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
+import { ErrorState } from '../ui/ErrorState'
+import { SelectInput } from '../ui/Field'
 import { InlineNotice } from '../ui/InlineNotice'
 import { CurationColumnPicker } from './CurationColumnPicker'
 import { CurationPreviewDrawer } from './CurationPreviewDrawer'
 import { CurationSortPicker } from './CurationSortPicker'
-import { CurationTable } from './CurationTable'
+import { CurationTable, type CurationDensity } from './CurationTable'
 import { CurationsFilterForm } from './CurationsFilterForm'
 import { CurationsSavedViews } from './CurationsSavedViews'
 import { CurationsSelectionToolbar } from './CurationsSelectionToolbar'
@@ -72,6 +75,14 @@ async function browserLoadWithoutCollectionsCount(): Promise<number | null> {
 
 const SELECTION_READY_POLL_MS = 1_000
 const SELECTION_READY_TIMEOUT_MS = 90_000
+
+/** Altura da janela de rolagem da tabela, em pixels. */
+const TABLE_HEIGHT = 600
+
+const DENSITY_OPTIONS = [
+  { label: 'Comfortable', value: 'comfortable' },
+  { label: 'Compact', value: 'compact' },
+] as const
 
 function newId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -134,7 +145,9 @@ export function CurationsWorkspace({
     }
   })
   const [page, setPage] = useState<CurationSearchPage>({ items: [], next_cursor: null, total: null })
-  const [pageLoaded, setPageLoaded] = useState(false)
+  const [settledRequest, setSettledRequest] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
+  const [density, setDensity] = useState<CurationDensity>('comfortable')
   const [selection, setSelection] = useState<SelectionState>({ mode: 'explicit', selected: new Set() })
   const [preview, setPreview] = useState<AdminCurationRow | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -160,6 +173,11 @@ export function CurationsWorkspace({
     [q, status, city, entity_type, curator_id, unlinked, without_collections, concepts, where],
   )
 
+  // A requisição em voo é identificada pelo que ela lê — cursor, sort, filtros —
+  // e pelo token de retry. Comparar as chaves é o que responde "ainda não
+  // chegou" sem escrever estado dentro do efeito.
+  const requestKey = `${reloadToken}|${state.cursor ?? ''}|${state.sort}|${JSON.stringify(filters)}`
+
   // The mode's header count is the content-health counter, asked for only while
   // the mode is on. A counter the boundary did not report stays null: unknown,
   // never invented from the page that happens to be loaded.
@@ -179,13 +197,17 @@ export function CurationsWorkspace({
       (nextPage) => {
         if (!active) return
         setPage(nextPage)
-        setPageLoaded(true)
+        setSettledRequest(requestKey)
         setError(null)
       },
-      () => { if (active) setError('Unable to load Curations. Try again.') },
+      () => {
+        if (!active) return
+        setSettledRequest(requestKey)
+        setError('Unable to load Curations. Try again.')
+      },
     )
     return () => { active = false }
-  }, [filters, loadPage, state.cursor, state.sort])
+  }, [filters, loadPage, reloadToken, requestKey, state.cursor, state.sort])
 
   // The query string is the state (plan §28). replaceState keeps the operator's
   // scroll, focus and history intact; foreign keys of the incoming URL survive.
@@ -349,6 +371,10 @@ export function CurationsWorkspace({
 
   const selected = (id: string) => selection.mode === 'all_matching' ? !selection.excluded.has(id) : selection.selected.has(id)
   const nextCursor = page.next_cursor
+  const hasFilters = Object.keys(filters).length > 0
+  // Enquanto a primeira página (ou a primeira de um filtro novo) não chegou, a
+  // tabela mostra esqueleto no lugar das linhas: nunca um "Loading…".
+  const loadingRows = page.items.length === 0 && error === null && settledRequest !== requestKey
 
   return (
     <AdminPage
@@ -356,12 +382,13 @@ export function CurationsWorkspace({
       eyebrow="Content"
       title="Curations"
       description="Search and filter Curations, then build a server-side selection for one or more Collection drafts."
+      width="wide"
       actions={without_collections ? (
-        <Pill pillStyle="light-gray" rounded size="small">
+        <Chip size="sm">
           {withoutCollectionsCount === null
             ? 'Without Collections: —'
-            : `${withoutCollectionsCount.toLocaleString()} without Collections`}
-        </Pill>
+            : `${withoutCollectionsCount.toLocaleString('en-US')} without Collections`}
+        </Chip>
       ) : undefined}
     >
       <div className="curations-workspace__workspace" onKeyDown={handleKeyDown}>
@@ -387,26 +414,34 @@ export function CurationsWorkspace({
           </InlineNotice>
         )}
         <CurationsFilterForm
-          concepts={state.concepts}
-          onApply={() => applyFilters()}
+          applied={filters}
           onChange={setDraft}
+          onApply={() => applyFilters()}
+          onApplyValue={applyFilters}
           onClear={clearFilters}
           onRemoveConcept={removeConcept}
           onRemoveWhere={removeWhere}
           value={draft}
-          where={state.where}
-        />
-        <div className="curations-workspace__controls">
+        >
+          <div className="curations-workspace__density">
+            <SelectInput
+              id="curation-density"
+              label="Rows"
+              onChange={(next) => setDensity(next === 'compact' ? 'compact' : 'comfortable')}
+              options={[...DENSITY_OPTIONS]}
+              value={density}
+            />
+          </div>
           <CurationSortPicker onChange={changeSort} value={state.sort} />
           <CurationColumnPicker onChange={changeColumns} value={state.columns} />
-        </div>
-        <CurationsSavedViews
-          client={savedViewsClient}
-          currentColumns={state.columns}
-          currentFilters={filters}
-          currentSort={state.sort}
-          onApply={applySavedView}
-        />
+          <CurationsSavedViews
+            client={savedViewsClient}
+            currentColumns={state.columns}
+            currentFilters={filters}
+            currentSort={state.sort}
+            onApply={applySavedView}
+          />
+        </CurationsFilterForm>
         <CurationsSelectionToolbar
           applying={applying}
           onApplyToCollections={() => void handleApplyToCollections()}
@@ -415,42 +450,66 @@ export function CurationsWorkspace({
           total={page.total}
         />
         {applyError && <InlineNotice tone="error"><p>{applyError}</p></InlineNotice>}
-        {error && <InlineNotice tone="error"><p>{error}</p></InlineNotice>}
-        {pageLoaded && page.items.length === 0 ? (
-          <EmptyState
-            title={without_collections ? 'No Curations without Collections' : 'No Curations'}
-            // Uma página vazia não prova que TODA Curation está numa Collection:
-            // só diz que esta view não tem o que paginar (o scan pode não
-            // alcançar linhas sem `catalog_sequence`). O texto carrega o
-            // qualificador em vez de afirmar o inverso do acervo.
-            description={without_collections
-              ? 'No stored Curation in this view is missing from a Collection.'
-              : 'No stored Curation matches these filters.'}
+        {error ? (
+          <ErrorState
+            description={error}
+            onRetry={() => setReloadToken((token) => token + 1)}
+            retryLabel="Try again"
+            title="Curations could not load"
           />
         ) : (
           <CurationTable
             columns={state.columns}
-            height={600}
+            density={density}
+            empty={(
+              <EmptyState
+                action={hasFilters
+                  ? (
+                    <Button buttonStyle="secondary" margin={false} onClick={clearFilters} size="small" type="button">
+                      Clear filters
+                    </Button>
+                  )
+                  : undefined}
+                title={without_collections ? 'No Curations without Collections' : hasFilters ? 'No Curations match' : 'No Curations yet'}
+                // Uma página vazia não prova que TODA Curation está numa Collection:
+                // só diz que esta view não tem o que paginar (o scan pode não
+                // alcançar linhas sem `catalog_sequence`). O texto carrega o
+                // qualificador em vez de afirmar o inverso do acervo.
+                description={without_collections
+                  ? 'No stored Curation in this view is missing from a Collection.'
+                  : hasFilters
+                    ? 'No stored Curation matches these filters.'
+                    : 'The catalog has no stored Curations yet.'}
+              />
+            )}
+            footer={(
+              <>
+                <span className="ui-table__secondary">
+                  {`${page.items.length.toLocaleString('en-US')} loaded`}
+                  {page.total === null ? '' : ` of ${page.total.toLocaleString('en-US')}`}
+                </span>
+                {nextCursor && (
+                  <Button
+                    buttonStyle="secondary"
+                    margin={false}
+                    onClick={() => setState((current) => ({ ...current, cursor: nextCursor }))}
+                    size="small"
+                    type="button"
+                  >
+                    Next page
+                  </Button>
+                )}
+              </>
+            )}
+            height={TABLE_HEIGHT}
             isSelected={(row) => selected(row.curation_id)}
+            loading={loadingRows}
             onOpenRow={setPreview}
             onToggle={(row, index, shiftKey) => toggle(row.curation_id, index, shiftKey)}
             onToggleAllLoaded={toggleAllLoaded}
-            rowHeight={44}
             rows={page.items}
             selectAllDisabled={selection.mode === 'all_matching'}
           />
-        )}
-        {nextCursor && (
-          <div className="curations-workspace__pagination">
-            <Button
-              buttonStyle="secondary"
-              margin={false}
-              onClick={() => setState((current) => ({ ...current, cursor: nextCursor }))}
-              type="button"
-            >
-              Next page
-            </Button>
-          </div>
         )}
         {preview && <CurationPreviewDrawer key={preview.curation_id} loadRecord={loadRecord} onClose={closePreview} row={preview} />}
         {applySelection && (

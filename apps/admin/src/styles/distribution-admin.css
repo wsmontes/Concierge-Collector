@@ -1,41 +1,41 @@
+/*
+ * Distribution — aplicações consumidoras, concessão de Collections e ciclo de
+ * vida de credencial.
+ *
+ * Escopo: só o que o kit não desenha (formulário, cartão de aplicação, lista de
+ * concessão, revelação do segredo). Diálogo, tabela, chip, campo, esqueleto e
+ * estados vêm de `kit.css`. Nenhum valor literal: cor, espaço e raio são tokens.
+ *
+ * O bloco legado `.application-views` de `admin.css` (que impunha moldura,
+ * `max-width` no formulário e aparência própria de `label`/`input`) não alcança
+ * mais esta tela: a página não usa mais aquela classe.
+ */
 
-/* Higher specificity is intentional while the legacy global
-   `.application-views form` rule still exists in admin.css. */
-.application-views form.application-views__form {
+/* ---------------------------------------------------------------------------
+   1. Nova aplicação
+   --------------------------------------------------------------------------- */
+
+.applications-form {
   display: grid;
   gap: var(--cms-spacing-3);
-  max-width: none;
 }
 
-.application-views__identity-fields {
+.applications-form__identity {
   display: grid;
-  gap: var(--cms-spacing-2-5);
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(10rem, 0.6fr);
+  gap: var(--cms-spacing-3);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(9rem, 0.6fr);
 }
 
-.application-views__identity-fields label {
-  display: grid;
-  gap: var(--cms-spacing-1);
-  font-size: var(--cms-text-sm);
-  font-weight: 600;
-}
-
-.application-views__identity-fields input {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  color: var(--theme-text);
-  min-width: 0;
-  padding: var(--cms-spacing-2) var(--cms-spacing-2);
-  width: 100%;
-}
-
-.application-views__form-actions {
+.applications-form__actions {
   display: flex;
   justify-content: flex-end;
 }
 
-.application-views__list {
+/* ---------------------------------------------------------------------------
+   2. Lista de aplicações
+   --------------------------------------------------------------------------- */
+
+.applications-list {
   display: grid;
   gap: var(--cms-spacing-3);
   list-style: none;
@@ -43,11 +43,10 @@
   padding: 0;
 }
 
-.application-views__list > .application-card {
-  align-items: stretch;
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
+.application-card {
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
   display: grid;
   gap: var(--cms-spacing-3);
   padding: var(--cms-spacing-3);
@@ -56,6 +55,7 @@
 .application-card__header {
   align-items: flex-start;
   display: flex;
+  flex-wrap: wrap;
   gap: var(--cms-spacing-3);
   justify-content: space-between;
 }
@@ -66,31 +66,27 @@
   min-width: 0;
 }
 
-.application-card__title-row,
-.application-credential__title-row {
+.application-card__title-row {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--cms-spacing-1-5);
+  gap: var(--cms-spacing-2);
 }
 
-.application-card__title-row h3,
-.application-card__identity p,
-.application-card__credentials-heading h4,
-.application-card__credentials-empty,
-.application-credential__identity p {
+.application-card__name {
+  color: var(--cms-fg-strong);
+  font-size: var(--cms-text-lg);
   margin: 0;
 }
 
-.application-card__identity p,
-.application-card__credentials-heading span,
-.application-credential__identity p {
-  color: var(--cms-olive-600);
+.application-card__owner {
+  color: var(--cms-fg-muted);
   font-size: var(--cms-text-sm);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
 }
 
-.application-card__actions,
-.application-credential__actions {
+.application-card__actions {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
@@ -98,161 +94,133 @@
   justify-content: flex-end;
 }
 
-.application-card__credentials {
-  background: var(--theme-elevation-50);
-  border: 1px solid var(--cms-limestone-200);
-  border-radius: var(--cms-radius-lg);
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  padding: var(--cms-spacing-3);
+/* ---------------------------------------------------------------------------
+   3. Concessão de Collections: contador no resumo, ids no detalhe
+   --------------------------------------------------------------------------- */
+
+.application-card__grants {
+  border-top: 1px solid var(--cms-border-subtle);
+  padding-top: var(--cms-spacing-2);
 }
 
-.application-card__credentials-heading {
-  align-items: baseline;
+.application-card__grants > summary {
+  align-items: center;
+  cursor: pointer;
   display: flex;
-  gap: var(--cms-spacing-2-5);
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-2);
 }
 
-.application-views__credentials {
+.application-card__grants > summary:focus-visible {
+  outline: var(--cms-focus-ring-width) solid var(--cms-accent);
+  outline-offset: var(--cms-focus-ring-offset);
+}
+
+.application-card__grant-list {
   display: grid;
-  gap: 0;
+  gap: var(--cms-spacing-1);
   list-style: none;
-  margin: 0;
+  margin: var(--cms-spacing-2) 0 0;
   padding: 0;
 }
 
-.application-views__credentials > li {
-  align-items: center;
-  background: transparent;
-  border: 0;
-  border-top: 1px solid var(--theme-border-color);
-  display: flex;
-  gap: var(--cms-spacing-3);
-  justify-content: space-between;
-  padding: var(--cms-spacing-2-5) 0;
+.application-card__grant-list a {
+  color: var(--cms-fg);
+  text-decoration: none;
 }
 
-.application-views__credentials > li:last-child {
-  padding-bottom: 0;
+.application-card__grant-list a:hover {
+  color: var(--cms-accent-fg);
+  text-decoration: underline;
 }
 
-.application-credential__identity {
+/* ---------------------------------------------------------------------------
+   4. Credenciais e ciclo de vida
+   --------------------------------------------------------------------------- */
+
+.application-card__credentials {
   display: grid;
-  gap: var(--cms-spacing-1);
-  min-width: 0;
+  gap: var(--cms-spacing-2);
 }
+
+.application-credential__actions {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--cms-spacing-1-5);
+  justify-content: flex-end;
+}
+
+/* ---------------------------------------------------------------------------
+   5. Concessão de Collections (primitivo compartilhado entre novo/editar)
+   --------------------------------------------------------------------------- */
 
 .collection-access-picker {
   display: grid;
   gap: var(--cms-spacing-2);
 }
 
-.collection-access-picker > label,
-.application-access-dialog > label {
-  display: grid;
-  gap: var(--cms-spacing-1);
-  font-weight: 600;
-}
-
-.collection-access-picker input[type='search'],
-.application-access-dialog input[type='number'] {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  color: var(--theme-text);
-  padding: var(--cms-spacing-2);
+.collection-access-picker__count {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-xs);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
 }
 
 .collection-access-picker__list {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
+  border: 1px solid var(--cms-border-subtle);
   border-radius: var(--cms-radius-lg);
   display: grid;
-  gap: 0;
-  list-style: none;
-  margin: 0;
-  max-height: 18rem;
-  overflow-y: auto;
-  padding: 0;
+  overflow: hidden;
 }
 
-.collection-access-picker__list li + li {
-  border-top: 1px solid var(--theme-border-color);
+.collection-access-picker__list > * {
+  padding: var(--cms-spacing-2) var(--cms-spacing-3);
 }
 
-.collection-access-picker__list label {
-  align-items: start;
-  display: grid;
-  gap: var(--cms-spacing-2);
-  grid-template-columns: 1.5rem 1fr;
-  padding: var(--cms-spacing-2);
+.collection-access-picker__list > * + * {
+  border-top: 1px solid var(--cms-border-subtle);
 }
 
-.collection-access-picker__list span {
-  display: grid;
-  gap: var(--cms-spacing-0-5);
-}
+/* ---------------------------------------------------------------------------
+   6. Revelação única do segredo
+   --------------------------------------------------------------------------- */
 
-.collection-access-picker__list small {
-  color: var(--cms-olive-600);
-}
-
-.application-access-dialog-backdrop {
-  align-items: center;
-  background: rgb(24 38 24 / 55%);
-  display: flex;
-  inset: 0;
-  justify-content: center;
-  padding: var(--cms-spacing-3);
-  position: fixed;
-  z-index: 110;
-}
-
-.application-access-dialog {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-xl);
-  box-shadow: 0 24px 64px rgb(24 38 24 / 18%);
+.credential-reveal {
   display: grid;
   gap: var(--cms-spacing-3);
-  max-height: min(86vh, 48rem);
-  max-width: 680px;
-  overflow-y: auto;
-  padding: var(--cms-spacing-5);
-  width: 100%;
 }
 
-.application-access-dialog > header,
-.application-access-dialog > footer {
-  align-items: center;
-  display: flex;
-  gap: var(--cms-spacing-2-5);
-  justify-content: space-between;
+.credential-reveal__secret {
+  background: var(--cms-surface-inset);
+  border: 1px solid var(--cms-border);
+  border-radius: var(--cms-radius-md);
+  color: var(--cms-fg-strong);
+  display: block;
+  font-family: var(--cms-font-mono);
+  font-size: var(--cms-text-sm);
+  overflow-wrap: anywhere;
+  padding: var(--cms-spacing-3);
 }
 
-.application-access-dialog h2,
-.application-access-dialog header p {
+.credential-reveal__hint {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
   margin: 0;
 }
 
-.application-access-dialog > footer {
-  justify-content: flex-end;
-}
+/* ---------------------------------------------------------------------------
+   7. Responsivo
+   --------------------------------------------------------------------------- */
 
 @media (max-width: 880px) {
-  .application-views__identity-fields {
+  .applications-form__identity {
     grid-template-columns: 1fr;
   }
 
   .application-card__header,
-  .application-views__credentials > li {
+  .application-card__actions {
     align-items: stretch;
-    flex-direction: column;
-  }
-
-  .application-card__actions,
-  .application-credential__actions {
     justify-content: flex-start;
   }
 }

@@ -45,8 +45,8 @@ export function EntityFieldSection({
         >
           <div className="entity-field__head">
             <span className="entity-field__label">{descriptor.label}</span>
-            <span className="entity-field__path">{descriptor.path}</span>
-            <span className="entity-field__value">Not set</span>
+            <span className="entity-field__path ui-table__mono">{descriptor.path}</span>
+            <span className="entity-field__value entity-field__value--empty">Not set</span>
           </div>
         </li>
       ))}

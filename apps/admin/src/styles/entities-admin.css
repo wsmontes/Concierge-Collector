@@ -1,321 +1,108 @@
-/* Entities: the catalog list (plan §20), its filters, the virtualized table and
-   the side preview. Only the Concierge brand tokens and Payload's --theme-*
-   mapping carry colour; no palette value is hardcoded here. */
+/* Entities: the catalog list (plan §20), its filter bar, the table and the side
+   preview. Only the semantic tokens of `theme.css` carry colour, space, radius
+   and type — a screen may not invent a step, and the em dash that stands for
+   "unknown" is a token, not a hex. */
 
 
-/* Higher specificity than admin.css' legacy `.curation-explorer form` rule, so
-   the filter grid keeps its own layout on every surface. */
-.entities-workspace form.entities-filter-form {
-  display: grid;
-}
-
+/* A barra de ferramentas do kit traz a moldura; o form só precisa não estourar a
+   grade da página quando a tabela é mais larga que a coluna. */
 .entities-filter-form {
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  gap: var(--cms-spacing-3);
-  padding: var(--cms-spacing-3);
+  min-width: 0;
 }
 
-.entities-filter-form__header h2,
-.entities-filter-form__header p {
-  margin: 0;
-}
-
-.entities-filter-form__header h2 {
-  font-size: var(--cms-text-base);
-}
-
-.entities-filter-form__header p {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
-  margin-top: var(--cms-spacing-0-5);
-}
-
-.entities-filter-form__fields {
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  grid-template-columns: minmax(15rem, 2fr) minmax(9rem, 1fr) minmax(9rem, 1fr);
-}
-
-.entities-filter-form label {
-  display: grid;
-  font-size: var(--cms-text-sm);
-  font-weight: 600;
-  gap: var(--cms-spacing-1);
-}
-
-.entities-filter-form input,
-.entities-filter-form select {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  color: var(--theme-text);
-  padding: var(--cms-spacing-2) var(--cms-spacing-2);
-}
-
-.entities-filter-form__actions {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-2);
-}
-
-.entities-filter-form__actions > * {
-  margin: 0;
-}
+/* ---------------------------------------------------------------------------
+   Tabela: o que a `DataTable` não decide por conta própria
+   --------------------------------------------------------------------------- */
 
 .entity-table {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  overflow: hidden;
-}
-
-.entity-table:focus-visible {
-  outline: 2px solid var(--cms-olive-700);
-  outline-offset: 2px;
-}
-
-.entity-table__header,
-.entity-table__row {
-  align-items: center;
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  padding: 0 var(--cms-spacing-3);
-}
-
-.entity-table__header {
-  background: var(--cms-limestone-100);
-  border-bottom: 1px solid var(--theme-border-color);
-  color: var(--cms-olive-800);
-  font-size: var(--cms-text-xs);
-  letter-spacing: 0.06em;
-  min-height: 2.5rem;
-  position: sticky;
-  text-transform: uppercase;
-  top: 0;
-  z-index: 2;
-}
-
-.entity-table__row {
-  border-bottom: 1px solid var(--cms-limestone-200);
-  cursor: pointer;
-  transition: background-color 120ms ease;
-}
-
-.entity-table__row:hover {
-  background: var(--theme-elevation-50);
-}
-
-.entity-table__row[data-active='true'] {
-  background: var(--theme-elevation-50);
-  box-shadow: inset 3px 0 0 var(--cms-olive-700);
-}
-
-.entity-table__row [role='cell'] {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Thumb + texto lado a lado. A imagem é opcional (nem toda Entity tem), então o
    slot só existe quando ela resolve — sem moldura vazia por linha. */
 .entity-table__identity {
-  display: flex;
   align-items: center;
+  display: flex;
   gap: var(--cms-spacing-2);
   min-width: 0;
 }
 
-.entity-table__text {
-  display: grid;
-  gap: var(--cms-spacing-px);
+.entity-table__identity .ui-table__cell-stack {
   min-width: 0;
 }
 
-.entity-table__thumb {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  object-fit: cover;
-  border-radius: var(--cms-radius-md);
-  background: var(--cms-limestone-200);
-}
-
-.entity-table__name {
-  color: var(--theme-text);
-  font-weight: 600;
-}
-
-.entity-table__technical {
-  color: var(--cms-olive-600);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--cms-text-xs);
-}
-
-.entity-table__link {
-  color: var(--cms-olive-800);
-  text-decoration: underline;
-}
-
-.entities-workspace__pagination {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.entities-workspace__pagination > button {
-  margin: 0;
-}
-
-.entity-drawer {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-lg);
-  display: grid;
-  gap: var(--cms-spacing-3);
-  grid-template-rows: auto 1fr auto;
-  max-height: 80vh;
-  max-width: 26rem;
-  padding: var(--cms-spacing-3);
-  position: fixed;
-  right: 1.25rem;
-  top: 5rem;
-  width: min(26rem, calc(100vw - 2.5rem));
-  z-index: 20;
-}
-
-.entity-drawer__header {
-  align-items: start;
-  display: flex;
-  gap: var(--cms-spacing-2-5);
-  justify-content: space-between;
-}
-
-.entity-drawer__heading h2 {
-  font-size: var(--cms-text-base);
-  margin: 0;
-}
-
-.entity-drawer__subtitle {
-  margin: var(--cms-spacing-1) 0 0;
-}
-
-.entity-drawer__close {
-  background: none;
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-md);
-  color: var(--theme-text);
-  cursor: pointer;
-  padding: var(--cms-spacing-1) var(--cms-spacing-2);
-}
-
-.entity-drawer__close:hover {
-  background: var(--theme-elevation-50);
-}
-
-.entity-drawer__state {
-  color: var(--cms-olive-600);
-  margin: 0;
-}
-
-.entity-drawer__state--error {
-  color: var(--theme-error-500, var(--cms-olive-800));
-}
-
-.entity-drawer__body {
-  display: grid;
-  gap: var(--cms-spacing-3);
-  overflow-y: auto;
-}
-
-.entity-drawer__facts {
-  display: grid;
-  gap: var(--cms-spacing-1);
-  margin: 0;
-}
-
-.entity-drawer__facts div {
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  grid-template-columns: minmax(6rem, 1fr) minmax(0, 2fr);
-}
-
-.entity-drawer__facts dt {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-xs);
-}
-
-.entity-drawer__facts dd {
-  margin: 0;
+/* Um nome ou um `entity_id` longo não pode empurrar o cartão do mobile: o
+   `anywhere` também encolhe o min-content da coluna, então o texto quebra em vez
+   de criar rolagem lateral. */
+.entity-table__identity .ui-table__cell-stack > * {
   overflow-wrap: anywhere;
 }
 
-.entity-drawer__value {
-  margin: 0;
+.entity-table__link {
+  color: inherit;
+  text-decoration: none;
 }
 
-.entity-drawer__muted {
-  color: var(--cms-olive-600);
-  margin: 0;
-}
-
-.entity-drawer__link {
-  color: var(--cms-olive-800);
+.entity-table__link:hover {
   text-decoration: underline;
 }
 
-.entity-drawer__sources {
+/* O travessão é o valor ausente: um tom abaixo do texto, nunca invisível. */
+.entity-table__missing {
+  color: var(--cms-fg-faint);
+}
+
+.entity-table__count {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+   Prévia lateral: o corpo da gaveta
+   --------------------------------------------------------------------------- */
+
+.entity-preview {
   display: grid;
-  gap: var(--cms-spacing-1);
-  list-style: none;
+  gap: var(--cms-spacing-4);
+  min-width: 0;
+}
+
+.entity-preview p {
   margin: 0;
-  padding: 0;
 }
 
-.entity-drawer__sources li {
-  align-items: baseline;
-  display: flex;
-  gap: var(--cms-spacing-1-5);
+.entity-preview__link {
+  color: var(--cms-accent-fg);
+  text-decoration: none;
 }
 
-.entity-drawer__actions {
-  border-top: 1px solid var(--theme-border-color);
-  padding-top: var(--cms-spacing-2-5);
-}
-
-.entity-drawer__primary {
-  color: var(--cms-olive-800);
-  font-weight: 600;
+.entity-preview__link:hover {
   text-decoration: underline;
 }
 
-@media (max-width: 900px) {
-  .entities-filter-form__fields {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .entity-drawer {
-    max-height: none;
-    max-width: none;
-    right: 0;
-    top: 0;
-    width: 100%;
-  }
+.entity-preview__actions {
+  border-top: 1px solid var(--cms-border-subtle);
+  padding-top: var(--cms-spacing-3);
 }
 
-@media (max-width: 720px) {
-  .entities-filter-form__fields {
-    grid-template-columns: 1fr;
-  }
+/* Ação secundária de rodapé: o mesmo formato de botão do kit, desenhado aqui
+   porque é um link de navegação do Next (o `Button el="link"` do Payload exige o
+   app router montado e não renderiza fora dele). */
+.entity-preview__open {
+  align-items: center;
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border);
+  border-radius: var(--cms-radius-md);
+  color: var(--cms-accent-fg);
+  display: inline-flex;
+  font-size: var(--cms-text-sm);
+  font-weight: 600;
+  min-height: var(--cms-control-height-compact);
+  padding: 0 var(--cms-spacing-3);
+  text-decoration: none;
+}
 
-  .entities-filter-form__actions,
-  .entities-workspace__pagination {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .entities-workspace__pagination > button {
-    width: 100%;
-  }
+.entity-preview__open:hover {
+  background: var(--cms-surface-3);
 }

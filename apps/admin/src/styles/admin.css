@@ -10,117 +10,6 @@
 @import './tokens.generated.css';
 
 :root {
-  --theme-elevation-0: var(--cms-limestone-50);
-  --theme-elevation-50: var(--cms-limestone-100);
-  --theme-elevation-100: var(--cms-limestone-200);
-  --theme-text: var(--cms-olive-900);
-  --theme-elevation-900: var(--cms-olive-900);
-  --theme-success-500: var(--cms-success);
-  --theme-border-color: var(--cms-limestone-400);
-
-  /* Rampas semânticas do Payload. Ele declara os degraus 25..1000 de CADA tom
-     (success/error/warning/info) com a paleta default — azul para success, que é
-     o que fazia o chip "Active" das listas aparecer azul mesmo depois de mapear
-     o passo 500. Aqui cada degrau resolve para uma das três âncoras da marca
-     (light/base/dark, as mesmas do Collector); as gradações finas não aparecem
-     em pill/badge/toast, então três tons dão coerência sem inventar 20 valores
-     por tom. */
-  --theme-success-25: var(--cms-success-light);
-  --theme-success-50: var(--cms-success-light);
-  --theme-success-100: var(--cms-success-light);
-  --theme-success-150: var(--cms-success-light);
-  --theme-success-200: var(--cms-success-light);
-  --theme-success-250: var(--cms-success-light);
-  --theme-success-300: var(--cms-success-light);
-  --theme-success-350: var(--cms-success-light);
-  --theme-success-400: var(--cms-success-light);
-  --theme-success-450: var(--cms-success-light);
-  --theme-success-500: var(--cms-success);
-  --theme-success-550: var(--cms-success);
-  --theme-success-600: var(--cms-success-dark);
-  --theme-success-650: var(--cms-success-dark);
-  --theme-success-700: var(--cms-success-dark);
-  --theme-success-750: var(--cms-success-dark);
-  --theme-success-800: var(--cms-success-dark);
-  --theme-success-850: var(--cms-success-dark);
-  --theme-success-900: var(--cms-success-dark);
-  --theme-success-950: var(--cms-success-dark);
-  --theme-success-1000: var(--cms-success-dark);
-  --theme-error-25: var(--cms-error-light);
-  --theme-error-50: var(--cms-error-light);
-  --theme-error-100: var(--cms-error-light);
-  --theme-error-150: var(--cms-error-light);
-  --theme-error-200: var(--cms-error-light);
-  --theme-error-250: var(--cms-error-light);
-  --theme-error-300: var(--cms-error-light);
-  --theme-error-350: var(--cms-error-light);
-  --theme-error-400: var(--cms-error-light);
-  --theme-error-450: var(--cms-error-light);
-  --theme-error-500: var(--cms-error);
-  --theme-error-550: var(--cms-error);
-  --theme-error-600: var(--cms-error-dark);
-  --theme-error-650: var(--cms-error-dark);
-  --theme-error-700: var(--cms-error-dark);
-  --theme-error-750: var(--cms-error-dark);
-  --theme-error-800: var(--cms-error-dark);
-  --theme-error-850: var(--cms-error-dark);
-  --theme-error-900: var(--cms-error-dark);
-  --theme-error-950: var(--cms-error-dark);
-  --theme-error-1000: var(--cms-error-dark);
-  --theme-warning-25: var(--cms-warning-light);
-  --theme-warning-50: var(--cms-warning-light);
-  --theme-warning-100: var(--cms-warning-light);
-  --theme-warning-150: var(--cms-warning-light);
-  --theme-warning-200: var(--cms-warning-light);
-  --theme-warning-250: var(--cms-warning-light);
-  --theme-warning-300: var(--cms-warning-light);
-  --theme-warning-350: var(--cms-warning-light);
-  --theme-warning-400: var(--cms-warning-light);
-  --theme-warning-450: var(--cms-warning-light);
-  --theme-warning-500: var(--cms-warning);
-  --theme-warning-550: var(--cms-warning);
-  --theme-warning-600: var(--cms-warning-dark);
-  --theme-warning-650: var(--cms-warning-dark);
-  --theme-warning-700: var(--cms-warning-dark);
-  --theme-warning-750: var(--cms-warning-dark);
-  --theme-warning-800: var(--cms-warning-dark);
-  --theme-warning-850: var(--cms-warning-dark);
-  --theme-warning-900: var(--cms-warning-dark);
-  --theme-warning-950: var(--cms-warning-dark);
-  --theme-warning-1000: var(--cms-warning-dark);
-  --theme-info-25: var(--cms-info-light);
-  --theme-info-50: var(--cms-info-light);
-  --theme-info-100: var(--cms-info-light);
-  --theme-info-150: var(--cms-info-light);
-  --theme-info-200: var(--cms-info-light);
-  --theme-info-250: var(--cms-info-light);
-  --theme-info-300: var(--cms-info-light);
-  --theme-info-350: var(--cms-info-light);
-  --theme-info-400: var(--cms-info-light);
-  --theme-info-450: var(--cms-info-light);
-  --theme-info-500: var(--cms-info);
-  --theme-info-550: var(--cms-info);
-  --theme-info-600: var(--cms-info-dark);
-  --theme-info-650: var(--cms-info-dark);
-  --theme-info-700: var(--cms-info-dark);
-  --theme-info-750: var(--cms-info-dark);
-  --theme-info-800: var(--cms-info-dark);
-  --theme-info-850: var(--cms-info-dark);
-  --theme-info-900: var(--cms-info-dark);
-  --theme-info-950: var(--cms-info-dark);
-  --theme-info-1000: var(--cms-info-dark);
-
-  /* Cores semânticas: até aqui só `success` era mapeado (e apontava para oliva,
-     não para o verde-garrafa da marca), enquanto erro/alerta/info ficavam com os
-     tons default do Payload — azul, vermelho e laranja fora da paleta. Agora as
-     quatro vêm da escala compartilhada, iguais às do Collector. */
-  --theme-error-500: var(--cms-error);
-  --theme-warning-500: var(--cms-warning);
-  --cms-info-bg: var(--cms-info-light);
-  --cms-error-bg: var(--cms-error-light);
-  --cms-success-bg: var(--cms-success-light);
-  --cms-warning-bg: var(--cms-warning-light);
-
   /* Tipografia: as famílias carregadas pelo `next/font` no layout (mesmos pesos
      do Collector) entram na frente das pilhas da escala compartilhada. Sem isto
      o Admin renderiza tudo na pilha do sistema e os títulos perdem a serifada
@@ -134,6 +23,7 @@
      deixar a pilha do sistema. */
   --font-body: var(--cms-font-sans);
 }
+
 
 /* Títulos de página e de seção falam a serifada da marca — o MESMO par
    tipográfico que o Collector usa em "Collector"/nomes de restaurante. É o que
@@ -151,31 +41,12 @@ h1 {
   letter-spacing: -0.01em;
 }
 
+/* A marca fora da navegação (logo do login e slot `graphics` do Payload). Dentro
+   da sidebar quem manda é `shell-admin.css`. */
 .cms-brand {
-  color: var(--cms-olive-800);
+  color: var(--cms-fg-strong);
   font-weight: 700;
   letter-spacing: -0.02em;
-}
-
-/* A sidebar é uma coluna flex com `align-items: flex-start`, então o grupo
-   precisa de largura própria para o separador atravessar a coluna. O separador
-   só aparece ENTRE grupos — o primeiro encosta no header. */
-.cms-nav-group {
-  width: 100%;
-}
-
-.cms-nav-group + .cms-nav-group {
-  border-top: 1px solid var(--theme-border-color);
-  margin-top: var(--cms-spacing-3);
-  padding-top: var(--cms-spacing-3);
-}
-
-.cms-nav-group h2 {
-  color: var(--cms-olive-800);
-  font-size: var(--cms-text-xs);
-  letter-spacing: 0.08em;
-  margin: 0 0 var(--cms-spacing-1-5);
-  text-transform: uppercase;
 }
 
 /* Shared product vocabulary. Payload owns the primitive controls; these

@@ -95,8 +95,22 @@ ENTITY_SYSTEM_FIELDS = (
     "updatedBy",
 )
 
+# Root keys that are the API's OWN derived state, not editorial content: the
+# CMS neither writes nor sees them. `display_media` is resolved and persisted by
+# app/services/display_media_service (the hero of the card), so a CMS write
+# would be planting a reference the resolver owns, and the Admin's record
+# inspector renders every raw key — an internal fact must not show up there as
+# if it were an editable field.
+ENTITY_INTERNAL_FIELDS = ("display_media",)
+
 CMS_WRITE_ROLES = ("admin", "curator")
 DEFAULT_CMS_WRITE_ROLE = "curator"
+
+
+def _record_for_cms(document: dict[str, Any]) -> dict[str, Any]:
+    """The stored Entity for the CMS record view: JSON-safe, minus the API's own
+    derived keys (see ``ENTITY_INTERNAL_FIELDS``)."""
+    return json_safe_record({key: value for key, value in document.items() if key not in ENTITY_INTERNAL_FIELDS})
 
 
 def _reject_system_fields(system_fields: tuple[str, ...]):
@@ -476,18 +490,23 @@ def read_entity_record(
     _: None = Depends(verify_cms_service),
     db: Database = Depends(get_database),
 ) -> CatalogRecordResponse:
-    """Return the complete stored Entity document, JSON-safe."""
+    """Return the complete stored Entity document, JSON-safe.
+
+    Every stored key is returned except the API's own derived ones
+    (``ENTITY_INTERNAL_FIELDS``) — the inspector renders raw fields, and the
+    display media fact is not editorial content.
+    """
     require_current_cms_admin(db, _actor(actor_id))
     document = find_entity(db, entity_id)
     if document is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Entity {entity_id} not found")
-    return CatalogRecordResponse(record=json_safe_record(document))
+    return CatalogRecordResponse(record=_record_for_cms(document))
 
 
 @router.patch(
     "/entities/{entity_id}",
     response_model=CatalogRecordResponse,
-    dependencies=[Depends(_reject_system_fields(ENTITY_SYSTEM_FIELDS))],
+    dependencies=[Depends(_reject_system_fields(ENTITY_SYSTEM_FIELDS + ENTITY_INTERNAL_FIELDS))],
 )
 def update_entity_record(
     entity_id: str,
@@ -506,7 +525,7 @@ def update_entity_record(
     """
     _cms_write_auth(db, actor_id, actor_role)
     document = apply_entity_update(db, entity_id, updates, if_match)
-    return CatalogRecordResponse(record=json_safe_record(document))
+    return CatalogRecordResponse(record=_record_for_cms(document))
 
 
 @router.get("/entities/{entity_id}/curations", response_model=EntityCurationsPage)

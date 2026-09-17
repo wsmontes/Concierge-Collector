@@ -38,9 +38,6 @@ describe('active item', () => {
     expect(activeLabels('/admin/collections/collections/507f1f77bcf86cd799439011')).toEqual(['Collections'])
     expect(activeLabels('/admin/curations/507f1f77bcf86cd799439011')).toEqual(['Curations'])
     expect(activeLabels('/admin/entities/507f1f77bcf86cd799439011')).toEqual(['Entities'])
-    expect(activeLabels('/admin/collections/consumer-credentials/abc')).toEqual([
-      'Consumer Credentials (records)',
-    ])
   })
 
   test('leaves the legacy Explorer path to the redirect that owns it', () => {
@@ -49,11 +46,28 @@ describe('active item', () => {
     expect(activeLabels('/admin/explorer')).toEqual([])
   })
 
-  test('never lights a sibling collection or the dashboard', () => {
+  test('não acende nada numa superfície que não é de produto', () => {
+    // As listas NATIVAS das collections internas saíram do menu: o operador vê
+    // `Applications`, que é a superfície de produto do mesmo domínio. Chegar
+    // nelas por URL direta não deve acender item nenhum.
+    expect(activeLabels('/admin/collections/consumer-applications')).toEqual([])
+    expect(activeLabels('/admin/collections/consumer-credentials/abc')).toEqual([])
+    expect(activeLabels('/admin/collections/cms-users')).toEqual([])
     // `/admin` é prefixo de toda a área: sem `exact` o Dashboard ficaria ativo em tudo.
-    expect(activeLabels('/admin/collections/consumer-applications')).toEqual([
-      'Consumer Applications (records)',
-    ])
     expect(activeLabels('/admin/collections')).toEqual([])
+  })
+
+  test('a navegação não expõe o modelo de armazenamento do CMS', () => {
+    const hrefs = CMS_NAV_GROUPS.flatMap((group) => group.items).map((item) => item.href)
+    const labels = CMS_NAV_GROUPS.flatMap((group) => group.items).map((item) => item.label)
+    // Vazamento tem três formas concretas: o sufixo "(records)" que dizia qual
+    // tabela estava por trás, um slug cru (`consumer-credentials`, `cms_users`) e
+    // um rótulo que repetisse o nome interno. "Collections" é vocabulário de
+    // PRODUTO e fica: o que não fica é o nome da coleção do CMS.
+    expect(labels.filter((label) => /\(records\)|_/.test(label))).toEqual([])
+    expect(labels.filter((label) => /^[a-z][a-z-]*$/.test(label))).toEqual([])
+    expect(hrefs.filter((href) => href.startsWith('/admin/collections/'))).toEqual([
+      '/admin/collections/collections',
+    ])
   })
 })

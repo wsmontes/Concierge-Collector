@@ -1,6 +1,13 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Drawer } from '../ui/Drawer'
+import { EmptyState } from '../ui/EmptyState'
+import { ErrorState } from '../ui/ErrorState'
+import { InlineNotice } from '../ui/InlineNotice'
+import { SkeletonRows } from '../ui/Skeleton'
+import { StatusPill } from '../ui/StatusPill'
 
 export interface ActiveJobRow {
   id: string
@@ -101,7 +108,7 @@ async function cancelOperation(operationId: string): Promise<void> {
   if (!response.ok) throw new Error('unable_to_cancel')
 }
 
-function JobRow({ job, onCancelled }: { job: ActiveJobRow; onCancelled: () => void }) {
+function JobEntry({ job, onCancelled }: { job: ActiveJobRow; onCancelled: () => void }) {
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState(false)
   const canCancel = job.cancellable && !cancelling
@@ -119,43 +126,71 @@ function JobRow({ job, onCancelled }: { job: ActiveJobRow; onCancelled: () => vo
   }
 
   const { active, completed, failed } = job.parentSummary
+  const children = active + completed + failed
   return (
-    <li className="job-row">
-      <div className="job-row__main">
-        <p className="job-row__title">
-          {job.action === 'add' ? 'Add' : 'Remove'} selection across {active + completed + failed} Collection{active + completed + failed === 1 ? '' : 's'}
-        </p>
-        <p className="job-row__progress">{progressLabel(job.progress)}</p>
-        <p className="job-row__summary">
-          {active} pending, {completed} done, {failed} failed
-        </p>
+    <li className="jobs-entry">
+      <div className="jobs-entry__head">
+        <strong className="jobs-entry__title">
+          {job.action === 'add' ? 'Add' : 'Remove'} selection across {children} Collection{children === 1 ? '' : 's'}
+        </strong>
+        <StatusPill status={job.status} />
       </div>
-      <div className="job-row__actions">
-        {job.status === 'active' && canCancel && (
-          <button onClick={() => void cancel()} type="button">Cancel</button>
-        )}
-      </div>
-      {cancelError && <p role="alert">Unable to cancel. Some children may already be committing.</p>}
+      <p className="jobs-entry__progress">{progressLabel(job.progress)}</p>
+      <p className="jobs-entry__summary">{active} pending, {completed} done, {failed} failed</p>
+      {job.status === 'active' && canCancel && (
+        <div className="jobs-entry__actions">
+          <Button
+            buttonStyle="error"
+            disabled={cancelling}
+            margin={false}
+            onClick={() => void cancel()}
+            size="small"
+            type="button"
+          >
+            {cancelling ? 'Cancelling…' : 'Cancel'}
+          </Button>
+        </div>
+      )}
+      {cancelError && (
+        <InlineNotice tone="error">
+          <p>Unable to cancel. Some children may already be committing.</p>
+        </InlineNotice>
+      )}
     </li>
   )
 }
 
-/** Slide-over listing in-flight bulk operations; self-refreshing while open. */
+/**
+ * Detalhe das operações em voo, dentro do `Drawer` do Payload (o overlay caseiro
+ * que existia aqui — um `<aside>` sem `aria-modal`, sem `Esc` e fora da camada de
+ * modal — foi removido). Quem monta decide quando: o pai só renderiza quando o
+ * painel está aberto, então `open` é sempre verdadeiro e o `onClose` do pai é
+ * quem desmonta.
+ */
 export function JobDrawer({ onClose, pollMs = 2_000 }: { onClose?: () => void; pollMs?: number }) {
   const { jobs, loading, error, refresh } = useActiveOperations({ pollMs })
   return (
-    <aside aria-label="Jobs em andamento" className="job-drawer">
-      <header className="job-drawer__header">
-        <h2>Jobs em andamento</h2>
-        {onClose && <button onClick={onClose} type="button">Close</button>}
-      </header>
-      {error && <p role="alert">Unable to reach the server. Retrying.</p>}
-      {!error && !loading && jobs.length === 0 && <p>No active jobs.</p>}
+    <Drawer onClose={() => onClose?.()} open title="Active jobs">
+      {error && (
+        <ErrorState
+          description="The jobs list could not be read. Polling keeps retrying on its own in the background."
+          onRetry={refresh}
+          retryLabel="Try again"
+          title="Unable to reach the server"
+        />
+      )}
+      {!error && loading && <SkeletonRows rows={3} />}
+      {!error && !loading && jobs.length === 0 && (
+        <EmptyState
+          description="Bulk work started from the Curation Explorer appears here while it runs."
+          title="No active jobs"
+        />
+      )}
       {!error && jobs.length > 0 && (
-        <ul className="job-drawer__list">
-          {jobs.map((job) => <JobRow job={job} key={job.id} onCancelled={refresh} />)}
+        <ul className="jobs-list" aria-label="Active jobs">
+          {jobs.map((job) => <JobEntry job={job} key={job.id} onCancelled={refresh} />)}
         </ul>
       )}
-    </aside>
+    </Drawer>
   )
 }

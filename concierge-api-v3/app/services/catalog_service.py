@@ -1,6 +1,7 @@
 """Bounded selection resolution and high-water scans for CMS Explorer."""
 
 import base64
+import logging
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
@@ -19,6 +20,8 @@ from app.models.catalog import (
     ResolveCurationsResponse,
     resolve_filter_field,
 )
+
+logger = logging.getLogger(__name__)
 
 SELECTABLE_STATUSES = frozenset({"active", "draft", "linked"})
 # Tombstoned Curations stay readable by id but never count as catalog rows.
@@ -782,6 +785,18 @@ CONTENT_HEALTH_COUNTERS = (
     "without_collections",
 )
 
+# Cobertura de mídia de EXIBIÇÃO, contada sobre as Entities — não confundir com
+# `without_images`, que conta a EVIDÊNCIA da Curation (a foto que o curador
+# capturou). São dois fatos diferentes: a Curation tem evidência, o card mostra
+# o hero da Entity. Antes desta separação o painel exibia um número com o nome do
+# outro, e a leitura do operador era a errada.
+ENTITY_MEDIA_COUNTERS = (
+    "entities_total",
+    "entities_display_media_resolved",
+    "entities_no_sources",
+    "entities_unresolved",
+)
+
 
 def _facet_count(bucket: object) -> int:
     """The count of one ``$facet`` branch (an empty bucket counts zero)."""
@@ -826,4 +841,87 @@ def content_health(db: Database, member_curation_ids: list[str], actor_subject: 
         },
     ]
     facets = next(iter(db.curations.aggregate(pipeline)), {})
-    return {name: _facet_count(facets.get(name)) for name in CONTENT_HEALTH_COUNTERS}
+    counters = {name: _facet_count(facets.get(name)) for name in CONTENT_HEALTH_COUNTERS}
+    counters.update(_entity_media_counters(db))
+    return counters
+
+
+def _entity_media_counters(db: Database) -> dict:
+    """Cobertura de mídia de exibição — contada do DADO ATUAL, não do estado salvo.
+
+    Duas armadilhas medidas nesta revisão, ambas de semântica do Mongo:
+
+    1. `{campo: {$nin: [None, ""]}}` casa também com documento onde o campo NÃO
+       EXISTE ($nin é satisfeito quando o valor está ausente). Uma cláusula de
+       fonte escrita assim marcaria quase todo o acervo como "tem fonte" e
+       `no_sources` colapsaria para zero. Por isso cada caminho exige
+       `$exists: true` E `$type: "string"` E `$nin` — a mesma tolerância do
+       `extract_image_sources`, sem o falso positivo.
+    2. Contar `display_media.state` mentiria: `no_sources` só existe depois da
+       primeira leitura da Entity, e um `resolved` VENCIDO não é servível. Contar
+       o estado salvo daria "zero sem fonte" e "tudo resolvido" no primeiro dia.
+
+    As três categorias PARTICIONAM o acervo pelo que é verdade agora, e o
+    `resolved` também exige fonte presente — senão uma Entity que perdeu o
+    website depois de resolver seria contada em `no_sources` E em `resolved`, e
+    o `max(0, …)` só esconderia a sobreposição:
+
+    - sem fonte: sem website nem place_id → não há o que resolver;
+    - resolvido: fato `resolved` ainda dentro da validade e fonte presente. Uma
+      ressalva honesta: a LEITURA (`read_hero_media`) ainda compara o
+      `source_fingerprint` gravado com a fonte atual e recusa o fato quando a
+      fonte mudou, o que esta agregação não faz — comparar impressões exigiria
+      ler documento por documento (21,6k) a cada carga do painel. Ou seja: o
+      número é um TETO do que é servível, nunca um piso, e o texto da tela diz
+      exatamente isso;
+    - não resolvido: o resto, por subtração.
+    """
+
+    def caminho(*paths: str) -> list[dict]:
+        return [{path: {"$exists": True, "$type": "string", "$nin": ["", None]}} for path in paths]
+
+    caminhos_de_fonte = caminho(
+        "data.contact.website",
+        "data.contacts.website",
+        "data.website",
+        "data.place_id",
+        "data.google_place_id",
+    )
+    fonte_presente = {"$or": caminhos_de_fonte}
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    pipeline = [
+        {
+            "$facet": {
+                "entities_total": [{"$count": "count"}],
+                "entities_no_sources": [{"$match": {"$nor": caminhos_de_fonte}}, {"$count": "count"}],
+                "entities_display_media_resolved": [
+                    {
+                        "$match": {
+                            "$and": [
+                                fonte_presente,
+                                {"display_media.state": "resolved"},
+                                {"display_media.expires_at": {"$gt": now}},
+                            ]
+                        }
+                    },
+                    {"$count": "count"},
+                ],
+            }
+        },
+    ]
+    try:
+        facets = next(iter(db.entities.aggregate(pipeline)), {})
+    except Exception:
+        # Contador derivado nunca derruba o painel: sem a contagem, os quatro
+        # campos ficam ausentes e o Admin mostra "—" em vez de zero.
+        logger.warning("content health: contagem de display media indisponível", exc_info=True)
+        return {}
+    total = _facet_count(facets.get("entities_total"))
+    sem_fonte = _facet_count(facets.get("entities_no_sources"))
+    resolvido = _facet_count(facets.get("entities_display_media_resolved"))
+    return {
+        "entities_total": total,
+        "entities_display_media_resolved": resolvido,
+        "entities_no_sources": sem_fonte,
+        "entities_unresolved": max(0, total - sem_fonte - resolvido),
+    }

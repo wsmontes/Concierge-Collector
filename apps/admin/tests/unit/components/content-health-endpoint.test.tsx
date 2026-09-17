@@ -67,7 +67,15 @@ describe('Content health endpoint', () => {
     // bounded forward stays deterministic.
     expect(contentHealth).toHaveBeenCalledWith(['cur_1', 'cur_2'], 'admin-1')
     await expect(response.json()).resolves.toEqual({
-      ...counters, collections_members_tracked: 2, degraded: null,
+      ...counters,
+      collections_members_tracked: 2,
+      degraded: null,
+      // A cobertura de mídia de exibição atravessa o BFF; quando a fronteira não
+      // a responde, o campo chega nulo (nunca zero, que afirmaria um fato).
+      entities_total: null,
+      entities_display_media_resolved: null,
+      entities_no_sources: null,
+      entities_unresolved: null,
     })
   })
 

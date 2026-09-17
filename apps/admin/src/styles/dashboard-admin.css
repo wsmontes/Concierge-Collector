@@ -1,0 +1,94 @@
+/*
+ * Dashboard: o painel que responde "o que mudou" e "o que está na fila".
+ *
+ * Purpose: estilo dos painéis de atividade do dashboard. Os contadores usam o
+ * `ui-kpi-grid`/`ui-kpi` do kit (uma grade só, a mesma de qualquer outra tela);
+ * aqui vive o que é específico do painel: a disposição lado a lado em telas
+ * largas e a lista de linhas com título, metadados, estado e tempo.
+ *
+ * Dependencies: `theme.css` (tokens) e `kit.css` (chip, esqueleto, seção).
+ */
+
+.dashboard-panels {
+  display: grid;
+  gap: var(--cms-spacing-4);
+  grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
+}
+
+.dashboard-panel {
+  min-width: 0;
+}
+
+.dashboard-list {
+  display: grid;
+  gap: var(--cms-spacing-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dashboard-list__item {
+  align-items: center;
+  border-bottom: 1px solid var(--cms-border-subtle);
+  display: flex;
+  gap: var(--cms-spacing-3);
+  justify-content: space-between;
+  min-width: 0;
+  padding: var(--cms-spacing-2) var(--cms-spacing-1);
+}
+
+.dashboard-list__item:last-child {
+  border-bottom: 0;
+}
+
+.dashboard-list__link {
+  color: inherit;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  text-decoration: none;
+}
+
+a.dashboard-list__link:hover .dashboard-list__title {
+  color: var(--cms-accent);
+  text-decoration: underline;
+}
+
+.dashboard-list__title {
+  color: var(--cms-fg-strong);
+  font-size: var(--cms-text-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-list__meta {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+}
+
+.dashboard-list__side {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--cms-spacing-2);
+}
+
+.dashboard-list__time {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .dashboard-panels {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-list__item {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--cms-spacing-1-5);
+  }
+}

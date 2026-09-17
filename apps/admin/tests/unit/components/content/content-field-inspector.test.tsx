@@ -29,6 +29,10 @@ function previewOf(path: string): string {
   return rowFor(path).querySelector('.content-field__value')?.textContent ?? ''
 }
 
+function valueCell(path: string): HTMLElement | null {
+  return rowFor(path).querySelector<HTMLElement>('.content-field__value')
+}
+
 const nestedRecord = {
   restaurant_name: 'Le Bernardin',
   notes: { public: 'Corner table', private: 'Never publish' },
@@ -303,8 +307,14 @@ describe('ContentFieldInspector', () => {
       />,
     )
 
-    expect(previewOf('note')).toBe('null')
-    expect(previewOf('blank')).toBe('empty')
+    // A missing value is a name and a mark, never a blank cell: "the field
+    // exists and holds nothing" is exactly what the Inspector is for.
+    for (const path of ['note', 'blank']) {
+      const cell = valueCell(path)
+      expect(cell?.querySelector('.ui-no-value')).not.toBeNull()
+      expect(cell?.querySelector('[aria-hidden="true"]')?.textContent).toBe('—')
+      expect(cell?.textContent).toContain('no value')
+    }
     expect(previewOf('tags')).toBe('2 items')
     expect(previewOf('meta')).toBe('1 fields')
     const truncated = previewOf('long')

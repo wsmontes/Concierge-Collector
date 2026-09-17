@@ -18,6 +18,8 @@ four guarantees the UI and the boundary depend on:
 import httpx
 import pytest
 
+from datetime import datetime, timedelta, timezone
+
 from app.core.config import settings
 from app.models.catalog_media import (
     ENTITY_IMAGE_CACHE_TTL_SECONDS,
@@ -44,7 +46,7 @@ def _seed_entity(db, data: dict, entity_id: str = "e1") -> None:
     db.entities.insert_one({"_id": entity_id, "name": "Café Teste", "data": data})
 
 
-def _image(source: str, marker: bytes, score: float = 70.0) -> CollectedImage:
+def _image(source: str, marker: bytes, score: float = 70.0, provider_ref: str | None = None) -> CollectedImage:
     return CollectedImage(
         jpeg_bytes=marker,
         source=source,
@@ -53,7 +55,13 @@ def _image(source: str, marker: bytes, score: float = 70.0) -> CollectedImage:
         byte_size=len(marker),
         score=score,
         score_components={"source": score},
+        provider_ref=provider_ref,
     )
+
+
+def _seed_display_media(db, value: dict, entity_id: str = "e1") -> None:
+    """O fato que a display media persiste no documento da Entity."""
+    db.entities.update_one({"_id": entity_id}, {"$set": {"display_media": value}})
 
 
 def _patch_images(monkeypatch, images: list[CollectedImage], calls: dict | None = None):
@@ -134,11 +142,19 @@ async def test_entity_without_sources_and_unknown_entity_are_404(async_client, i
         raise AssertionError("coletor não deve ser chamado sem fonte de imagem")
 
     monkeypatch.setattr("app.api.catalog_media.get_restaurant_images", never_called)
-    monkeypatch.setattr("app.api.catalog_media.get_og_image_bytes", never_called)
+    monkeypatch.setattr("app.services.display_media_service.get_restaurant_images", never_called)
+    monkeypatch.setattr("app.services.display_media_service.get_reference_image_bytes", never_called)
 
     no_source = await async_client.get(f"{PATH}/e1/images", headers=_headers())
     assert no_source.status_code == 404
     assert no_source.json()["detail"] == "entity sem website nem place_id (sem fonte de imagem)"
+
+    # Rank 0 responde o MESMO 404 pelo caminho da display media, com cache
+    # longo: sem fonte não há resolução a disparar.
+    no_source_bytes = await async_client.get(f"{PATH}/e1/image", headers=_headers())
+    assert no_source_bytes.status_code == 404
+    assert no_source_bytes.json()["detail"] == "entity sem website nem place_id (sem fonte de imagem)"
+    assert no_source_bytes.headers["cache-control"] == "private, max-age=3600"
 
     unknown = await async_client.get(f"{PATH}/ghost/images", headers=_headers())
     assert unknown.status_code == 404
@@ -146,24 +162,44 @@ async def test_entity_without_sources_and_unknown_entity_are_404(async_client, i
 
     unknown_bytes = await async_client.get(f"{PATH}/ghost/image", headers=_headers())
     assert unknown_bytes.status_code == 404
+    assert unknown_bytes.json()["detail"] == "Entity ghost not found"
 
 
 @pytest.mark.asyncio
 async def test_image_bytes_are_the_reencoded_jpeg_with_a_private_short_ttl(async_client, in_memory_db, monkeypatch):
+    """Rank 0 serves the PERSISTED display media: the stored opaque reference is
+    fetched and reencoded, and the discovery pipeline is never entered (the
+    collector would be a per-render cost, which is exactly what the field
+    removed)."""
     in_memory_db._collections.clear()
     _seed_cms_admin(in_memory_db)
     _seed_entity(in_memory_db, {"contact": {"website": "https://restaurante.example"}, "place_id": "ChIJ123"})
+    _seed_display_media(
+        in_memory_db,
+        {
+            "state": "resolved",
+            "kind": "website",
+            "provider_ref": "https://restaurante.example/hero.jpg",
+            "width": 1600,
+            "height": 1000,
+            "score": 72.5,
+            "resolved_at": datetime.now(timezone.utc),
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=14),
+            "attempts": 1,
+            "last_error": None,
+        },
+    )
     calls: dict = {}
 
-    async def fake_hero(page_url=None, place_id=None):
-        calls.update(page_url=page_url, place_id=place_id)
-        return (b"\xff\xd8\xff\xe0 jpeg", "image/jpeg")
+    async def fake_reference(kind, provider_ref):
+        calls.update(kind=kind, provider_ref=provider_ref)
+        return (b"\xff\xd8\xff\xe0 jpeg", "image/jpeg"), None
 
-    async def ranked_never_called(**_kwargs):  # pragma: no cover - rank 0 keeps the hero path
-        raise AssertionError("rank 0 deve usar o caminho hero")
+    async def discovery_never_called(**_kwargs):  # pragma: no cover - resolved must not rediscover
+        raise AssertionError("display media resolvida não pode redescobrir a imagem")
 
-    monkeypatch.setattr("app.api.catalog_media.get_og_image_bytes", fake_hero)
-    monkeypatch.setattr("app.api.catalog_media.get_restaurant_image_bytes", ranked_never_called)
+    monkeypatch.setattr("app.services.display_media_service.get_reference_image_bytes", fake_reference)
+    monkeypatch.setattr("app.services.display_media_service.get_restaurant_images", discovery_never_called)
 
     response = await async_client.get(f"{PATH}/e1/image", headers=_headers())
 
@@ -171,7 +207,7 @@ async def test_image_bytes_are_the_reencoded_jpeg_with_a_private_short_ttl(async
     assert response.content == b"\xff\xd8\xff\xe0 jpeg"
     assert response.headers["content-type"] == "image/jpeg"
     assert response.headers["cache-control"] == f"private, max-age={ENTITY_IMAGE_CACHE_TTL_SECONDS}"
-    assert calls == {"page_url": "https://restaurante.example", "place_id": "ChIJ123"}
+    assert calls == {"kind": "website", "provider_ref": "https://restaurante.example/hero.jpg"}
 
 
 @pytest.mark.asyncio
@@ -185,10 +221,10 @@ async def test_ranked_bytes_use_the_ranked_collector_and_missing_rank_is_404(asy
         calls.update(page_url=page_url, place_id=place_id, rank=rank)
         return (b"\xff\xd8\xff ranked", "image/jpeg") if rank == 3 else None
 
-    async def hero_never_called(**_kwargs):  # pragma: no cover - ranks > 0 must not take the hero path
-        raise AssertionError("apenas rank 0 usa o caminho hero")
+    async def hero_never_called(**_kwargs):  # pragma: no cover - ranks > 0 must not take the display media path
+        raise AssertionError("apenas rank 0 usa a display media")
 
-    monkeypatch.setattr("app.api.catalog_media.get_og_image_bytes", hero_never_called)
+    monkeypatch.setattr("app.services.display_media_service.get_reference_image_bytes", hero_never_called)
     monkeypatch.setattr("app.api.catalog_media.get_restaurant_image_bytes", fake_ranked)
 
     served = await async_client.get(f"{PATH}/e1/image", params={"rank": 3}, headers=_headers())
@@ -259,7 +295,23 @@ async def test_internal_source_is_refused_without_any_network_call(async_client,
 
     monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", forbidden_transport)
 
-    for path in (f"{PATH}/e1/image", f"{PATH}/e1/images"):
-        response = await async_client.get(path, headers=_headers())
-        assert response.status_code == 400, response.text
-        assert response.json()["detail"] == "destino de imagem não permitido (rede interna)"
+    gallery = await async_client.get(f"{PATH}/e1/images", headers=_headers())
+    assert gallery.status_code == 400, gallery.text
+    assert gallery.json()["detail"] == "destino de imagem não permitido (rede interna)"
+
+    # Rank 0 sem fato persistido não toca a fonte: a resolução é que passaria
+    # pelo guard, em background. Nada de rede, 404 curto.
+    pending = await async_client.get(f"{PATH}/e1/image", headers=_headers())
+    assert pending.status_code == 404, pending.text
+    assert pending.headers["cache-control"] == "private, max-age=60"
+
+    # E a resolução (o trabalho de background) continua sendo recusada pelo
+    # guard — sem requisição, com o código curto no fato persistido.
+    from app.services import display_media_service as display
+
+    entity = in_memory_db.entities.find_one({"_id": "e1"})
+    value = await display.resolve_display_media(in_memory_db.entities, entity)
+    assert value["state"] == "failed"
+    assert value["last_error"] == "blocked_source"
+    assert value["provider_ref"] is None
+    assert "127.0.0.1" not in str(value)

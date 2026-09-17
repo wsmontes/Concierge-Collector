@@ -1,3 +1,5 @@
+import { FactList } from '../ui/Card'
+
 export interface TechnicalDetail {
   term: string
   value: string
@@ -15,14 +17,12 @@ export function TechnicalDetails({ details, label = 'Technical details' }: { det
   return (
     <details className="collection-technical">
       <summary>{label}</summary>
-      <dl className="collection-technical__list">
-        {details.map((detail) => (
-          <div key={detail.term}>
-            <dt>{detail.term}</dt>
-            <dd><code>{detail.value}</code></dd>
-          </div>
-        ))}
-      </dl>
+      <FactList
+        facts={details.map((detail) => ({
+          label: detail.term,
+          value: <code>{detail.value}</code>,
+        }))}
+      />
     </details>
   )
 }

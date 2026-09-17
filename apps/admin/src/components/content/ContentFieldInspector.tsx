@@ -1,9 +1,13 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import type { ReactNode } from 'react'
 import type { ContentRecordKind, FieldDescriptor, FieldNode, FieldOwner } from '../../content/field-types'
 import { buildFieldTree, declaredButAbsent, filterFieldTree, flattenFieldTree } from '../../content/record-inspector'
 import { isRecord } from '../../content/value-guards'
+import { Chip } from '../ui/Chip'
+import { NoValue } from '../ui/NoValue'
+import { SearchInput } from '../ui/Toolbar'
 
 /** Owner badge copy, keyed by the frozen owner vocabulary. */
 const OWNER_LABEL: Record<FieldOwner, string> = {
@@ -13,6 +17,17 @@ const OWNER_LABEL: Record<FieldOwner, string> = {
   system: 'System',
 }
 
+/**
+ * Owner is the record family a field belongs to — a classification, not a
+ * health state: `system` is the strongest claim here, never an error tone.
+ */
+const OWNER_TONE: Record<FieldOwner, 'accent' | 'info' | 'muted'> = {
+  curation: 'accent',
+  entity: 'info',
+  collection: 'muted',
+  system: 'muted',
+}
+
 /** Indentation step per tree depth, in pixels. */
 const DEPTH_STEP = 14
 
@@ -20,12 +35,11 @@ const DEPTH_STEP = 14
 const PREVIEW_LIMIT = 80
 
 /**
- * Compact one-glance preview. Missing values are named instead of hidden —
- * "the field exists and holds nothing" is exactly what the Inspector is for.
+ * Compact one-glance preview, or `null` when the field holds nothing — the
+ * absent value is rendered as the no-value mark instead of a blank cell.
  */
-function previewValue(value: unknown): string {
-  if (value === null) return 'null'
-  if (value === undefined) return 'empty'
+function previewValue(value: unknown): string | null {
+  if (value === null || value === undefined) return null
   if (value instanceof Date) return value.toISOString()
   if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return `${value.byteLength} bytes`
   if (Array.isArray(value)) return `${value.length} items`
@@ -78,14 +92,15 @@ export function ContentFieldInspector({
   return (
     <section className="content-inspector" aria-label={label}>
       <h2 className="content-inspector__heading">{label}</h2>
-      <input
-        className="content-inspector__search"
-        type="search"
-        aria-label="Search fields"
-        placeholder="Search fields or values..."
-        value={search}
-        onChange={(event) => onSearchChange(event.target.value)}
-      />
+      <div className="content-inspector__search">
+        <SearchInput
+          label="Search fields"
+          name="inspector-fields"
+          onChange={onSearchChange}
+          placeholder="Search fields or values..."
+          value={search}
+        />
+      </div>
       {visibleNodes.length > 0 && (
         <ul className="content-inspector__tree">
           {visibleNodes.map((node) => (
@@ -141,6 +156,7 @@ function FieldRow({
 }) {
   const editing = editingPath === node.path
   const editable = node.editable && !node.system
+  const preview = previewValue(node.value)
 
   // The editor's protocol: report a new value or an abandoned edit. The
   // Inspector only forwards — the parent persists and closes the edit.
@@ -160,8 +176,12 @@ function FieldRow({
     >
       <span className="content-field__label">{node.label}</span>
       <span className="content-field__path">{node.path}</span>
-      <span className="content-field__value">{previewValue(node.value)}</span>
-      <span className="content-field__owner">{OWNER_LABEL[node.owner]}</span>
+      {preview === null
+        ? <span className="content-field__value"><NoValue /></span>
+        : <span className="content-field__value">{preview}</span>}
+      <Chip className="content-field__owner" size="sm" tone={OWNER_TONE[node.owner]}>
+        {OWNER_LABEL[node.owner]}
+      </Chip>
       {node.descriptor === null && (
         <span className="content-field__hint">Not in the field registry</span>
       )}
@@ -171,9 +191,9 @@ function FieldRow({
       )}
       {editable && !editing && (
         <span className="content-field__actions">
-          <button type="button" onClick={() => onRequestEdit?.(node)}>
+          <Button buttonStyle="secondary" margin={false} size="small" type="button" onClick={() => onRequestEdit?.(node)}>
             Edit
-          </button>
+          </Button>
         </span>
       )}
       {editable && editing && renderEditor !== undefined && (

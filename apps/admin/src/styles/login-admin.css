@@ -1,60 +1,139 @@
-/* Login do Admin.
+/* Login do Admin — o cartão de entrada do handoff.
+
    A página roda no template mínimo do Payload, FORA da casca: nada do que
-   admin.css/curations-admin.css estiliza vale ali (medido: a rota respondia
-   HTML sem nenhuma regra aplicada, porque `.cms-login` não existia em CSS
-   nenhum). Este arquivo é o recorte do login e usa só o vocabulário de tokens
-   (`--theme-*` mapeados em admin.css + a rampa `--cms-*` do design-tokens),
-   nunca cor literal. */
+   admin.css/curations-admin.css estiliza vale aqui. Este arquivo é o recorte do
+   login e usa só token (`--cms-*`): papel, tinta, raio, espaço, tipo e movimento.
+   Nenhuma cor, espaço ou raio literal entra aqui. */
 
 /* `:has()` é o único jeito de pintar o documento inteiro sem classe de rota no
-   body: o login é a única página que renderiza `.cms-login`. */
+   body: o login é a única página que renderiza `.cms-login`.
+   `safe center` mantém o topo do cartão alcançável quando ele é mais alto que a
+   janela — centralizar sem `safe` corta conteúdo em tela baixa. */
 body:has(.cms-login) {
-  background: var(--theme-elevation-50);
+  align-items: safe center;
+  background: var(--cms-bg);
   display: grid;
+  justify-items: center;
   min-height: 100dvh;
-  place-items: center;
+  padding: var(--cms-spacing-6) var(--cms-spacing-4);
 }
 
 .cms-login {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
-  border-radius: var(--cms-radius-xl);
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border-subtle);
+  border-radius: var(--cms-radius-card);
+  box-shadow: var(--cms-elevation-2);
   display: flex;
   flex-direction: column;
   gap: var(--cms-spacing-2-5);
   margin: 0;
   max-width: 30rem;
-  padding: clamp(var(--cms-spacing-5), 5vw, var(--cms-spacing-8));
-  width: min(30rem, calc(100vw - 2.5rem));
+  padding: var(--cms-spacing-6);
+  width: 100%;
 }
 
-.cms-login h1 {
-  color: var(--cms-olive-900);
-  font-size: var(--cms-text-2xl);
-  letter-spacing: -0.02em;
+.cms-login__brand {
+  align-items: center;
+  display: flex;
+  gap: var(--cms-spacing-2-5);
+}
+
+.cms-login__monogram {
+  background: var(--cms-accent-soft);
+  border: 1px solid var(--cms-accent-border);
+  border-radius: var(--cms-radius-full);
+  color: var(--cms-accent-fg);
+  display: grid;
+  font-family: var(--cms-font-display);
+  font-size: var(--cms-text-lg);
+  font-weight: 600;
+  height: var(--cms-control-height);
+  letter-spacing: 0.04em;
+  place-items: center;
+  width: var(--cms-control-height);
+}
+
+.cms-login__brand-name {
+  color: var(--cms-fg-faint);
+  font-size: var(--cms-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* Uma serifada por tela: o título de página é o único lugar onde a Cormorant
+   aparece no Admin. */
+.cms-login__title {
+  color: var(--cms-fg-strong);
+  font-family: var(--cms-font-display);
+  font-size: var(--cms-text-4xl);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
   margin: 0;
 }
 
-.cms-login p {
-  color: var(--cms-olive-600);
-  font-size: var(--cms-text-sm);
+.cms-login__lead {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-base);
   line-height: 1.5;
   margin: 0;
 }
 
-.cms-login a {
-  align-self: flex-start;
-  background: var(--cms-olive-800);
-  border-radius: var(--cms-radius-md);
-  color: var(--cms-limestone-50);
+.cms-login__action {
+  align-items: center;
+  background: var(--cms-accent);
+  border: 1px solid var(--cms-accent);
+  border-radius: var(--cms-radius-input);
+  color: var(--cms-accent-solid-fg);
+  display: flex;
   font-size: var(--cms-text-sm);
   font-weight: 600;
-  margin-top: var(--cms-spacing-1-5);
-  padding: var(--cms-spacing-2) var(--cms-spacing-3-5);
+  gap: var(--cms-spacing-2);
+  justify-content: space-between;
+  margin-top: var(--cms-spacing-1);
+  min-height: var(--cms-control-height);
+  padding: 0 var(--cms-spacing-3-5);
   text-decoration: none;
+  transition: background var(--cms-duration-fast) var(--cms-ease-standard);
 }
 
-.cms-login a:hover,
-.cms-login a:focus-visible {
-  background: var(--cms-olive-900);
+.cms-login__action:hover {
+  background: var(--cms-accent-hover);
+}
+
+.cms-login__action[data-redirecting='true'] {
+  cursor: progress;
+  opacity: 0.85;
+}
+
+.cms-login__action-mark {
+  font-family: var(--cms-font-mono);
+}
+
+.cms-login__status {
+  color: var(--cms-fg-muted);
+  font-size: var(--cms-text-sm);
+  margin: 0;
+  min-height: var(--cms-spacing-5);
+}
+
+.cms-login__steps {
+  color: var(--cms-fg-muted);
+  display: grid;
+  font-size: var(--cms-text-sm);
+  gap: var(--cms-spacing-1-5);
+  line-height: 1.5;
+  margin: 0;
+  padding-left: var(--cms-spacing-4);
+}
+
+@media (max-width: 480px) {
+  body:has(.cms-login) {
+    padding: var(--cms-spacing-4) var(--cms-spacing-3);
+  }
+
+  .cms-login {
+    padding: var(--cms-spacing-5);
+  }
 }

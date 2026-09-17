@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import io
 import math
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Optional
 from urllib.parse import urlsplit
 
 from PIL import Image, ImageFilter, ImageStat
@@ -70,11 +70,19 @@ POSITIVE_URL_MARKERS = (
 
 @dataclass(frozen=True)
 class ImageCandidate:
-    """A discovered image before download/validation."""
+    """A discovered image before download/validation.
+
+    `provider_ref` é a referência PERSISTÍVEL do candidato, quando existe: o
+    nome opaco do Places (`places/...`) ou a URL pública de uma imagem de site.
+    Ela existe porque o resultado do ranking pode virar estado durável
+    (display media) — e o que é durável nunca pode ser a URL assinada do
+    provedor, que carrega `?key=`.
+    """
 
     url: str
     source: str
     source_index: int = 0
+    provider_ref: Optional[str] = None
 
 
 @dataclass
@@ -90,6 +98,10 @@ class CollectedImage:
     score_components: Dict[str, float] = field(default_factory=dict)
     perceptual_hash: int = 0
     source_index: int = 0
+    # Referência persistível de origem (nome opaco do Places / URL pública da
+    # imagem do site). NÃO entra em `public_metadata`: o que é durável não é o
+    # que o cliente recebe.
+    provider_ref: Optional[str] = None
 
     @property
     def aspect_ratio(self) -> float:
@@ -296,6 +308,7 @@ def prepare_image(
         score_components=components,
         perceptual_hash=perceptual_hash,
         source_index=candidate.source_index,
+        provider_ref=candidate.provider_ref,
     )
 
 

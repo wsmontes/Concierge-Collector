@@ -347,9 +347,14 @@ export interface paths {
          * Read Entity Image
          * @description The reencoded JPEG of one ranked Entity image.
          *
-         *     Rank 0 keeps the hero path of the curator-facing route; ranks 1..7 use the
-         *     ranked catalog. Both are the existing hardened paths — this route only
-         *     changes which credential opens the door.
+         *     Rank 0 (the thumbnail the Admin renders) serves the Entity's persisted
+         *     display media — the resolution that used to be redone on every render is now
+         *     a stored fact, and this route only fetches the opaque reference it stored.
+         *     With no fresh fact the response is a short-cached 404 and the enrichment is
+         *     scheduled in the background, never awaited.
+         *
+         *     Ranks 1..7 keep the ranked collector path: the gallery is on demand and the
+         *     pipeline already caches its catalog in memory.
          */
         get: operations["read_entity_image_api_v3_catalog_entities__entity_id__image_get"];
         put?: never;
@@ -394,6 +399,10 @@ export interface paths {
         /**
          * Read Entity Record
          * @description Return the complete stored Entity document, JSON-safe.
+         *
+         *     Every stored key is returned except the API's own derived ones
+         *     (``ENTITY_INTERNAL_FIELDS``) — the inspector renders raw fields, and the
+         *     display media fact is not editorial content.
          */
         get: operations["read_entity_record_api_v3_catalog_entities__entity_id__record_get"];
         put?: never;
@@ -572,7 +581,10 @@ export interface components {
          *     strings, dates become ISO-8601 strings and binary payloads (packed float32
          *     embedding vectors included) become a ``{"format": ..., "byte_length": N}``
          *     summary. Every other key — unknown and legacy ones included — is returned
-         *     untouched.
+         *     untouched, EXCEPT the API's own derived keys for Entities
+         *     (``catalog_records.ENTITY_INTERNAL_FIELDS``: the persisted display media of
+         *     the card), which are not editorial content and are neither read nor written
+         *     through this surface.
          */
         CatalogRecordResponse: {
             /** Record */
@@ -761,6 +773,26 @@ export interface components {
          *     Curations that are not in the member ids the caller reported.
          */
         ContentHealthResponse: {
+            /**
+             * Entities Display Media Resolved
+             * @description Entities with a durable, proven display media fact.
+             */
+            entities_display_media_resolved?: number | null;
+            /**
+             * Entities No Sources
+             * @description Entities with neither website nor place_id: nothing to resolve.
+             */
+            entities_no_sources?: number | null;
+            /**
+             * Entities Total
+             * @description Entities in the catalog.
+             */
+            entities_total?: number | null;
+            /**
+             * Entities Unresolved
+             * @description Entities whose display media is missing or failed.
+             */
+            entities_unresolved?: number | null;
             /**
              * Synthetic Drafts
              * @description ``curator_type == 'synthetic'`` and ``status == 'draft'``.

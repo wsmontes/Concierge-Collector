@@ -99,8 +99,8 @@ test('creates through the command API and navigates to the detail page', async (
   fireEvent.click(await screen.findByRole('button', { name: 'New Collection' }))
   const dialog = screen.getByRole('dialog', { name: 'New Collection' })
   expect(dialog).toBeVisible()
-  fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'New' } })
-  fireEvent.change(screen.getByLabelText('Slug'), { target: { value: 'new' } })
+  fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'New' } })
+  fireEvent.change(screen.getByLabelText(/Slug/), { target: { value: 'new' } })
   fireEvent.click(within(dialog).getByRole('button', { name: 'Create Collection' }))
 
   await waitFor(() => expect(create).toHaveBeenCalledWith({

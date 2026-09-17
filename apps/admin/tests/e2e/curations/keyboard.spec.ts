@@ -72,8 +72,10 @@ liveExplorer('keyboard selection: guarded shortcut, indeterminate header, shift 
   await page.goto('/admin/curations')
   const table = page.getByRole('table', { name: 'Curations' })
   const status = page.locator('.curations-selection-toolbar').getByRole('status')
-  const headerCheckbox = table.getByLabel('Select all loaded Curations')
-  const rowCheckboxes = table.locator('.curation-table__row input[type="checkbox"]')
+  const headerCheckbox = table.locator('thead input[type="checkbox"]')
+  // `[data-row]` é o hook do `DataTable` do kit (a classe `.curation-table__row`
+  // era da tabela caseira que ela substituiu).
+  const rowCheckboxes = table.locator('[data-row] input[type="checkbox"]')
   const search = page.getByLabel('Search Curations')
 
   await expect(rowCheckboxes).toHaveCount(3, { timeout: 30_000 })
@@ -132,17 +134,23 @@ liveExplorer('keyboard selection: guarded shortcut, indeterminate header, shift 
   // 6. Arrow keys move the active row, Space toggles it, both clamped to the
   //    loaded range.
   // ---------------------------------------------------------------------------
-  await table.click()
+  // 6. Arrow keys move the active row one step from wherever the last click
+  //    left focus (the kit's handler lives on the <table> and the row carries
+  //    focus), Space toggles the active row, and both clamp to the loaded range.
+  await table.focus()
   await table.press('ArrowDown')
   await table.press('ArrowDown')
-  await expect(table.locator('[data-active="true"]')).toHaveAttribute('data-index', '1')
+  await expect(table.locator('[data-active="true"]')).toHaveAttribute('data-index', '2')
   await table.press(' ')
   await expect(status).toContainText('1 Curation selected')
 
   await table.press('ArrowUp')
-  await expect(table.locator('[data-active="true"]')).toHaveAttribute('data-index', '0')
+  await expect(table.locator('[data-active="true"]')).toHaveAttribute('data-index', '1')
   await table.press(' ')
   await expect(status).toContainText('2 Curations selected')
+
+  await table.press('ArrowUp')
+  await expect(table.locator('[data-active="true"]')).toHaveAttribute('data-index', '0')
 
   await table.press('ArrowUp')
   await expect(table.locator('[data-active="true"]')).toHaveAttribute('data-index', '0')

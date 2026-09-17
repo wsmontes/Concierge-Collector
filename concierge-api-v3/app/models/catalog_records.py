@@ -8,7 +8,7 @@ which reuse the domain update pipelines and refuse system-managed fields.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -47,7 +47,10 @@ class CatalogRecordResponse(BaseModel):
     strings, dates become ISO-8601 strings and binary payloads (packed float32
     embedding vectors included) become a ``{"format": ..., "byte_length": N}``
     summary. Every other key — unknown and legacy ones included — is returned
-    untouched.
+    untouched, EXCEPT the API's own derived keys for Entities
+    (``catalog_records.ENTITY_INTERNAL_FIELDS``: the persisted display media of
+    the card), which are not editorial content and are neither read nor written
+    through this surface.
     """
 
     record: dict[str, Any]
@@ -136,3 +139,13 @@ class ContentHealthResponse(BaseModel):
     without_transcript: int = Field(ge=0, description="``transcript`` missing, null or empty.")
     updated_today: int = Field(ge=0, description="``updatedAt`` inside the last 24 hours.")
     without_collections: int = Field(ge=0, description="Not among the reported Collection member ids.")
+    entities_total: Optional[int] = Field(default=None, ge=0, description="Entities in the catalog.")
+    entities_display_media_resolved: Optional[int] = Field(
+        default=None, ge=0, description="Entities with a durable, proven display media fact."
+    )
+    entities_no_sources: Optional[int] = Field(
+        default=None, ge=0, description="Entities with neither website nor place_id: nothing to resolve."
+    )
+    entities_unresolved: Optional[int] = Field(
+        default=None, ge=0, description="Entities whose display media is missing or failed."
+    )

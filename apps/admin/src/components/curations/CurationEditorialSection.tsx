@@ -18,8 +18,14 @@ export function CurationEditorialSection({
   nodes: FieldNode[]
   edit: CurationSectionEditProps
 }): ReactNode {
+  const withValue = nodes.filter((node) => node.value !== undefined && node.value !== null).length
+
   return (
-    <AdminSection title="Your curation" description="The curator's own words. Clicking Edit turns one block into a form.">
+    <AdminSection
+      title="Your curation"
+      description="The curator's own words. Clicking Edit turns one block into a form."
+      action={nodes.length > 0 ? <p className="ui-section-count">{withValue} of {nodes.length} filled</p> : undefined}
+    >
       {nodes.length === 0
         ? (
             <EmptyState
@@ -28,11 +34,11 @@ export function CurationEditorialSection({
             />
           )
         : (
-            <div className="curation-editorial">
+            <div className="ui-editorial">
               {nodes.map((node) => <CurationFieldBlock key={node.path} node={node} edit={edit} />)}
             </div>
           )}
-      <p className="curation-editorial__hint">
+      <p className="ui-editorial__hint">
         Fields outside this editorial set — including keys the field registry does not describe — stay editable in All fields.
       </p>
     </AdminSection>

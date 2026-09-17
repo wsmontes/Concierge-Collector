@@ -52,6 +52,9 @@ afterEach(() => {
   window.CurationBrowser = undefined;
   window.EntityBrowser = undefined;
   window.uiManager = undefined;
+  // Sem isto, o stub de navigator (onLine:false) do caso de falha offline
+  // sobrevivia ao teste e TODOS os seguintes rodavam offline em silêncio.
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -965,6 +968,109 @@ describe('OgImageModule — negativo em cache (2026-08-16)', () => {
       '/entities/ent_sem_servidor/image?rank=0',
       { silent: true }
     );
+  });
+});
+
+describe('OgImageModule — TTL efetivo do negativo (2026-09-16)', () => {
+  // O negativo guardava 7 dias (404/400) e 10 min (falha transitória): um
+  // container reiniciando virava "este restaurante não tem foto" por dias. O que
+  // estes casos medem é o TTL EFETIVO gravado (x-cache-expires), não o texto
+  // das constantes.
+  function captureNegative() {
+    const put = vi.fn().mockResolvedValue(undefined);
+    window.caches = {
+      open: vi.fn().mockResolvedValue({ match: vi.fn().mockResolvedValue(undefined), put, delete: vi.fn() })
+    };
+    return {
+      put,
+      expiresIn() {
+        expect(put).toHaveBeenCalledTimes(1);
+        const response = put.mock.calls[0][1];
+        expect(response.headers.get('x-no-image')).toBe('1');
+        return Number(response.headers.get('x-cache-expires')) - Date.now();
+      }
+    };
+  }
+
+  test('falha transitória (rede) grava 60 segundos, não a semana do definitivo', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const negative = captureNegative();
+    window.ApiService = { request: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) };
+
+    const module = new OgImageModuleClass();
+    await expect(module._resolve('https://flaky.example.com', '', 'url:flaky')).rejects.toBeTruthy();
+
+    const expiresIn = negative.expiresIn();
+    expect(expiresIn).toBeGreaterThan(50 * 1000);
+    expect(expiresIn).toBeLessThanOrEqual(60 * 1000);
+  });
+
+  test('404 definitivo grava 30 minutos (era 7 dias)', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const negative = captureNegative();
+    window.ApiService = { request: vi.fn().mockResolvedValue({ ok: false, status: 404 }) };
+
+    const module = new OgImageModuleClass();
+    const result = await module._resolve('https://sem-og.example.com', '', 'url:sem-og');
+
+    expect(result).toBeNull();
+    const expiresIn = negative.expiresIn();
+    expect(expiresIn).toBeGreaterThan(29 * 60 * 1000);
+    expect(expiresIn).toBeLessThanOrEqual(30 * 60 * 1000);
+  });
+
+  test('o max-age=60 do servidor no 404 (hero ainda resolvendo) não vira 30 min de cache local', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const negative = captureNegative();
+    window.ApiService = {
+      request: vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        headers: new Headers({ 'Cache-Control': 'private, max-age=60' })
+      })
+    };
+
+    const module = new OgImageModuleClass();
+    await module._resolve('https://sem-og.example.com', '', 'url:sem-og');
+
+    // O servidor é quem sabe por quanto tempo a própria resposta vale.
+    expect(negative.expiresIn()).toBeLessThanOrEqual(60 * 1000);
+  });
+
+  test('max-age MAIOR que o teto do cliente não estica o negativo', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const negative = captureNegative();
+    window.ApiService = {
+      request: vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        headers: new Headers({ 'Cache-Control': 'private, max-age=3600' })
+      })
+    };
+
+    const module = new OgImageModuleClass();
+    await module._resolve('https://sem-og.example.com', '', 'url:sem-og');
+
+    const expiresIn = negative.expiresIn();
+    expect(expiresIn).toBeGreaterThan(29 * 60 * 1000);
+    expect(expiresIn).toBeLessThanOrEqual(30 * 60 * 1000);
+  });
+
+  test('no-store do servidor não deixa negativo persistido', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const negative = captureNegative();
+    window.ApiService = {
+      request: vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        headers: new Headers({ 'Cache-Control': 'no-store' })
+      })
+    };
+
+    const module = new OgImageModuleClass();
+    await module._resolve('https://sem-og.example.com', '', 'url:sem-og');
+
+    expect(negative.put).not.toHaveBeenCalled();
   });
 });
 

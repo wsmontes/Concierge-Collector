@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
+import { useTheme } from '@payloadcms/ui'
+import { useAdminUi } from '../shell/AdminUiContext'
 import { GlobalSearchResults } from './GlobalSearchResults'
 import { browserLoadResults } from './search-client'
 import { buildSearchGroups, flattenSearchGroups, searchOptionId, type SearchRow } from './search-rows'
@@ -18,7 +20,27 @@ const SEARCH_ERROR_MESSAGE = 'Search is unavailable right now. Try again.'
 export interface GlobalSearchProps {
   loadResults?: (query: string) => Promise<SearchResults>
   navigate?: (href: string) => void
+  /** Controlado pela casca quando os gatilhos vivem fora da paleta. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
+
+/** Uma ação da paleta: navegar, alternar o tema, abrir a ajuda de atalhos. */
+interface PaletteCommand {
+  id: string
+  label: string
+  hint?: string
+  run: () => void
+}
+
+const COMMAND_ROUTES: Array<{ label: string; href: string }> = [
+  { label: 'Go to Dashboard', href: '/admin' },
+  { label: 'Go to Curations', href: '/admin/curations' },
+  { label: 'Go to Entities', href: '/admin/entities' },
+  { label: 'Go to Collections', href: '/admin/collections/collections' },
+  { label: 'Go to Applications', href: '/admin/applications' },
+  { label: 'Go to Operations', href: '/admin/operations' },
+]
 
 /** The answer the palette holds, tagged with the query it answers. */
 interface SearchAnswer {
@@ -50,8 +72,18 @@ function defaultNavigate(href: string) {
 export function GlobalSearch({
   loadResults = browserLoadResults,
   navigate = defaultNavigate,
+  open: controlledOpen,
+  onOpenChange,
 }: GlobalSearchProps): ReactNode {
-  const [open, setOpen] = useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+  const open = controlledOpen ?? uncontrolledOpen
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (controlledOpen === undefined) setUncontrolledOpen(next)
+      onOpenChange?.(next)
+    },
+    [controlledOpen, onOpenChange],
+  )
   const [query, setQuery] = useState('')
   const [answer, setAnswer] = useState<SearchAnswer>(NO_ANSWER)
   const [activeIndex, setActiveIndex] = useState(0)
@@ -84,7 +116,43 @@ export function GlobalSearch({
     setQuery('')
     setAnswer(NO_ANSWER)
     setActiveIndex(0)
-  }, [])
+  }, [setOpen])
+
+  /**
+   * Ações da paleta. Aparecem quando não há termo: a paleta responde "o que eu
+   * faço agora", não só "onde está este registro" — e o teclado é o mesmo
+   * (setas + Enter), então nada aqui precisa de mouse.
+   */
+  const { openShortcuts } = useAdminUi()
+  const { theme, setTheme } = useTheme()
+  const commands = useMemo<PaletteCommand[]>(
+    () => [
+      ...COMMAND_ROUTES.map((route) => ({
+        id: `route:${route.href}`,
+        label: route.label,
+        run: () => navigate(route.href),
+      })),
+      {
+        id: 'theme',
+        label: theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme',
+        run: () => setTheme(theme === 'dark' ? 'light' : 'dark'),
+      },
+      { id: 'shortcuts', label: 'Keyboard shortcuts', hint: '?', run: openShortcuts },
+    ],
+    [navigate, openShortcuts, setTheme, theme],
+  )
+  const idle = phase === 'idle'
+  const optionCount = idle ? commands.length : rows.length
+
+  const runCommand = useCallback(
+    (index: number) => {
+      const command = commands[index]
+      if (!command) return
+      command.run()
+      closePalette()
+    },
+    [closePalette, commands],
+  )
 
   useEffect(() => {
     loaderRef.current = loadResults
@@ -115,7 +183,7 @@ export function GlobalSearch({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, closePalette])
+  }, [closePalette, open, setOpen])
 
   useEffect(() => {
     const ticket = sequenceRef.current + 1
@@ -146,10 +214,10 @@ export function GlobalSearch({
   }, [navigate, closePalette])
 
   function onInputKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
-    if (rows.length === 0) return
+    if (optionCount === 0) return
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      setActiveIndex((index) => Math.min(index + 1, rows.length - 1))
+      setActiveIndex((index) => Math.min(index + 1, optionCount - 1))
       return
     }
     if (event.key === 'ArrowUp') {
@@ -159,7 +227,8 @@ export function GlobalSearch({
     }
     if (event.key === 'Enter') {
       event.preventDefault()
-      openRow(rows[activeIndex])
+      if (idle) runCommand(activeIndex)
+      else openRow(rows[activeIndex])
     }
   }
 
@@ -202,10 +271,28 @@ export function GlobalSearch({
 
             {phase === 'loading' && <p className="search-palette__status" role="status">Searching…</p>}
 
-            {phase === 'idle' && (
-              <p className="search-palette__status">
-                Start typing to search Entities, Curations and Collections by name.
-              </p>
+            {idle && (
+              <>
+                <p className="search-palette__status">
+                  Start typing to search Entities, Curations and Collections by name.
+                </p>
+                <ul aria-label="Commands" className="ui-menu search-palette__commands">
+                  {commands.map((command, index) => (
+                    <li key={command.id}>
+                      <button
+                        className="ui-menu__item"
+                        data-active={index === activeIndex ? 'true' : undefined}
+                        onClick={() => runCommand(index)}
+                        onFocus={() => setActiveIndex(index)}
+                        type="button"
+                      >
+                        <span>{command.label}</span>
+                        {command.hint && <kbd className="ui-keyhint">{command.hint}</kbd>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
 
             {phase === 'error' && answer.error !== null && (

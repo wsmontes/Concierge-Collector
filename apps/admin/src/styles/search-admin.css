@@ -4,10 +4,10 @@
 
 .search-palette__trigger {
   align-items: center;
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border);
   border-radius: var(--cms-radius-md);
-  color: var(--cms-olive-800);
+  color: var(--cms-fg);
   cursor: pointer;
   display: inline-flex;
   font-size: var(--cms-text-sm);
@@ -17,14 +17,14 @@
 }
 
 .search-palette__trigger:hover {
-  border-color: var(--cms-olive-500);
+  border-color: var(--cms-accent);
 }
 
 .search-palette__trigger-hint {
   background: var(--cms-limestone-100);
-  border: 1px solid var(--theme-border-color);
+  border: 1px solid var(--cms-border);
   border-radius: var(--cms-radius);
-  color: var(--cms-olive-600);
+  color: var(--cms-fg-muted);
   font-family: inherit;
   font-size: var(--cms-text-xs);
   padding: 0 var(--cms-spacing-1);
@@ -32,20 +32,20 @@
 
 .search-palette__overlay {
   align-items: flex-start;
-  background: color-mix(in srgb, var(--cms-olive-900) 55%, transparent);
+  background: color-mix(in srgb, var(--cms-fg-strong) 55%, transparent);
   display: flex;
   inset: 0;
   justify-content: center;
   padding: clamp(var(--cms-spacing-3), 8vh, 6rem) var(--cms-spacing-3) var(--cms-spacing-3);
   position: fixed;
-  z-index: 200;
+  z-index: calc(var(--cms-z-overlay) + 10);
 }
 
 .search-palette__panel {
-  background: var(--theme-elevation-0);
-  border: 1px solid var(--theme-border-color);
+  background: var(--cms-surface-1);
+  border: 1px solid var(--cms-border);
   border-radius: var(--cms-radius-xl);
-  box-shadow: 0 1.5rem 3rem color-mix(in srgb, var(--cms-olive-900) 30%, transparent);
+  box-shadow: 0 1.5rem 3rem color-mix(in srgb, var(--cms-fg-strong) 30%, transparent);
   display: flex;
   flex-direction: column;
   max-height: min(70vh, 40rem);
@@ -56,22 +56,22 @@
 }
 
 .search-palette__input {
-  background: var(--theme-elevation-0);
+  background: var(--cms-surface-1);
   border: 0;
-  border-bottom: 1px solid var(--theme-border-color);
-  color: var(--theme-text);
+  border-bottom: 1px solid var(--cms-border);
+  color: var(--cms-fg);
   font-size: var(--cms-text-base);
   padding: var(--cms-spacing-3) var(--cms-spacing-3);
   width: 100%;
 }
 
 .search-palette__input:focus {
-  outline: 2px solid var(--cms-olive-500);
+  outline: 2px solid var(--cms-accent);
   outline-offset: -2px;
 }
 
 .search-palette__status {
-  color: var(--cms-olive-600);
+  color: var(--cms-fg-muted);
   font-size: var(--cms-text-sm);
   margin: 0;
   padding: var(--cms-spacing-3) var(--cms-spacing-3);
@@ -80,8 +80,8 @@
 .search-palette__error {
   align-items: center;
   background: var(--cms-limestone-100);
-  border-bottom: 1px solid var(--theme-border-color);
-  color: var(--cms-olive-800);
+  border-bottom: 1px solid var(--cms-border);
+  color: var(--cms-fg);
   display: flex;
   font-size: var(--cms-text-sm);
   gap: var(--cms-spacing-2-5);
@@ -94,8 +94,8 @@
 }
 
 .search-palette__retry {
-  background: var(--cms-olive-700);
-  border: 1px solid var(--cms-olive-800);
+  background: var(--cms-fg-muted);
+  border: 1px solid var(--cms-fg);
   border-radius: var(--cms-radius-md);
   color: var(--cms-limestone-50);
   cursor: pointer;
@@ -111,13 +111,13 @@
 }
 
 .search-palette__group + .search-palette__group {
-  border-top: 1px solid var(--theme-border-color);
+  border-top: 1px solid var(--cms-border);
   margin-top: var(--cms-spacing-1-5);
   padding-top: var(--cms-spacing-1-5);
 }
 
 .search-palette__group-title {
-  color: var(--cms-olive-600);
+  color: var(--cms-fg-muted);
   font-size: var(--cms-text-xs);
   letter-spacing: 0.08em;
   margin: 0;
@@ -135,17 +135,17 @@
 
 .search-palette__row--active {
   background: var(--cms-limestone-100);
-  box-shadow: inset 3px 0 0 var(--cms-olive-500);
+  box-shadow: inset 3px 0 0 var(--cms-accent);
 }
 
 .search-palette__row-label {
-  color: var(--theme-text);
+  color: var(--cms-fg);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .search-palette__row-detail {
-  color: var(--cms-olive-600);
+  color: var(--cms-fg-muted);
   display: flex;
   flex: 0 0 auto;
   font-size: var(--cms-text-xs);
@@ -157,14 +157,14 @@
 }
 
 .search-palette__row-id {
-  color: var(--cms-olive-500);
-  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--cms-accent);
+  font-family: var(--cms-font-mono);
   font-size: var(--cms-text-xs);
 }
 
 .search-palette__footer {
-  border-top: 1px solid var(--theme-border-color);
-  color: var(--cms-olive-600);
+  border-top: 1px solid var(--cms-border);
+  color: var(--cms-fg-muted);
   font-size: var(--cms-text-xs);
   margin: 0;
   padding: var(--cms-spacing-2) var(--cms-spacing-3);
@@ -190,4 +190,20 @@
   .search-palette__row-detail {
     flex-wrap: wrap;
   }
+}
+
+/* Ações da paleta no estado ocioso. Reaproveita as linhas do `.ui-menu` do kit
+   (é o mesmo desenho de item), mas sem a moldura própria do menu: dentro do
+   painel, a lista já está emoldurada por ele. */
+.search-palette__commands {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.search-palette__commands .ui-menu__item[data-active='true'] {
+  background: var(--cms-surface-3);
 }

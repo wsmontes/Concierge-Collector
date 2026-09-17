@@ -1,10 +1,13 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import { useEffect, useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import { isAdminRequestFailure } from '../../../content/record-types'
 import { isRecord } from '../../../content/value-guards'
-import { EditorFrame, textDraft, type FieldEditorProps } from './EditorFrame'
+import { Field } from '../../ui/Field'
+import { NoValue } from '../../ui/NoValue'
+import { EditorFrame, controlAria, textDraft, type FieldEditorProps } from './EditorFrame'
 
 /** One selectable curator: the identity written into `curator_id` plus its labels. */
 export interface CuratorOption {
@@ -147,23 +150,30 @@ export function CuratorPickerField({
   const current = textDraft(node.value)
 
   return (
-    <EditorFrame node={node} controlId={controlId} error={error} onCancel={onCancel}>
-      <input
-        className="content-editor__input"
-        id={controlId}
-        type="search"
-        placeholder="Search curators by name or email"
-        value={query}
-        onChange={(event) => {
-          setQuery(event.target.value)
-          setSelected(null)
-          setLoading(true)
-        }}
-      />
+    <EditorFrame node={node} onCancel={onCancel}>
+      <Field
+        description={node.descriptor?.help}
+        error={error ?? undefined}
+        htmlFor={controlId}
+        label={node.label}
+      >
+        <input
+          {...controlAria(controlId, node, error)}
+          className="ui-input"
+          onChange={(event) => {
+            setQuery(event.target.value)
+            setSelected(null)
+            setLoading(true)
+          }}
+          placeholder="Search curators by name or email"
+          type="search"
+          value={query}
+        />
+      </Field>
       <p className="curator-picker__current">
-        {current === '' ? 'No curator applied.' : `Applied curator: ${current}`}
+        {current === '' ? <NoValue /> : `Applied curator: ${current}`}
       </p>
-      {loading && <p role="status">Searching curators…</p>}
+      {loading && <p className="curator-picker__status" role="status">Searching curators…</p>}
       {!loading && error === null && options.length === 0 && (
         <p className="curator-picker__empty">No curators match this search.</p>
       )}
@@ -184,16 +194,17 @@ export function CuratorPickerField({
           ))}
         </ul>
       )}
-      <button
-        className="curator-picker__apply"
-        type="button"
+      <Button
+        buttonStyle="primary"
         disabled={selected === null}
+        margin={false}
         onClick={() => {
           if (selected !== null) onCommit(selected)
         }}
+        type="button"
       >
         Apply curator
-      </button>
+      </Button>
     </EditorFrame>
   )
 }

@@ -129,6 +129,8 @@ export interface Config {
   };
   locale: null;
   widgets: {
+    'content-health': ContentHealthWidget;
+    activity: ActivityWidget;
     collections: CollectionsWidget;
   };
   user: CmsUser;
@@ -169,18 +171,29 @@ export interface CmsUserAuthOperations {
   };
 }
 /**
+ * Admin identities and the access level each one holds. Read-only: access is granted at sign-in.
+ *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "cms-users".
  */
 export interface CmsUser {
   id: string;
+  /**
+   * Identifier of this user in the authorization service.
+   */
   fastapiUserId: string;
   email: string;
   name: string;
   picture?: string | null;
   role: 'admin' | 'curator' | 'viewer';
   authorized: boolean;
+  /**
+   * Revision of the authorization state this copy was synced from.
+   */
   authzRevision: string;
+  /**
+   * When the FastAPI authorization service last confirmed this identity.
+   */
   lastIntrospectedAt?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -543,6 +556,8 @@ export interface AuditEvent {
   createdAt: string;
 }
 /**
+ * Applications that call the consumer API, and the Collection access granted to each.
+ *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "consumer-applications".
  */
@@ -550,11 +565,20 @@ export interface ConsumerApplication {
   id: string;
   name: string;
   owner: string;
+  /**
+   * Suspended Applications cannot authenticate any credential.
+   */
   status: 'active' | 'suspended';
+  /**
+   * Collections this Application may read through the consumer API.
+   */
   allowedCollectionIds: {
     collectionId: string;
     id?: string | null;
   }[];
+  /**
+   * Request budget per minute granted to this Application.
+   */
   defaultRequestsPerMinute: number;
   credentialsRevision: number;
   revision: number;
@@ -562,22 +586,39 @@ export interface ConsumerApplication {
   createdAt: string;
 }
 /**
+ * Credentials issued to Applications. Only hashes are stored — the raw secret is never kept.
+ *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "consumer-credentials".
  */
 export interface ConsumerCredential {
   id: string;
+  /**
+   * Application this credential belongs to.
+   */
   applicationId: string;
   name: string;
+  /**
+   * Lookup prefix of the issued secret (cck_…) — the only part of the secret kept in clear.
+   */
   prefix: string;
   secretHash: string;
   issueIdempotencyKey: string;
   scopes: 'collections:read'[];
+  /**
+   * Revoked and expired credentials cannot authenticate.
+   */
   status: 'active' | 'revoked';
   createdBy: string;
+  /**
+   * A credential used past this instant can no longer authenticate.
+   */
   expiresAt?: string | null;
   revokedAt?: string | null;
   revokedBy?: string | null;
+  /**
+   * Last time this credential authenticated a request.
+   */
   lastUsedAt?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -1312,6 +1353,26 @@ export interface PayloadJobsStatsSelect<T extends boolean = true> {
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "content-health_widget".
+ */
+export interface ContentHealthWidget {
+  data?: {
+    [k: string]: unknown;
+  };
+  width: 'medium' | 'large' | 'x-large' | 'full';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "activity_widget".
+ */
+export interface ActivityWidget {
+  data?: {
+    [k: string]: unknown;
+  };
+  width: 'small' | 'medium' | 'large' | 'x-large' | 'full';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

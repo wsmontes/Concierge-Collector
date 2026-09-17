@@ -89,8 +89,8 @@ test('new application sends Collection IDs selected through the picker instead o
 
   render(<ApplicationViews />)
   await screen.findByRole('heading', { name: 'New application' })
-  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Guide API' } })
-  fireEvent.change(screen.getByLabelText('Owner'), { target: { value: 'Web' } })
+  fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Guide API' } })
+  fireEvent.change(screen.getByRole('textbox', { name: 'Owner' }), { target: { value: 'Web' } })
   fireEvent.click(await screen.findByRole('checkbox', { name: /Victoria/ }))
   fireEvent.click(screen.getByRole('button', { name: 'Create application' }))
 
@@ -138,4 +138,52 @@ test('Edit access patches with the loaded application revision and selected Coll
     allowedCollectionIds: [victoria.id, vancouver.id],
     defaultRequestsPerMinute: 90,
   })
+})
+test('a failed Collection read offers a retry that really loads again', async () => {
+  const loadCollections = vi.fn()
+    .mockRejectedValueOnce(new Error('unable_to_load_collections'))
+    .mockResolvedValueOnce([victoria])
+  render(<CollectionAccessPicker value={[]} onChange={vi.fn()} loadCollections={loadCollections} />)
+
+  const failure = await screen.findByRole('alert')
+  expect(failure).toHaveTextContent('Collections could not load')
+
+  fireEvent.click(within(failure).getByRole('button', { name: 'Try again' }))
+
+  expect(await screen.findByRole('checkbox', { name: /Victoria/ })).toBeEnabled()
+  expect(loadCollections).toHaveBeenCalledTimes(2)
+})
+
+test('search narrows the list and says so when nothing matches', async () => {
+  render(<CollectionAccessPicker
+    value={[]}
+    onChange={vi.fn()}
+    loadCollections={vi.fn().mockResolvedValue([victoria, vancouver])}
+  />)
+
+  const search = await screen.findByLabelText('Find Collections')
+  fireEvent.change(search, { target: { value: 'vanc' } })
+
+  expect(screen.queryByRole('checkbox', { name: /Victoria/ })).toBeNull()
+  expect(screen.getByRole('checkbox', { name: /Vancouver/ })).toBeEnabled()
+
+  fireEvent.change(search, { target: { value: 'zzz' } })
+
+  expect(await screen.findByLabelText('No Collections match your search')).toBeVisible()
+})
+
+test('counts what is granted and still lets existing archived access be removed', async () => {
+  const onChange = vi.fn()
+  render(<CollectionAccessPicker
+    value={[archived.id]}
+    onChange={onChange}
+    loadCollections={vi.fn().mockResolvedValue([victoria, archived])}
+  />)
+
+  expect(await screen.findByText('1 granted')).toBeVisible()
+  const archivedBox = screen.getByRole('checkbox', { name: /Old Collection/ })
+  expect(archivedBox).toBeEnabled()
+
+  fireEvent.click(archivedBox)
+  expect(onChange).toHaveBeenCalledWith([])
 })

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { CurationsWorkspace } from '../../../../src/components/curations/CurationsWorkspace'
 import type { CurationRecordResponse } from '../../../../src/content/record-types'
@@ -18,6 +18,34 @@ function page(count = 3) {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+})
+
+describe('CurationsWorkspace list states', () => {
+  test('shows a skeleton instead of an empty state while the first page is in flight', () => {
+    const { container } = render(<CurationsWorkspace
+      loadPage={() => new Promise(() => {})}
+      savedViewsClient={emptyViews}
+    />)
+
+    // Uma lista que ainda não respondeu não pode dizer que não há Curations.
+    expect(screen.queryByText('No Curations yet')).toBeNull()
+    expect(container.querySelectorAll('.ui-skeleton').length).toBeGreaterThan(0)
+  })
+
+  test('a failed page offers a retry that reads the page again', async () => {
+    const loadPage = vi.fn()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue(page(2))
+    render(<CurationsWorkspace loadPage={loadPage} savedViewsClient={emptyViews} />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Curations could not load')
+
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }))
+
+    expect(await screen.findByText('Restaurant 1')).toBeVisible()
+    expect(loadPage).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('CurationsWorkspace URL state', () => {
@@ -62,10 +90,10 @@ describe('CurationsWorkspace URL state', () => {
     fireEvent.click(screen.getByLabelText('Created'))
 
     expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument()
-    expect(container.querySelector('.curation-table__row [data-column="created"]')).toHaveTextContent('—')
+    expect(container.querySelector('tr[data-row] td[data-label="Created"]')).toHaveTextContent('—')
     expect(loadPage).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(decodeURIComponent(window.location.search)).toContain(
-      'columns=curation,entity,curator,type,city,concepts,collections,state,updated,created',
+      'columns=curation,curator,type,city,concepts,collections,state,updated,created',
     ))
 
     fireEvent.click(screen.getByLabelText('Created'))
@@ -140,21 +168,41 @@ describe('CurationsWorkspace preview', () => {
     expect(loadRecord).toHaveBeenCalledWith('curation-1')
     expect(screen.getByRole('link', { name: 'Open full Curation' })).toHaveAttribute('href', '/admin/curations/curation-1')
 
+    // O `Esc` é o contrato de dispensa da gaveta (o kit o trata também no
+    // caminho sem `ModalProvider`, que é o do jsdom).
     fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    // E a ação de fechar da própria gaveta continua sendo o `onClose` da tela.
+    fireEvent.click(screen.getByText('Restaurant 1'))
+    await screen.findByRole('dialog')
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 
   test('surfaces the drawer error state when the record loader rejects', async () => {
+    const loadRecord = vi.fn()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue(record)
     render(<CurationsWorkspace
       loadPage={vi.fn().mockResolvedValue(page(1))}
-      loadRecord={vi.fn().mockRejectedValue(new Error('boom'))}
+      loadRecord={loadRecord}
       savedViewsClient={emptyViews}
     />)
     await screen.findByText('Restaurant 1')
 
     fireEvent.click(screen.getByText('Restaurant 1'))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load this Curation. Try again.')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Unable to load this Curation.')
+
+    // O retry relê o registro em vez de só redesenhar a mensagem.
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('link', { name: 'Open full Curation' })).toHaveAttribute(
+      'href',
+      '/admin/curations/curation-1',
+    )
+    expect(loadRecord).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -197,8 +245,8 @@ describe('CurationsWorkspace saved views', () => {
     await screen.findByText('Restaurant 1')
     expect(screen.queryByRole('columnheader', { name: 'Created' })).toBeNull()
 
-    fireEvent.change(await screen.findByLabelText('Saved view'), { target: { value: 'view-1' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Apply saved view' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Views' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Victoria \+ Created/ }))
 
     await waitFor(() => expect(loadPage).toHaveBeenLastCalledWith({ cursor: null, filters: { city: 'Victoria' }, sort: 'name_asc' }))
     expect(screen.getByLabelText('City', { selector: 'input:not([type="checkbox"])' })).toHaveValue('Victoria')

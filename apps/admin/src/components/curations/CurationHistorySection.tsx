@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { AdminSection } from '../ui/AdminPage'
+import { FactList } from '../ui/Card'
 import { InlineNotice } from '../ui/InlineNotice'
 import { formatAbsoluteDate, formatRelativeDate } from '../ui/format-relative-date'
 import {
@@ -24,19 +25,9 @@ const HISTORY_KEY: Record<string, true | undefined> = {
   changes: true,
 }
 
-function Timestamp({ value }: { value: string | null }): ReactNode {
-  if (value === null) return <>Not recorded</>
-  const absolute = formatAbsoluteDate(value)
-  return <time dateTime={value} title={absolute ?? undefined}>{formatRelativeDate(value)}</time>
-}
-
-function HistoryRow({ label, children }: { label: string; children: ReactNode }): ReactNode {
-  return (
-    <div className="curation-history__row">
-      <dt>{label}</dt>
-      <dd>{children}</dd>
-    </div>
-  )
+function Timestamp({ value, fallback }: { value: string | null; fallback: string }): ReactNode {
+  if (value === null) return <>{fallback}</>
+  return <time dateTime={value} title={formatAbsoluteDate(value) ?? undefined}>{formatRelativeDate(value)}</time>
 }
 
 /**
@@ -58,17 +49,46 @@ export function CurationHistorySection({ record }: { record: Record<string, unkn
     if (HISTORY_KEY[key] === true) storedHistory.push({ key, value: record[key] })
   }
 
+  const facts: Array<{ label: string; value: ReactNode }> = [
+    { label: 'Created by', value: createdBy === null ? 'Not recorded' : <span className="ui-detail-mono">{createdBy}</span> },
+    { label: 'Updated by', value: updatedBy === null ? 'Not recorded' : <span className="ui-detail-mono">{updatedBy}</span> },
+    { label: 'Version', value: version },
+    { label: 'Curator', value: `${curator.name ?? 'Unknown curator'} · ${curator.kind}` },
+  ]
+  if (status !== null) facts.push({ label: 'Status', value: status })
+
+  const events = [
+    createdAt === null
+      ? null
+      : { key: 'created', label: 'Created', at: createdAt, by: createdBy },
+    updatedAt === null
+      ? null
+      : { key: 'updated', label: 'Updated', at: updatedAt, by: updatedBy },
+  ].filter((event): event is { key: string; label: string; at: string; by: string | null } => event !== null)
+
   return (
     <AdminSection title="History" description="Who wrote this Curation, and when.">
-      <dl className="curation-history">
-        <HistoryRow label="Created by">{createdBy ?? 'Not recorded'}</HistoryRow>
-        <HistoryRow label="Created"><Timestamp value={createdAt} /></HistoryRow>
-        <HistoryRow label="Updated by">{updatedBy ?? 'Not recorded'}</HistoryRow>
-        <HistoryRow label="Updated"><Timestamp value={updatedAt} /></HistoryRow>
-        <HistoryRow label="Version">{version}</HistoryRow>
-        <HistoryRow label="Curator">{curator.name ?? 'Unknown curator'} · {curator.kind}</HistoryRow>
-        {status !== null && <HistoryRow label="Status">{status}</HistoryRow>}
-      </dl>
+      {events.length === 0
+        ? <p className="ui-history__none">The record stores no creation or update timestamp.</p>
+        : (
+            <ol className="ui-timeline">
+              {events.map((event) => (
+                <li className="ui-timeline__item" key={event.key}>
+                  <span className="ui-timeline__marker" aria-hidden="true" />
+                  <div className="ui-timeline__body">
+                    <p className="ui-timeline__title">{event.label}</p>
+                    <p className="ui-timeline__time">
+                      <Timestamp value={event.at} fallback="Not recorded" />
+                    </p>
+                    {event.by !== null && (
+                      <p className="ui-timeline__by ui-detail-mono">{event.by}</p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+      <FactList facts={facts} className="ui-history__facts" />
       {storedHistory.length === 0
         ? (
             <InlineNotice tone="info">
@@ -77,12 +97,12 @@ export function CurationHistorySection({ record }: { record: Record<string, unkn
             </InlineNotice>
           )
         : (
-            <div className="curation-history__stored">
+            <div className="ui-history__stored">
               <h3>Stored change history</h3>
               {storedHistory.map((entry) => (
-                <div className="curation-history__entry" key={entry.key}>
+                <div className="ui-history__entry" key={entry.key}>
                   <h4>{entry.key}</h4>
-                  <pre>{readableText(entry.value)}</pre>
+                  <pre className="ui-detail-pre">{readableText(entry.value)}</pre>
                 </div>
               ))}
             </div>

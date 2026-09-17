@@ -20,7 +20,9 @@ import {
 } from '../../content/record-types'
 import { AdminPage } from '../ui/AdminPage'
 import { EmptyState } from '../ui/EmptyState'
+import { ErrorState } from '../ui/ErrorState'
 import { InlineNotice } from '../ui/InlineNotice'
+import { Skeleton, SkeletonRows } from '../ui/Skeleton'
 import { CurationAboutSection } from './CurationAboutSection'
 import { CurationAdvancedSection } from './CurationAdvancedSection'
 import { CurationAllFieldsSection } from './CurationAllFieldsSection'
@@ -30,7 +32,8 @@ import { CurationEditorialSection } from './CurationEditorialSection'
 import { CurationHistorySection } from './CurationHistorySection'
 import { CurationLink, navigateInBrowser, type CurationNavigate } from './CurationLink'
 import { CurationMediaSection } from './CurationMediaSection'
-import { CurationRecordHeader } from './CurationRecordHeader'
+import { CurationOutline } from './CurationOutline'
+import { CurationRecordFacts, CurationRecordHeader } from './CurationRecordHeader'
 import { loadCurationRecordFromBff, saveCurationRecordToBff } from './curation-record-client'
 import type { CurationSectionEditProps } from './CurationFieldBlock'
 import {
@@ -47,6 +50,22 @@ import {
 const LIST_HREF = '/admin/curations'
 /** The registry's name for the editorial block of a Curation (plan §15). */
 const EDITORIAL_SECTION = 'Your curation'
+/**
+ * The record column's sections, in reading order. The outline mirrors this list
+ * and each `AdminSection` derives its own anchor from its title, so the two only
+ * stay in step while this list names exactly what is rendered below — the
+ * behaviour test holds that: every outline item resolves to a rendered section.
+ */
+const RECORD_SECTIONS = [
+  'About',
+  EDITORIAL_SECTION,
+  'Concepts',
+  'Curation evidence',
+  'Collections',
+  'History',
+  'All fields',
+  'Advanced',
+] as const
 
 /** A save the server refused because the record moved on (plan §33). */
 interface CurationConflict {
@@ -98,7 +117,15 @@ function failureMessage(error: unknown): string {
 function LoadingSurface(): ReactNode {
   return (
     <AdminPage eyebrow="Curations" title="Curation" description="Loading this record.">
-      <p role="status">Loading Curation…</p>
+      <div className="ui-detail-loading" role="status">
+        <span className="ui-visually-hidden">Loading Curation…</span>
+        <div className="ui-detail-loading__identity">
+          <Skeleton width="var(--cms-spacing-32)" />
+          <Skeleton width="var(--cms-spacing-24)" />
+        </div>
+        <SkeletonRows rows={4} />
+        <SkeletonRows rows={3} />
+      </div>
     </AdminPage>
   )
 }
@@ -109,11 +136,13 @@ function NotFoundSurface({ curationId, navigate }: { curationId: string; navigat
       eyebrow="Curations"
       title="Curation not found"
       description={`No Curation is stored for ${curationId}.`}
+      breadcrumb={[{ href: LIST_HREF, label: 'Curations' }, { label: curationId }]}
       actions={<CurationLink href={LIST_HREF} navigate={navigate}>← All Curations</CurationLink>}
     >
       <EmptyState
         title="Nothing to show"
         description="This Curation may have been deleted, or the link may be wrong. Nothing was changed."
+        action={<CurationLink href={LIST_HREF} navigate={navigate}>Back to Curations</CurationLink>}
       />
     </AdminPage>
   )
@@ -132,11 +161,15 @@ function ErrorSurface({
     <AdminPage
       eyebrow="Curations"
       title="Curation unavailable"
+      breadcrumb={[{ href: LIST_HREF, label: 'Curations' }, { label: 'Unavailable' }]}
       actions={<CurationLink href={LIST_HREF} navigate={navigate}>← All Curations</CurationLink>}
     >
-      <InlineNotice tone="error" action={<button type="button" onClick={onRetry}>Try again</button>}>
-        {message}
-      </InlineNotice>
+      <ErrorState
+        title="This Curation could not be read"
+        description={message}
+        onRetry={onRetry}
+        retryLabel="Try again"
+      />
     </AdminPage>
   )
 }
@@ -337,16 +370,18 @@ export function CurationDetailWorkspace({
 
   return (
     <AdminPage
-      className="curation-detail"
+      className="ui-detail"
       eyebrow="Curations"
       title={title}
       description={`${curator.kind} curation · ${status}`}
+      breadcrumb={[{ href: LIST_HREF, label: 'Curations' }, { label: title }]}
       actions={<CurationLink href={LIST_HREF} navigate={navigate}>← All Curations</CurationLink>}
+      sticky
     >
       <CurationRecordHeader record={record} entity={entity} curator={curator} navigate={navigate} />
       {/* One always-present slot: a notice appearing must never remount the
           sections below, or an open editor would lose the draft it holds. */}
-      <div className="curation-detail__notices">
+      <div className="ui-detail-notices">
         {conflict !== null && (
           <InlineNotice
             tone="error"
@@ -354,14 +389,14 @@ export function CurationDetailWorkspace({
           >
             <p>This Curation changed while you were editing it.</p>
             <p>{conflict.label} was not saved. Your draft is still open in the editor below.</p>
-            <div className="curation-conflict">
-              <div className="curation-conflict__side">
+            <div className="ui-conflict">
+              <div className="ui-conflict__side">
                 <h3>Your draft</h3>
-                <pre>{readableText(conflict.draft)}</pre>
+                <pre className="ui-detail-pre">{readableText(conflict.draft)}</pre>
               </div>
-              <div className="curation-conflict__side">
+              <div className="ui-conflict__side">
                 <h3>Stored value</h3>
-                <pre>{readableText(conflict.stored)}</pre>
+                <pre className="ui-detail-pre">{readableText(conflict.stored)}</pre>
               </div>
             </div>
           </InlineNotice>
@@ -369,45 +404,53 @@ export function CurationDetailWorkspace({
         {saveError !== null && <InlineNotice tone="error">{saveError}</InlineNotice>}
         {notice !== null && <InlineNotice tone="success">{notice}</InlineNotice>}
       </div>
-      <CurationAboutSection
-        entity={entity}
-        restaurantNode={restaurantNode}
-        edit={editProps}
-        navigate={navigate}
-      />
-      <CurationEditorialSection nodes={editorialNodes} edit={editProps} />
-      {conceptsNode !== null && (
-        <CurationConceptsSection
-          node={conceptsNode}
-          groups={conceptGroups(record)}
-          edit={editProps}
-          navigate={navigate}
-        />
-      )}
-      <CurationMediaSection
-        buckets={sourceBuckets(record)}
-        transcriptNode={transcriptNode}
-        edit={editProps}
-      />
-      <CurationCollectionsSection collections={collections} navigate={navigate} />
-      <CurationHistorySection record={record} />
-      <CurationAllFieldsSection
-        record={record}
-        descriptors={descriptors}
-        search={search}
-        onSearchChange={setSearch}
-        editingPath={inspectorPath}
-        onRequestEdit={(node) => {
-          setSaveError(null)
-          setConflict(null)
-          setInspectorPath(node.path)
-        }}
-        onCommitValue={(node, value) => {
-          void commitValue(node, value)
-        }}
-        onCancelEdit={() => setInspectorPath(null)}
-      />
-      <CurationAdvancedSection record={record} flexible={flexibleNodes} edit={editProps} />
+      <div className="ui-detail-layout">
+        <div className="ui-detail-column">
+          <CurationAboutSection
+            entity={entity}
+            restaurantNode={restaurantNode}
+            edit={editProps}
+            navigate={navigate}
+          />
+          <CurationEditorialSection nodes={editorialNodes} edit={editProps} />
+          {conceptsNode !== null && (
+            <CurationConceptsSection
+              node={conceptsNode}
+              groups={conceptGroups(record)}
+              edit={editProps}
+              navigate={navigate}
+            />
+          )}
+          <CurationMediaSection
+            buckets={sourceBuckets(record)}
+            transcriptNode={transcriptNode}
+            edit={editProps}
+          />
+          <CurationCollectionsSection collections={collections} navigate={navigate} />
+          <CurationHistorySection record={record} />
+          <CurationAllFieldsSection
+            record={record}
+            descriptors={descriptors}
+            search={search}
+            onSearchChange={setSearch}
+            editingPath={inspectorPath}
+            onRequestEdit={(node) => {
+              setSaveError(null)
+              setConflict(null)
+              setInspectorPath(node.path)
+            }}
+            onCommitValue={(node, value) => {
+              void commitValue(node, value)
+            }}
+            onCancelEdit={() => setInspectorPath(null)}
+          />
+          <CurationAdvancedSection record={record} flexible={flexibleNodes} edit={editProps} />
+        </div>
+        <aside className="ui-detail-rail">
+          <CurationOutline sections={RECORD_SECTIONS} />
+          <CurationRecordFacts record={record} collections={collections} navigate={navigate} />
+        </aside>
+      </div>
     </AdminPage>
   )
 }

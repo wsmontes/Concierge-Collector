@@ -24,6 +24,7 @@ test('applying an advanced condition hands the clause set to the loader', async 
   render(<CurationsWorkspace loadPage={loadPage} savedViewsClient={emptyViews} />)
   await screen.findByText('Restaurant 1')
 
+  fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
   fireEvent.click(screen.getByRole('button', { name: 'Add filter' }))
   fireEvent.change(screen.getByLabelText('Filter 1 field'), { target: { value: 'curator_type' } })
   fireEvent.change(screen.getByLabelText('Filter 1 operator'), { target: { value: 'not_equals' } })
