@@ -416,9 +416,28 @@ resposta de lista (uma chamada em lote) em vez de uma por linha.
 - **"Projeção pesada (`transcript`) no registro"** — a tentativa de medir bytes por `resp.body()` voltou 0
   (a API não expõe o tamanho pelo evento) e não localizei nenhuma projeção incluindo `transcript` nos
   caminhos que o Admin lê. Sem evidência, retirado.
-- **Latência da página em `next dev`** não serve como número de produto (Turbopack compila por rota). O
-  que existe, medido: o boot do serviço do Admin leva ~90s em produção (janela de 502 logo após o deploy),
-  e isso é infraestrutura — não uma mudança de código.
+- **Latência da página em `next dev`** não serve como número de produto (Turbopack compila por rota).
+
+### TODO push em `main` reinicia o container fusionado — inclusive doc
+
+Medido em 2026-09-16/17 pela lista de deploys do serviço (12 entradas, todas com `branch: main`): cada push
+dispara deploy, sem filtro de caminho. As entradas `canceled`/`deactivated` são a prova de que o push
+seguinte **reinicia** o anterior, e entre elas está:
+
+|Commit|O que mudou|Deploy|
+|---|---|---|
+|`3dd5306d`|só o Collector (JS do site)|Admin redeployou|
+|`02c8a05e`|só documentação|Admin redeployou (cancelado pelo próximo)|
+|`82b378d0`|só documentação|Admin redeployou|
+
+O Admin e a API vivem no MESMO container (nginx → Next em 127.0.0.1:3000), e o boot dele leva ~90s em
+produção — medido hoje: `/admin/login` respondeu 502 por ~90s logo após `deploy_ended`, e voltou a 200 sem
+intervenção. Ou seja: **cada push compra ~90s de 502 em produção**, mesmo quando o commit é um `.md`.
+
+Consequência prática (regra): **agrupe edições de doc com o próximo commit funcional** em vez de publicá-las
+sozinhas. O static site também rebuilda a cada push, mas é atômico — não tem janela de boot; quem sofre é o
+container fusionado. O conserto durável (filtro por caminho ou auto-deploy desligado para doc) é configuração
+de dashboard/Render, não código — decisão do usuário.
 
 ### Flake conhecido (não investigado até o fim)
 
