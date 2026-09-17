@@ -316,10 +316,10 @@ Entregue: Fase 0 (field registry/inspector/editors), Fase 1 (`/admin/curations` 
   "selectedCount":1,"status":"committed"}` e deixou `draftSelectedCount: 1`. O contador é mantido nos dois
   modos; se o sintoma reaparecer, é do *header* (refresh), não do delta.
 - [ ] **Integração do admin com Mongo local: 4 falhas pré-existentes** (`publish-concurrency.int.test.ts` ×2, `selection-manifest.int.test.ts` ×2). Medido contra um worktree limpo em HEAD: falha igual, não é regressão do plano.
-- [ ] **`verify:full` não foi rodado ponta a ponta** neste trabalho; os specs relevantes rodaram isolados (`curations/keyboard.spec.ts` ✓ antes da onda 3; `collections/admin-ui.spec.ts` ✗ pelo item acima).
-- [ ] Admin: mídia — thumbnails/originais precisam de uma fronteira que sirva mídia; hoje a seção Media & sources mostra só o que está armazenado (não inventa URL).
-- [ ] Admin: reatribuição de curador precisa de um endpoint de diretório de usuários; hoje `curator_id` é read-only com essa razão explícita.
-- [ ] Admin: coluna "Collections" na lista de Entities e o filtro "sem Collections" na lista de Curations precisam do join de membership do CMS exposto como consulta de lista (o contador do dashboard já existe via `POST /catalog/content-health`).
+- [ ] **`verify:full` continua não rodado ponta a ponta** — e desde 2026-09-16 isso pesa mais: o trabalho de design mexeu em escala, raios, espaçamento e breakpoints, e só o Playwright olha essas mudanças num browser real. É o único gate que falta para qualificar o lote visual.
+- [x] ~~Admin: mídia~~ — a fronteira existe: `/records/entities/:id/image` (byte proxy com a service key no servidor) e a galeria por rank. Desde 2026-09-16 a lista de Entities e o detalhe a consomem, com o `private, max-age` do FastAPI preservado e thumbnail que não resolve saindo do DOM.
+- [x] ~~Admin: diretório de curadores~~ — `payload/endpoints/curators.ts` + `CuratorPickerField` entregues.
+- [x] ~~Admin: coluna Collections + filtro sem Collections~~ — entregues (`collection-reads.ts`; verificados na tela).
 - [ ] Admin: diff de versões no History precisa de snapshots — não existem para Curation; a tela diz isso. O lado de Collections tem versões e o draft diff já é humanizado.
 
 ## UX/UI do Collector — passe de 2026-09-16
