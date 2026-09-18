@@ -40,11 +40,9 @@ from app.models.catalog_media import (
 from app.services.catalog_service import require_current_cms_admin
 from app.services.display_media_service import (
     IMAGE_MISSING_DETAIL,
-    NO_SOURCES_CACHE_CONTROL,
     NO_SOURCES_DETAIL,
-    PENDING_CACHE_CONTROL,
-    STATE_NO_SOURCES,
     extract_image_sources,
+    media_404,
     read_hero_media,
 )
 from app.services.og_image_service import get_restaurant_image_bytes, get_restaurant_images
@@ -152,17 +150,8 @@ async def read_entity_image(
                 media_type=content_type,
                 headers={"Cache-Control": f"private, max-age={ENTITY_IMAGE_CACHE_TTL_SECONDS}"},
             )
-        if read.state == STATE_NO_SOURCES:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=NO_SOURCES_DETAIL,
-                headers={"Cache-Control": NO_SOURCES_CACHE_CONTROL},
-            )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=IMAGE_MISSING_DETAIL,
-            headers={"Cache-Control": PENDING_CACHE_CONTROL},
-        )
+        detail, headers = media_404(read)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail, headers=headers)
 
     website, place_id = _image_sources(db, entity_id)
 

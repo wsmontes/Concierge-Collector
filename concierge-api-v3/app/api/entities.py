@@ -33,11 +33,9 @@ from app.core.security import (
 from app.services.entity_service import upsert_entity, refresh_linked_curation_projections
 from app.services.display_media_service import (
     IMAGE_MISSING_DETAIL,
-    NO_SOURCES_CACHE_CONTROL,
     NO_SOURCES_DETAIL,
-    PENDING_CACHE_CONTROL,
-    STATE_NO_SOURCES,
     extract_image_sources,
+    media_404,
     read_hero_media,
 )
 from app.services.og_image_service import (
@@ -208,17 +206,11 @@ async def get_entity_image(
                 media_type=content_type,
                 headers={"Cache-Control": "public, max-age=3600"},
             )
-        if read.state == STATE_NO_SOURCES:
-            raise HTTPException(
-                status_code=404,
-                detail=NO_SOURCES_DETAIL,
-                headers={"Cache-Control": NO_SOURCES_CACHE_CONTROL},
-            )
-        raise HTTPException(
-            status_code=404,
-            detail=IMAGE_MISSING_DETAIL,
-            headers={"Cache-Control": PENDING_CACHE_CONTROL},
-        )
+        # `missing` (ainda resolvendo) e `failed` (já avaliado) NÃO são a mesma
+        # resposta para o cliente: a primeira autoriza nova tentativa, a segunda
+        # não. A decisão mora no serviço para os dois boundaries responderem igual.
+        detail, headers = media_404(read)
+        raise HTTPException(status_code=404, detail=detail, headers=headers)
 
     if not website and not place_id:
         raise HTTPException(status_code=404, detail=NO_SOURCES_DETAIL)

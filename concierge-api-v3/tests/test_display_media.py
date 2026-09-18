@@ -468,7 +468,13 @@ async def test_ausente_no_boundary_e_404_curto(async_client, in_memory_db):
 
     assert response.status_code == 404, response.text
     assert response.headers["cache-control"] == "private, max-age=60"
-    assert response.json()["detail"] == display.IMAGE_MISSING_DETAIL
+    # Sem fato gravado a resposta é TRANSITÓRIA, e o cliente precisa saber disso
+    # para voltar: o texto a distingue do "já avaliei e não há imagem", e o
+    # `Retry-After` diz quando. Colapsar os dois era o que congelava o card em
+    # placeholder depois de a foto existir (medido no Collector, 2026-09-17).
+    assert response.json()["detail"] == display.PENDING_DETAIL
+    assert response.json()["detail"] != display.IMAGE_MISSING_DETAIL
+    assert response.headers["retry-after"] == str(display.PENDING_RETRY_AFTER_SECONDS)
     # Enriquecimento desligado nos testes: nada foi gravado nem agendado.
     assert display.DISPLAY_MEDIA_FIELD not in in_memory_db.entities.find_one({"_id": "e1"})
     assert len(display._enrichment_queue) == 0
@@ -889,22 +895,85 @@ async def test_smoke_do_fato_persistido_ate_os_bytes(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_referencia_de_site_perde_query_e_nao_perde_a_imagem():
-    """Query sai da referência — inclusive quando era só cache-buster.
+def test_referencia_de_site_mantem_query_benigna_e_recusa_credencial():
+    """O que não pode ser persistido é CREDENCIAL, não a query.
 
-    Recusar toda URL com query jogaria fora as imagens cujo `?v=3`/`?w=1600` é
-    cache-buster ou largura, que é boa parte do que existe. A query sai; o que
-    sobra é a mesma imagem.
+    A regra anterior descartava a query inteira. Medido em produção (2026-09-17):
+    sites Next.js expõem a única imagem como `/_next/image?url=<imagem>&w=96&q=75`
+    — sem a query o URL não devolve imagem, a prova falhava e a Entity ficava sem
+    foto para sempre, apesar de o site ter imagem. Cache-buster (`?v=3`) e largura
+    (`?w=1600`) caíam no mesmo buraco.
+
+    O que continua fora é o que nomeia credencial/assinatura: esse valor expira e
+    a chave iria para o documento. Aí não há referência durável (`None`) e o
+    estado vira `failed` com `no_reference`.
     """
     from app.services.og_image_service import persistible_image_reference
 
+    # Benigna: fica (é o que faz a URL servir).
     assert persistible_image_reference("https://cdn.example.com/hero.jpg") == "https://cdn.example.com/hero.jpg"
     assert (
-        persistible_image_reference("https://cdn.example.com/hero.jpg?w=1600&v=3") == "https://cdn.example.com/hero.jpg"
+        persistible_image_reference("https://cdn.example.com/hero.jpg?w=1600&v=3")
+        == "https://cdn.example.com/hero.jpg?w=1600&v=3"
     )
-    assert persistible_image_reference("https://cdn.example.com/hero.jpg?sig=abc") == "https://cdn.example.com/hero.jpg"
+    # O caso medido: otimizador do Next com a imagem aninhada e SEM credencial.
+    next_optimizer = "https://site.example/_next/image?url=https%3A%2F%2Fcdn.example%2Flogo.png&w=96&q=75"
+    assert persistible_image_reference(next_optimizer) == next_optimizer
+    # Fragmento nunca serve para buscar imagem: sai sempre.
     assert persistible_image_reference("https://cdn.example.com/hero.jpg#frag") == "https://cdn.example.com/hero.jpg"
+
+    # Credencial: não há referência durável, em nenhuma das formas.
+    assert persistible_image_reference("https://cdn.example.com/hero.jpg?sig=abc") is None
+    assert persistible_image_reference("https://cdn.example.com/hero.jpg?key=AIzaSy") is None
+    assert persistible_image_reference("https://cdn.example.com/hero.jpg?X-Amz-Signature=deadbeef") is None
+    assert persistible_image_reference("https://cdn.example.com/hero.jpg?token=abc") is None
+    assert persistible_image_reference("https://cdn.example.com/hero.jpg?expires=1&sig=x") is None
+    # ...inclusive escondida dentro de outra URL (o `unquote` é o que a expõe).
+    assert (
+        persistible_image_reference("https://site.example/_next/image?url=https%3A%2F%2Fcdn%2Fa.png%3Fkey%3Dx") is None
+    )
     assert persistible_image_reference("/relativo.jpg") is None
+
+
+@pytest.mark.asyncio
+async def test_fato_falhado_e_404_LONGO_e_ausente_e_404_CURTO(async_client, in_memory_db):
+    """A distinção que o cliente usa para decidir entre tentar de novo e desistir.
+
+    `missing` (nada gravado, resolução recém-disparada) → 404 curto + `Retry-After`.
+    `failed` (o servidor já avaliou e o fato tem prazo próprio) → 404 longo: insistir
+    antes do `expires_at` não muda nada, e o cliente que não sabe disso marca o card
+    como "sem foto" para sempre ou pergunta de minuto em minuto.
+    """
+    in_memory_db._collections.clear()
+    _seed_cms_admin(in_memory_db)
+
+    sem_fato = _entity("e-sem-fato", place_id="ChIJ123")
+    in_memory_db.entities.insert_one(sem_fato)
+    curto = await async_client.get(f"{PATH}/e-sem-fato/image", headers=_headers())
+
+    com_falha = _entity(
+        "e-falhou",
+        display_media={
+            "state": "failed",
+            "last_error": "no_image_found",
+            "attempts": 1,
+            "resolved_at": datetime.now(timezone.utc),
+            "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+            # A impressão tem de ser a da fonte EFETIVA da Entity (website default,
+            # sem place_id): com outra, a leitura trataria o fato como de outra fonte.
+            "source_fingerprint": display.source_fingerprint("https://restaurante.example", None),
+        },
+    )
+    in_memory_db.entities.insert_one(com_falha)
+    longo = await async_client.get(f"{PATH}/e-falhou/image", headers=_headers())
+
+    assert curto.status_code == longo.status_code == 404
+    assert curto.headers["cache-control"] == "private, max-age=60"
+    assert curto.headers["retry-after"] == str(display.PENDING_RETRY_AFTER_SECONDS)
+    assert longo.headers["cache-control"] == "private, max-age=3600"
+    assert "retry-after" not in longo.headers
+    assert curto.json()["detail"] == display.PENDING_DETAIL
+    assert longo.json()["detail"] == display.IMAGE_MISSING_DETAIL
 
 
 def test_codigo_de_referencia_morta_retenta_em_dia_e_transitorio_em_hora():
@@ -979,7 +1048,7 @@ async def test_fila_cheia_descarta_com_contagem(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_vencedor_com_query_e_provado_antes_de_virar_resolved(monkeypatch):
-    """Cache-buster (`?w=1600`) some da referência, e a referência limpa é PROVADA.
+    """Cache-buster (`?w=1600`) FICA na referência, e ela é PROVADA antes de gravar.
 
     A pergunta que este caso responde: o documento pode dizer `resolved` para uma
     URL que nunca foi buscada? Não — a referência durável é buscada uma vez no
@@ -1002,9 +1071,12 @@ async def test_vencedor_com_query_e_provado_antes_de_virar_resolved(monkeypatch)
 
     value = await display.resolve_display_media(collection, _entity(website="https://rest.example.com"))
 
-    assert provados == [("website", "https://cdn.example.com/hero.jpg")]
+    # A query benigna sobrevive: é ela que faz o URL servir quando o site entrega
+    # a imagem por um otimizador (`_next/image?url=…`). A PROVA continua sendo o
+    # portão — referência que não devolve bytes agora nunca vira `resolved`.
+    assert provados == [("website", "https://cdn.example.com/hero.jpg?w=1600")]
     assert value["state"] == "resolved"
-    assert value["provider_ref"] == "https://cdn.example.com/hero.jpg"
+    assert value["provider_ref"] == "https://cdn.example.com/hero.jpg?w=1600"
     assert value["kind"] == "website"
 
 

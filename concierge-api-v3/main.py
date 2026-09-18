@@ -17,7 +17,7 @@ from app.core.http_error_contract import http_exception_content
 from app.core.lifespan import lifespan
 from app.core.rate_limit import limiter
 from app.core.security import require_role
-from app.core.observability import install_log_redaction, request_context_middleware
+from app.core.observability import configure_logging, install_log_redaction, request_context_middleware
 from app.core.provider_response_sanitization import places_provider_response_middleware
 from app.api import (
     entities,
@@ -58,6 +58,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+configure_logging()
 install_log_redaction()
 app.middleware("http")(request_context_middleware)
 app.middleware("http")(places_provider_response_middleware)

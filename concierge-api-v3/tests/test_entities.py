@@ -717,17 +717,31 @@ def test_entity_image_404_sem_fonte_de_imagem():
     svc.assert_awaited_once()
 
 
-def test_entity_image_404_pendente_com_cache_curto():
-    """Sem fato fresco (ausente/failed/expirado) → 404 curto: o enriquecimento
-    acabou de ser disparado, o cliente pergunta de novo em 1 minuto."""
-    from app.services.display_media_service import HeroMediaRead, STATE_FAILED
+def test_entity_image_404_curto_para_pendente_e_longo_para_falha():
+    """As DUAS classes de 404 sem imagem, e por que elas não podem ser a mesma.
 
-    (result, _), _ = _call_entity_image(
-        db_doc={"_id": "e1", "data": {"place_id": "ChIJ123"}},
-        hero=HeroMediaRead(state=STATE_FAILED),
-    )
-    assert result.status_code == 404
-    assert result.headers["Cache-Control"] == "private, max-age=60"
+    `missing` = não há fato gravado; o enriquecimento acabou de ser disparado nesta
+    leitura → 404 CURTO com `Retry-After`, que é o que autoriza o cliente a voltar.
+    `failed` = o servidor avaliou as fontes e o fato persistido tem prazo próprio →
+    404 LONGO; insistir antes de `expires_at` não muda nada.
+
+    Colapsar as duas (o contrato anterior) fazia o cliente ler "não há foto" onde o
+    servidor dizia "ainda não resolvi": o card ficava placeholder para sempre. Foi
+    medido no Collector em 2026-09-17 (12 de 30 cards pintados, plano por 2,5 min).
+    """
+    from app.services.display_media_service import HeroMediaRead, STATE_FAILED, STATE_MISSING
+
+    doc = {"_id": "e1", "data": {"place_id": "ChIJ123"}}
+
+    (pendente, _), _ = _call_entity_image(db_doc=doc, hero=HeroMediaRead(state=STATE_MISSING))
+    assert pendente.status_code == 404
+    assert pendente.headers["Cache-Control"] == "private, max-age=60"
+    assert pendente.headers["Retry-After"] == "15"
+
+    (falhou, _), _ = _call_entity_image(db_doc=doc, hero=HeroMediaRead(state=STATE_FAILED))
+    assert falhou.status_code == 404
+    assert falhou.headers["Cache-Control"] == "private, max-age=3600"
+    assert "Retry-After" not in falhou.headers
 
 
 def test_entity_image_gallery_keeps_400_and_404_contracts():

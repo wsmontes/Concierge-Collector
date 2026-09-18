@@ -3,7 +3,12 @@
 import logging
 
 from app.core.config import settings
-from app.core.observability import SecretRedactionFilter, install_log_redaction, redact_text
+from app.core.observability import (
+    SecretRedactionFilter,
+    configure_logging,
+    install_log_redaction,
+    redact_text,
+)
 
 
 def test_request_id_is_propagated_and_secret_is_redacted(client):
@@ -144,6 +149,39 @@ def test_excecao_com_chave_no_texto_e_redigida():
     assert "[REDACTED]" in saida
     # A parte útil da mensagem continua legível para quem lê o log.
     assert "places.googleapis.com" in saida
+
+
+def test_configure_logging_cria_handler_e_honra_o_nivel(monkeypatch):
+    """`LOG_LEVEL` era uma env var que ninguém lia — e o log do app não existia.
+
+    Medido em produção (2026-09-17): `capture_sessions TTL index ensured` (INFO do
+    lifespan) nunca apareceu no log do Render, e as linhas `display media:` — escritas
+    para diagnosticar o pipeline de imagem — também não. Sem handler no root, o
+    `logging.lastResort` só imprime WARNING para cima.
+    """
+    import logging as _logging
+
+    root = _logging.getLogger()
+    anteriores = list(root.handlers)
+    nivel_anterior = root.level
+    root.handlers = []
+    monkeypatch.setattr(settings, "log_level", "WARNING")
+    marcas = {nome: _logging.getLogger(nome).propagate for nome in ("uvicorn", "uvicorn.error", "uvicorn.access")}
+    try:
+        configure_logging()
+        meus = [h for h in root.handlers if getattr(h, "_concierge_root", False)]
+        assert len(meus) == 1, "um handler do app, não dois"
+        assert root.level == _logging.WARNING
+        # Idempotente: chamar de novo (reload/dupla importação) não empilha handler.
+        configure_logging()
+        assert len([h for h in root.handlers if getattr(h, "_concierge_root", False)]) == 1
+        # uvicorn não duplica: ele tem handler próprio.
+        assert all(_logging.getLogger(nome).propagate is False for nome in marcas)
+    finally:
+        root.handlers = anteriores
+        root.setLevel(nivel_anterior)
+        for nome, valor in marcas.items():
+            _logging.getLogger(nome).propagate = valor
 
 
 def test_install_log_redaction_coloca_o_filtro_nos_handlers():

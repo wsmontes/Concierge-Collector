@@ -208,18 +208,19 @@ describe('OgImageModule — falha transitória não dura a semana do negativo (2
     }
   });
 
-  test('o max-age=60 do servidor chega pelo throw do ApiService e encurta o negativo', async () => {
+  test('404 PENDENTE (max-age=60) não grava negativo nenhum — e a chave volta', async () => {
     const OgImageModuleClass = loadOgImageModule();
     const fakeCache = persistedCache();
-    // ApiService REAL: 4xx SEMPRE lança (handleErrorResponse consome o body) e o
-    // erro leva só status/detail. Sem o bridge do módulo, o `Cache-Control` da
-    // resposta morreria nesse caminho e o cliente guardaria 30 min onde o
-    // servidor disse 60 s ("ainda não resolvi o hero").
+    // O servidor responde "ainda não resolvi" com `max-age=60` + `Retry-After`, e o
+    // ApiService SEMPRE lança em 4xx (o bridge do módulo copia os headers para o
+    // erro). Gravar negativo aqui bloquearia a própria retentativa: `_readCache`
+    // devolveria `false` e o card nunca voltaria a perguntar — foi assim que 18 de
+    // 30 cards ficaram em placeholder no Collector (2026-09-17).
     const api = {
       async request() {
         const response = new Response('', {
           status: 404,
-          headers: { 'Cache-Control': 'private, max-age=60' }
+          headers: { 'Cache-Control': 'private, max-age=60', 'Retry-After': '15' }
         });
         await api.handleErrorResponse(response);
         return response;
@@ -227,8 +228,33 @@ describe('OgImageModule — falha transitória não dura a semana do negativo (2
       async handleErrorResponse(response) {
         const error = new Error('HTTP 404');
         error.status = response.status;
-        error.detail = 'imagem não encontrada (og:image e Places sem resultado)';
+        error.detail = 'imagem ainda não resolvida (resolução em andamento)';
         throw error;
+      }
+    };
+    window.ApiService = api;
+
+    const module = new OgImageModuleClass();
+    await module.init(); // instala o bridge no ApiService
+    const resultado = await module._resolveEntityImage('e1', 0, '', '', 'entity:e1:rank:0');
+
+    expect(resultado).toBeNull();
+    expect(fakeCache.put).not.toHaveBeenCalled();
+    expect(module._pendingKeys.has('entity:e1:rank:0')).toBe(true);
+  });
+
+  test('falha de rede sem headers vale 60 s, não a semana do negativo definitivo', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const fakeCache = persistedCache();
+    // Falha no CAMINHO até o servidor (rede/timeout): nada foi avaliado sobre a
+    // imagem, então o negativo vale 60 s e não os 30 min do definitivo — o card se
+    // cura no load seguinte em vez de passar meia hora como "sem foto".
+    // Falha SEM status e SEM headers: rede/timeout/5xx, que é a classe do negativo
+    // transitório. (Um 404 com `max-age` curto virou outra classe — PENDENTE — e tem
+    // teste próprio acima: lá nada é gravado.)
+    const api = {
+      async request() {
+        throw new Error('Failed to fetch');
       }
     };
     window.ApiService = api;

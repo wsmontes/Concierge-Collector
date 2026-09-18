@@ -499,6 +499,57 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     expect(card.querySelector('.collection-card__thumb').classList.contains('is-loaded')).toBe(false);
   });
 
+  test('404 PENDENTE volta a perguntar e pinta quando a foto aparece', async () => {
+    // Medido no Collector com browser novo (2026-09-17): 12 de 30 cards pintados e
+    // o preenchimento PARAVA ali — 18 placeholders continuavam placeholders mesmo
+    // depois de a foto existir no servidor, porque o card já estava marcado como
+    // processado e nada voltava a perguntar. O servidor agora diz "ainda não
+    // resolvi" com `Retry-After` + `max-age` curto; o cliente tem de voltar.
+    const OgImageModuleClass = loadOgImageModule();
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:depois-1') });
+
+    const pendente = {
+      ok: false,
+      status: 404,
+      headers: { get: (nome) => (nome === 'Retry-After' ? '1' : 'private, max-age=60') }
+    };
+    const request = vi.fn()
+      .mockResolvedValueOnce(pendente) // ainda resolvendo
+      .mockResolvedValueOnce({
+        ok: true,
+        blob: async () => new Blob(['jpeg-depois'], { type: 'image/jpeg' })
+      });
+    window.ApiService = { request };
+
+    const module = new OgImageModuleClass();
+    await module.init();
+
+    const card = document.createElement('div');
+    card.dataset.entityId = 'ent_pendente';
+    card.dataset.ogSource = 'https://site.example.com';
+    card.innerHTML = `
+      <div class="collection-card__media">
+        <img class="collection-card__thumb" loading="lazy" alt="" />
+        <div class="collection-card__thumb-fallback"></div>
+      </div>
+    `;
+    document.body.appendChild(card);
+
+    module._queue(card);
+
+    // Primeira resposta: pendente — nada de negativo definitivo, nada de legado.
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    expect(card.dataset.ogFailed).toBeUndefined();
+    expect(request.mock.calls.every((chamada) => !String(chamada[1]).includes('ogImage?'))).toBe(true);
+
+    // A volta acontece sozinha e a imagem entra quando o servidor tiver o fato.
+    await vi.waitFor(() => {
+      const thumb = card.querySelector('.collection-card__thumb');
+      expect(thumb.src).toContain('blob:depois-1');
+    }, { timeout: 4000 });
+    expect(request.mock.calls[1][1]).toBe('/entities/ent_pendente/image?rank=0');
+  });
+
   test('hard reset (Cmd+Shift+R) marca o cache para limpeza no próximo load', async () => {
     const OgImageModuleClass = loadOgImageModule();
     window.ApiService = { request: vi.fn() };

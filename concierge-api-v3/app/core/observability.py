@@ -93,6 +93,35 @@ class SecretRedactionFilter(logging.Filter):
         return True
 
 
+def configure_logging() -> None:
+    """Faz os logs OPERACIONAIS do processo existirem de verdade.
+
+    Medido em produção (2026-09-17): `LOG_LEVEL=INFO` estava no ambiente e **nada
+    o lia**; o root logger não tinha handler nenhum, então todo `logger.info(...)`
+    do app era engolido pelo `logging.lastResort` (que só imprime WARNING para
+    cima). O custo apareceu no diagnóstico do pipeline de imagem: as linhas
+    `display media: entity=… state=… ms=…` — escritas justamente para isso — não
+    existiam no log, e um defeito de mídia ficou sem rastro nenhum até ser
+    reproduzido no browser.
+
+    Formato deliberadamente magro (nível, logger, mensagem): o log de produção hoje
+    mistura uvicorn, supervisord e nginx na mesma linha do tempo, e um prefixo
+    longo só empurra a mensagem para fora da tela.
+    """
+    root = logging.getLogger()
+    level = getattr(logging, str(settings.log_level or "INFO").upper(), logging.INFO)
+    root.setLevel(level)
+    if not any(getattr(handler, "_concierge_root", False) for handler in root.handlers):
+        handler = logging.StreamHandler()  # stderr (o Render captura os dois)
+        handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+        handler._concierge_root = True  # type: ignore[attr-defined]
+        root.addHandler(handler)
+    # O uvicorn tem handlers próprios; sem `propagate=False` cada linha dele sairia
+    # duas vezes (a dele e a do root recém-configurado).
+    for proprio in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        logging.getLogger(proprio).propagate = False
+
+
 def install_log_redaction() -> None:
     """Manda o filtro para os HANDLERS, que é onde todo registro passa.
 

@@ -16,7 +16,7 @@ import logging
 import re
 import time
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 import httpx
 
@@ -79,6 +79,16 @@ COLLECTOR_CACHE_MAX_ENTRIES = 300
 SITE_HERO_CONFIDENCE_SCORE = 55.0
 
 _HTML_SNIFF = re.compile(rb"<(html|head|meta|body|!doctype)\b", re.I)
+
+# Parâmetros que nomeiam CREDENCIAL/assinatura numa URL de imagem. A query desses
+# não pode ser persistida: ela expira e carrega chave. O teste é sobre o nome do
+# parâmetro (não sobre o valor), porque o formato varia — inclusive dentro de
+# outra URL aninhada (`?url=...?key=...`), que é o caso do otimizador de imagem
+# do Next. Aplicado à query JÁ decodificada (`unquote`), senão o `%3Fkey%3D` de
+# uma URL aninhada escaparia.
+_CREDENTIAL_PARAM = re.compile(
+    r"(?i)(?:^|[?&])(?:key|api[_-]?key|access[_-]?key|token|signature|sig|expires|x-amz-[a-z0-9-]+|x-goog-[a-z0-9-]+)"
+)
 
 # page URL -> (candidate URLs or None, expires_at)
 _og_cache: "OrderedDict[str, tuple[Optional[List[str]], float]]" = OrderedDict()
@@ -167,18 +177,22 @@ PLACES_API_PHOTO_MEDIA_URL = "https://places.googleapis.com/v1/{photo_name}/medi
 
 
 def persistible_image_reference(url: str) -> Optional[str]:
-    """Referência DURÁVEL de uma imagem de site: origem + caminho, sem query.
+    """Referência DURÁVEL de uma imagem de site: a URL, sem fragmento.
 
-    A mesma razão do `_safe_log_url` vale aqui: a URL buscada pode estar
-    assinada, e o que é persistido não pode carregar credencial. Então a query
-    sai — inclusive quando ela era só cache-buster (`?v=3`) ou largura (`?w=1600`),
-    o que mantém a imagem utilizável.
+    O que NÃO pode ser persistido é CREDENCIAL, não a query. A regra anterior
+    descartava toda a query — inclusive quando ela é o que faz a URL servir. O
+    caso medido em produção (2026-09-17): sites Next.js expõem a única imagem como
+    `/_next/image?url=<imagem>&w=96&q=75`, um URL do otimizador; sem a query ele
+    não devolve imagem nenhuma, então a prova do enriquecimento falhava, o fato
+    virava `failed` e a Entity ficava sem foto PARA SEMPRE — apesar de o site ter
+    imagem. Cache-buster (`?v=3`) e largura (`?w=1600`) sofriam o mesmo.
 
-    Quem paga o caso assinado é a CADÊNCIA, não a referência: a leitura que
-    falhar num refetch registra um código de referência morta
-    (`http_403`/`http_404`/`invalid_reference`) e o retry desses códigos é raro
-    (diário) em vez de horário — uma tentativa por dia, não um laço por hora
-    redescobrindo o mesmo vencedor efêmero.
+    A query fica, então, EXCETO quando nomeia credencial/assinatura (o valor
+    expiraria e a chave iria para o documento). Aí a resposta é `None`: não há
+    referência durável, o estado é `failed` com `no_reference`, e a cadência
+    rara de referência morta cobre a retentativa. Quem paga o caso efêmero é a
+    CADÊNCIA, não a referência: uma leitura que falhe no refetch registra
+    `http_403`/`http_404` e o retry desses códigos é diário, não horário.
     """
     try:
         parts = urlsplit(url)
@@ -186,7 +200,9 @@ def persistible_image_reference(url: str) -> Optional[str]:
         return None
     if parts.scheme not in ("http", "https") or not parts.netloc:
         return None
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    if parts.query and _CREDENTIAL_PARAM.search(unquote(parts.query)):
+        return None
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
 
 
 def places_photo_media_url(photo_name: str) -> str:

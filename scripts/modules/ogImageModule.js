@@ -79,6 +79,20 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         // a instabilidade dura) e o card se cura no refresh seguinte. E só com
         // o navegador online: estar offline não é "este card não tem imagem".
         this._transientNegativeTtlMs = 60 * 1000;
+        // RETENTATIVA DE PENDENTE (2026-09-17). O servidor responde "ainda não
+        // resolvi" com `Cache-Control` curto e `Retry-After`; essa resposta NÃO
+        // pode marcar o card como processado para sempre. Medido no Collector com
+        // browser novo: 12 de 30 cards pintados e o preenchimento PARAVA ali, com
+        // 18 placeholders que continuavam placeholders mesmo depois de a foto
+        // existir no servidor — porque `data-og-resolved` já estava no card e nada
+        // voltava a perguntar.
+        this._maxPendingRetries = 3;
+        this._pendingRetryFallbackMs = 15000;
+        this._retryCounts = new Map();
+        this._pendingKeys = new Set();
+        // Espera que o SERVIDOR pediu para esta chave (`Retry-After`), quando ele
+        // mandou uma: o fallback de 15 s é o piso, não a regra.
+        this._pendingRetryDelayMs = new Map();
         // prefetch da próxima página (padrão ImagePrefetcher do feedmine)
         this._prefetchedPages = new Set();
         this._prefetchTimer = null;
@@ -277,6 +291,13 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                 .then((objectUrl) => {
                     if (!item.card) return; // prefetch: só aquece o cache
                     if (!objectUrl) {
+                        if (this._pendingKeys.has(item.key)) {
+                            // Resolução em andamento no servidor: o placeholder do
+                            // markup já é o estado visual certo, e a volta é
+                            // agendada em vez de o card ser dado como processado.
+                            this._schedulePendingRetry(item.card, item.key);
+                            return;
+                        }
                         // sem imagem em nenhuma fonte — véu de fallback
                         this._applyFallback(item.card);
                         return;
@@ -355,6 +376,15 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                 entityDefinitive = true; // 200 mas vazio: sem imagem
                 serverKnowsEntity = true;
             } else if (response) {
+                const retryMs = this._pendingRetryMs(response);
+                if (retryMs > 0) {
+                    // "Ainda não resolvi": negativa transitória. Não grava negativo
+                    // (bloquearia a própria retentativa) e não marca definitivo.
+                    this._pendingKeys.add(key);
+                    this._pendingRetryDelayMs.set(key, retryMs);
+                    serverHint = response;
+                    return null;
+                }
                 entityDefinitive = true; // 404/400 do servidor: sem imagem
                 serverKnowsEntity = true;
             }
@@ -369,6 +399,15 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             // overture_fc7bec32… (sushidoescadao.foxdelivery.app) devolvia 400 no
             // endpoint por entity e o cliente repetia a MESMA URL no og-image.
             const status = error && error.status;
+            if (status === 404 && this._pendingRetryMs(error) > 0) {
+                // O servidor não tem o fato AINDA (o enriquecimento foi disparado
+                // nesta própria leitura). Gravar "sem foto" aqui é o defeito que
+                // deixava o card placeholder para sempre.
+                this._pendingKeys.add(key);
+                this._pendingRetryDelayMs.set(key, this._pendingRetryMs(error));
+                serverHint = error;
+                return null;
+            }
             if (status === 400 || status === 404) {
                 entityDefinitive = true;
                 // 404 "Entity … not found" = o servidor nunca olhou as fontes
@@ -737,6 +776,65 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         const match = /(?:^|[\s,])max-age\s*=\s*"?(\d+)"?/i.exec(value);
         if (!match) return null;
         return Number(match[1]) * 1000;
+    }
+
+    /**
+     * Quanto esperar antes de perguntar DE NOVO por esta imagem (0 = não é pendente).
+     *
+     * O sinal é do SERVIDOR, não um palpite do cliente: `Retry-After` explícito
+     * manda; sem ele, um `max-age` curto (≤ 120 s) já significa "a resolução
+     * acabou de ser enfileirada" — o caso definitivo (`failed`, `no_sources`) vem
+     * com 3600. Sem essa separação o cliente só tinha "sem imagem" para os dois, e
+     * escolhia a leitura pessimista.
+     * @param {Response|Error|null} source - resposta/erro da tentativa
+     * @returns {number} espera em ms (0 = definitivo, não insistir)
+     */
+    _pendingRetryMs(source) {
+        let retryAfter = '';
+        try {
+            const headers = source && source.headers;
+            if (headers && typeof headers.get === 'function') {
+                retryAfter = headers.get('Retry-After') || '';
+            }
+        } catch (error) {
+            retryAfter = '';
+        }
+        const seconds = Number(String(retryAfter).trim());
+        if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, 60000);
+        const maxAgeMs = this._serverMaxAgeMs(source);
+        if (maxAgeMs !== null && maxAgeMs > 0 && maxAgeMs <= 120000) return this._pendingRetryFallbackMs;
+        return 0;
+    }
+
+    /**
+     * Reenfileira um card cuja imagem ainda está sendo resolvida no servidor.
+     *
+     * Bounded por `_maxPendingRetries` e com espera crescente: a resolução típica
+     * leva segundos, e desistir depois de três tentativas (15 s, 30 s, 45 s) evita
+     * laço apertado em cima de uma Entity que não vai resolver.
+     * @param {HTMLElement} card - card alvo
+     * @param {string} key - chave lógica (entity:<id>:rank:<n>)
+     */
+    _schedulePendingRetry(card, key) {
+        const attempts = this._retryCounts.get(key) || 0;
+        if (attempts >= this._maxPendingRetries) {
+            this._pendingKeys.delete(key);
+            this._applyFallback(card);
+            return;
+        }
+        this._retryCounts.set(key, attempts + 1);
+        const base = this._pendingRetryDelayMs.get(key) || this._pendingRetryFallbackMs;
+        const delay = base * (attempts + 1);
+        setTimeout(() => {
+            if (!card || !card.isConnected) return;
+            // A promessa deduplicada já assentou em `null`; sem soltar as duas
+            // marcas a próxima passada devolveria o cache e nada seria perguntado.
+            this._pending.delete(key);
+            this._pendingKeys.delete(key);
+            this._pendingRetryDelayMs.delete(key);
+            if (card.dataset) delete card.dataset.ogResolved;
+            this._queue(card);
+        }, delay);
     }
 
     /**

@@ -74,13 +74,28 @@ KIND_GOOGLE_PLACES = "google_places"
 
 NO_SOURCES_DETAIL = "entity sem website nem place_id (sem fonte de imagem)"
 IMAGE_MISSING_DETAIL = "imagem não encontrada (og:image e Places sem resultado)"
+# A leitura respondeu "ainda não resolvi" (não há fato gravado): é uma resposta
+# TRANSITÓRIA, e o cliente precisa saber disso para voltar — ver `media_404`.
+PENDING_DETAIL = "imagem ainda não resolvida (resolução em andamento)"
 
-# Cache-Control das RESPOSTAS sem imagem. `no_sources` é um fato do documento
-# (só muda se alguém editar a Entity) e não re-enfileira nada: 1h. O resto é
-# transitório — o enriquecimento acabou de ser disparado, então o cliente
-# pergunta de novo em 1 minuto.
+# Cache-Control das RESPOSTAS sem imagem. Duas classes, e a diferença é a única
+# coisa que permite ao cliente decidir entre TENTAR DE NOVO e desistir:
+# - transitório (`pending`): o enriquecimento acabou de ser disparado → 60 s, e o
+#   cliente volta depois disso;
+# - definitivo-por-ora (`no_sources`, `failed`): o servidor já avaliou as fontes e
+#   o fato persistido diz que não há imagem → 1 h.
+# Antes desta separação, `failed` e `pending` saíam os DOIS com `max-age=60` e o
+# mesmo texto. O cliente não tinha como distingui-los e escolhia a leitura
+# pessimista (negativo definitivo, sem fallback e sem nova tentativa): o card
+# ficava placeholder mesmo depois de a foto existir. Medido no Collector em
+# 2026-09-17 — 12 de 30 cards pintados, e o preenchimento parava ali.
 NO_SOURCES_CACHE_CONTROL = "private, max-age=3600"
+UNAVAILABLE_CACHE_CONTROL = "private, max-age=3600"
 PENDING_CACHE_CONTROL = "private, max-age=60"
+# Quanto o cliente deve esperar antes de perguntar de novo por uma imagem
+# pendente. A resolução típica (baixar a página + ranquear + reencodar) leva
+# segundos; 15 s evita um laço apertado sem fazer o operador esperar em pé.
+PENDING_RETRY_AFTER_SECONDS = 15
 
 # Enriquecimento: UMA resolução por vez no processo, e uma janela de silêncio
 # por Entity depois do despacho. Sem a janela, uma Entity que falha (site fora
@@ -499,6 +514,31 @@ async def read_hero_media(entities_collection, entity: dict) -> HeroMediaRead:
         _schedule_enrichment(entities_collection, entity)
 
     return HeroMediaRead(state=STATE_FAILED if failed else STATE_MISSING)
+
+
+def media_404(read: HeroMediaRead) -> Tuple[str, Dict[str, str]]:
+    """A resposta 404 de uma leitura sem imagem — decisão ÚNICA para os dois boundaries.
+
+    Existe para que o contrato entre servidor e cliente seja um só (a rota pública
+    e a do CMS não podem divergir):
+
+    - ``no_sources`` → o próprio documento diz que não há fonte: definitivo;
+    - ``failed``     → o servidor avaliou as fontes e falhou; o fato persistido já
+      tem prazo (`expires_at`), e enquanto ele vale não adianta insistir: definitivo
+      por ora;
+    - ``missing``    → **não há fato gravado**. O enriquecimento acabou de ser
+      enfileirado, então esta resposta é a mais transitória das três: 60 s e um
+      ``Retry-After`` explícito, que é o que autoriza o cliente a voltar em vez de
+      marcar o card como "sem foto" e nunca mais perguntar.
+    """
+    if read.state == STATE_NO_SOURCES:
+        return NO_SOURCES_DETAIL, {"Cache-Control": NO_SOURCES_CACHE_CONTROL}
+    if read.state == STATE_MISSING:
+        return PENDING_DETAIL, {
+            "Cache-Control": PENDING_CACHE_CONTROL,
+            "Retry-After": str(PENDING_RETRY_AFTER_SECONDS),
+        }
+    return IMAGE_MISSING_DETAIL, {"Cache-Control": UNAVAILABLE_CACHE_CONTROL}
 
 
 def _schedule_enrichment(entities_collection, entity: dict) -> bool:

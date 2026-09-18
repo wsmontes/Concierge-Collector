@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     # PERSISTIDO no documento da Entity como referência opaca (nunca bytes,
     # nunca URL assinada): a descoberta — HTML do site, og:image, Places,
     # download e ranking — deixa de acontecer a cada render de card.
+    # Nível dos logs do PRÓPRIO processo (uvicorn tem o dele). Era uma env var que
+    # ninguém lia: `LOG_LEVEL=INFO` em produção não configurava nada, porque não
+    # existia handler no root — ver `observability.configure_logging`.
+    log_level: str = "INFO"
     display_media_ttl_days: int = 14
     display_media_failure_retry_seconds: int = 3600
     # O enriquecimento é disparado em background pela própria leitura; nos
