@@ -338,14 +338,21 @@ def _winner_reference(image) -> Optional[Tuple[str, str]]:
 
 
 def _log_resolution(key: str, value: dict, started: float) -> None:
-    """Uma linha por resolução: entity, estado, tipo e duração — nunca URL."""
+    """Uma linha por resolução: entity, estado, tipo, duração e o CÓDIGO da falha.
+
+    O código entra porque é ele que responde "por que este card não tem foto?" —
+    e é curto por contrato (`no_image_found`, `image_rejected`, `http_404`…), nunca
+    URL nem corpo de resposta. Sem ele a linha dizia apenas `state=failed` e o
+    diagnóstico voltava a ser adivinhação.
+    """
     logger.info(
-        "display media: entity=%s state=%s kind=%s attempts=%s ms=%d",
+        "display media: entity=%s state=%s kind=%s attempts=%s ms=%d error=%s",
         key,
         value["state"],
         value["kind"] or "-",
         value["attempts"],
         int((time.monotonic() - started) * 1000),
+        value["last_error"] or "-",
     )
 
 

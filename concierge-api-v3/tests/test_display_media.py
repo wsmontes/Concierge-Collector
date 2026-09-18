@@ -574,6 +574,47 @@ async def test_fato_sem_impressao_nao_serve_e_reenfileira(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.asyncio
+async def test_imagem_recusada_por_regra_nao_e_chamada_de_decode_failed(monkeypatch):
+    """Rejeição por REGRA ≠ falha de decodificação — o código persistido é lido por quem opera.
+
+    Medido em produção: o único candidato do site era um logo 80×80 atrás de um
+    otimizador de imagem; o fato ficou `failed` com `decode_failed`, e isso mandou a
+    investigação para o lado do PIL/WebP quando a resposta era "a imagem não serve
+    como foto". `prepare_image` levanta ValueError para as três regras (tamanho,
+    proporção, sem detalhe); o resto continua `decode_failed`.
+    """
+    import io
+
+    from PIL import Image as PILImage
+
+    from app.services import og_image_service as og
+
+    def png(w, h):
+        buffer = io.BytesIO()
+        PILImage.new("RGB", (w, h), (200, 30, 30)).save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    async def baixa_pequena(url, timeout, *, error_sink=None):
+        return png(40, 40)  # abaixo de CARD_IMAGE_MIN_DIM
+
+    async def baixa_lixo(url, timeout, *, error_sink=None):
+        return b"isto nao e imagem"
+
+    monkeypatch.setattr(og, "_download_bytes", baixa_pequena)
+    recusada, codigo = await og.get_reference_image_bytes("website", "https://cdn.example/logo.png")
+    assert recusada is None
+    assert codigo == "image_rejected"
+
+    # O cache de bytes do processo pouparia a segunda busca: limpar é o que faz
+    # esta segunda chamada exercitar mesmo o caminho de decodificação.
+    og._og_bytes_cache.clear()
+    monkeypatch.setattr(og, "_download_bytes", baixa_lixo)
+    lixo, codigo_lixo = await og.get_reference_image_bytes("website", "https://cdn.example/nao-imagem.png")
+    assert lixo is None
+    assert codigo_lixo == "decode_failed"
+
+
 async def test_leitura_sobrevive_a_falha_de_escrita(monkeypatch):
     entity = _entity(display_media=_resolved())
     collection = _BrokenCollection(entity)

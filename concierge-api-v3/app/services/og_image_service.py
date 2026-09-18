@@ -669,6 +669,15 @@ async def get_reference_image_bytes(kind: str, provider_ref: str) -> Tuple[Optio
         return None, errors[0] if errors else "download_failed"
     try:
         result = _resize_to_card_jpeg(raw)
+    except ValueError:
+        # Rejeição por REGRA de imagem (pequena demais, achatada, sem detalhe):
+        # `prepare_image` levanta ValueError para essas três, e o corpo baixado
+        # pode perfeitamente ser uma imagem válida. Chamar isso de
+        # `decode_failed` custou uma investigação inteira no lado errado — um logo
+        # 80×80 do otimizador do Next fez procurar bug de PIL/WebP quando a
+        # resposta era "a imagem não serve como foto". O código persistido é lido
+        # por quem opera: ele diz a verdade ou atrapalha.
+        return None, "image_rejected"
     except Exception:
         return None, "decode_failed"
     _bytes_cache_put(cache_key, result)
