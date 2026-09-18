@@ -276,3 +276,75 @@ uma** linha `[jobs] runner in-process ativo (intervalo 60000ms, até 10 jobs/cic
 sinal que importa de verdade, e que já existia: `GET /health/worker` responde **200** com
 `observedAt` de segundos antes — esse endpoint só devolve 200 se um heartbeat foi gravado nos últimos
 180 s, e quem CRIA o agendado é o runner. Ou seja: o runner não só sobe uma vez, ele está executando.
+
+---
+
+## 11. O Collector em browser novo: por que as fotos não apareciam
+
+Relato do usuário: abriu o Collector num browser novo e **quase todos os cards ficaram no placeholder**.
+Reproduzido em contexto virgem (`Storage.clearDataForOrigin` + `Network.clearBrowserCache` antes de
+carregar): **6 de 30 cards pintados**, subindo para 12 e **parando ali por 2,5 minutos**. Três defeitos
+somados, nenhum visível em teste ou em build verde.
+
+### 11.1 A referência durável descartava a query — e alguns sites só servem imagem POR query
+
+`persistible_image_reference` removia a query inteira ("sem query, sem fragment"). Para sites Next.js a
+única imagem é `/_next/image?url=<imagem>&w=96&q=75`: **sem a query o URL não devolve imagem**, a PROVA do
+enriquecimento falhava, o fato virava `failed` e a Entity ficava sem foto para sempre — apesar de o site
+ter imagem. Reproduzido local com o site real (`deliverypizzaprime.com.br`: candidato único, o URL do
+otimizador). Cache-buster (`?v=3`) e largura (`?w=1600`) caíam no mesmo buraco.
+
+O que não pode ser persistido é **credencial**, não a query: `key`, `api_key`, `token`, `sig`,
+`signature`, `expires`, `X-Amz-*`, `X-Goog-*` — inclusive escondida dentro de outra URL (`unquote` é o que
+a expõe). Aí continua não havendo referência durável (`failed`/`no_reference`) e a cadência rara cobre a
+retentativa.
+
+### 11.2 O 404 colapsava "ainda não resolvi" e "não há imagem"
+
+`missing` (sem fato gravado, enriquecimento recém-disparado) e `failed` (servidor já avaliou) saíam os
+**dois** com `max-age=60` e o mesmo texto. O cliente não tinha como distingui-los e escolhia a leitura
+pessimista: negativo definitivo, sem fallback e **sem nova tentativa** — o card ficava placeholder mesmo
+depois de a foto existir. Agora `media_404` decide em UM lugar e os dois boundaries (rota pública e
+`/catalog/*` do CMS) respondem igual:
+
+|Estado|Resposta|Para que serve|
+|---|---|---|
+|`missing`|404 + `max-age=60` + `Retry-After: 15`|autoriza o cliente a VOLTAR|
+|`failed`|404 + `max-age=3600`|o fato persistido já tem prazo; insistir não muda nada|
+|`no_sources`|404 + `max-age=3600`|o documento diz que não há fonte|
+
+### 11.3 O card nunca era revisitado
+
+Com `data-og-resolved` no card, nada voltava a perguntar na sessão. Agora uma resposta PENDENTE agenda a
+volta (respeitando o `Retry-After` do servidor, teto de 3 tentativas) e **não grava negativo** — que
+bloquearia a própria retentativa (`_readCache` devolveria `false`).
+
+### 11.4 `LOG_LEVEL` existia e ninguém o lia
+
+O root logger não tinha handler nenhum: todo `logger.info(...)` do app era engolido pelo
+`logging.lastResort` (WARNING+). As linhas `display media:` — escritas exatamente para diagnosticar este
+pipeline — **não existiam no log de produção**, e foi por isso que o defeito não tinha rastro. Com
+`configure_logging()` (nível honrado, uvicorn sem duplicar) o log passou a responder a pergunta certa:
+
+```
+INFO app.services.display_media_service: display media: entity=osm_n_11107996278 state=failed kind=- attempts=1 ms=587 error=no_image_found
+```
+
+E o código da falha ficou honesto: rejeição por REGRA de imagem (pequena, achatada, sem detalhe) era
+rotulada `decode_failed`, o que mandou uma investigação inteira para o lado do PIL/WebP quando a resposta
+era "a imagem não serve como foto" (logo 80×80). Agora é `image_rejected`, e `decode_failed` fica com o
+que é de fato falha de decodificação.
+
+### 11.5 O que a medição mostra DEPOIS — e o que continua sendo verdade
+
+- Cliente e servidor agora **concordam em 100%**: dos 30 cards, o servidor serve 12 e o browser pinta
+  exatamente 12; os 18 placeholders correspondem a `failed`/`no_sources` (`max-age=3600`, sem
+  `Retry-After`) — ou seja, o placeholder está **certo** ali.
+- O ciclo sob demanda foi observado inteiro em produção: primeira leitura → `404` **pendente** com
+  `Retry-After: 15`; 20 s depois → `404` **definitivo** (o enriquecimento rodou e gravou o fato);
+  `ms=587`/`ms=786` mostram que a resolução é rápida.
+- **Parte do acervo não tem foto utilizável, e nenhuma correção muda isso**: sites mortos
+  (`habibs.com.br` não resolve → 400), sem `og:image` (`mcdonalds.com.br` → 404), ou cujo único candidato
+  é um logo (rejeitado pelo gate de imagem). O acervo tem entidades cujo "website" é um perfil de
+  Instagram — o log agora diz `no_image_found` para elas. Backfill dessas continua sendo decisão do
+  usuário, e o número honesto é o do dashboard.
