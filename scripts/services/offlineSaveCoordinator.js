@@ -153,12 +153,12 @@
         _pollWriterInstall(attempt = 0) {
             this.installKnownCurationWriters();
             if (this._allKnownWritersAvailable()) return;
-            if (attempt >= 300) {
-                this.log.warn('Curation writer coordinator could not attach to every live writer');
-                return;
+            if (attempt === 300) {
+                this.log.warn('Curation writer coordinator is still waiting for live writers; retrying slowly');
             }
+            const retryMs = attempt < 300 ? 100 : 5000;
             clearTimeout(this._writerTimer);
-            this._writerTimer = this.runtime.setTimeout?.(() => this._pollWriterInstall(attempt + 1), 100);
+            this._writerTimer = this.runtime.setTimeout?.(() => this._pollWriterInstall(attempt + 1), retryMs);
         }
 
         _pollInstall(attempt = 0) {
