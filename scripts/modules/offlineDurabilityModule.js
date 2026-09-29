@@ -324,6 +324,18 @@
                 await this.restoreDraftForTarget(curation, uiManager);
                 return result;
             };
+
+            // Cold deep links can open the editor before this wrapper finishes
+            // installing. Catch up once at installation time instead of
+            // requiring the user to leave and reopen the Curation.
+            const activeCuration = uiManager.restaurantModule?.currentCuration || null;
+            const editorAlreadyOpen = !uiManager.isEditingEntity &&
+                (uiManager.isEditingRestaurant === true || uiManager.currentView === 'concepts');
+            if (activeCuration?.curation_id && editorAlreadyOpen) {
+                Promise.resolve()
+                    .then(() => this.restoreDraftForTarget(activeCuration, uiManager))
+                    .catch((error) => this.log.warn('Late draft restore failed:', error));
+            }
         }
 
         async restoreDraftForTarget(curation, uiManager = global.uiManager) {
