@@ -150,7 +150,7 @@ describe('buildFieldTree', () => {
     expect(index['legacy_notes']?.label).toBe('Legacy notes')
     expect(index['legacy_notes']?.type).toBe('text')
     expect(index['legacy_notes']?.owner).toBe('curation')
-    expect(index['legacy_notes']?.editable).toBe(true)
+    expect(index['legacy_notes']?.editable).toBe(false)
 
     // A container nobody described is still walked open.
     expect(pathsOf(tree).filter((path) => path.startsWith('metadata'))).toEqual([
@@ -168,7 +168,7 @@ describe('buildFieldTree', () => {
     expect(index['sources']?.descriptor).not.toBeNull()
   })
 
-  test('offers the structured editor to every unregistered field', () => {
+  test('keeps every unregistered field visible but read-only', () => {
     const index = treeIndex(
       buildFieldTree(
         {
@@ -190,16 +190,16 @@ describe('buildFieldTree', () => {
       const node = index[path]
       expect(node?.descriptor).toBeNull()
       expect(node?.type).toBe(type)
-      expect(node?.editable).toBe(true)
+      expect(node?.editable).toBe(false)
       expect(node?.system).toBe(false)
     }
 
-    // Inference still decides the editor, but an untyped value is still
-    // editable: the generic editor is how a legacy empty field gains a value.
+    // Runtime inference still describes the value, but it never grants write
+    // authority to a path the registry has not classified.
     const typeless = treeIndex(buildFieldTree({ legacy_null: null }, CURATION_FIELDS, 'curation'))
     expect(typeless['legacy_null']?.descriptor).toBeNull()
     expect(typeless['legacy_null']?.type).toBe('unknown')
-    expect(typeless['legacy_null']?.editable).toBe(true)
+    expect(typeless['legacy_null']?.editable).toBe(false)
   })
 
   test('labels array slots the registry describes with a template', () => {
