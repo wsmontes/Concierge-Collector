@@ -31,6 +31,15 @@ function deps(overrides: Partial<Parameters<typeof requireCurrentAdmin>[1]> = {}
 afterEach(() => { vi.restoreAllMocks() })
 
 describe('requireCurrentAdmin', () => {
+  test('forwards the normalized request id to FastAPI introspection', async () => {
+    const injected = deps()
+    const headers = new Headers({ 'X-Request-Id': 'req-123' })
+
+    await expect(requireCurrentAdmin(headers, injected)).resolves.toBe(admin)
+
+    expect(injected.introspect).toHaveBeenCalledWith(session.subject, 'req-123')
+  })
+
   test('keeps the request alive when the cms-users mirror write loses a race', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     // Medido em produção: o espelho grava a mesma linha a cada request e a
