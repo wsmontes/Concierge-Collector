@@ -35,6 +35,7 @@
     "typecheck:admin": "npm run typecheck --workspace=@concierge/admin",
     "generate:contracts": "node scripts/release/run-python.mjs scripts/export_admin_openapi.py && npm run generate --workspace=@concierge/fastapi-client",
     "check:contracts": "node scripts/release/run-python.mjs scripts/export_admin_openapi.py --check && npm run check --workspace=@concierge/fastapi-client",
+    "check:secrets": "node scripts/release/check-secrets.mjs",
     "verify": "node scripts/release/release-gate.mjs",
     "verify:full": "node scripts/release/release-gate.mjs --full",
     "verify:collections:acceptance": "node scripts/operations/verify-collections-acceptance.mjs",
