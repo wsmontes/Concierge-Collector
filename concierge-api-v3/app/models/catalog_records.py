@@ -4,7 +4,8 @@ The Admin must render 100% of a stored Curation or Entity — including fields n
 editorial screen knows about — so these payloads carry the stored document
 key-for-key (only BSON-only values are made JSON-safe at the boundary) instead
 of an allowlisted projection. Writes go through the CMS-boundary PATCH routes,
-which reuse the domain update pipelines and refuse system-managed fields.
+which reuse the domain update pipelines and accept only declared editable
+domain roots; unknown and system-managed fields remain read-only.
 """
 
 from datetime import datetime
@@ -23,21 +24,21 @@ CONTENT_HEALTH_MEMBER_LIMIT = 10000
 
 
 class CmsCurationUpdate(CurationUpdate):
-    """Curation update sent by the CMS: every root key is accepted.
+    """Curation update sent by the CMS.
 
-    The domain model stays strict on purpose; this boundary is the one that
-    lets the Admin edit a legacy field no screen ever declared (plan §45).
-    System-managed keys are rejected against the raw request body before this
-    model is built, so a rejected key never reaches a write.
+    Whole-record reads preserve unknown/legacy keys, but writes are deliberately
+    allowlisted by the domain model. Visibility is not write authority: a new
+    root must be classified in the domain contract before the Admin can mutate
+    it.
     """
 
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class CmsEntityUpdate(EntityUpdate):
-    """Entity update sent by the CMS: every root key is accepted."""
+    """Entity update sent by the CMS, restricted to declared domain roots."""
 
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class CatalogRecordResponse(BaseModel):
