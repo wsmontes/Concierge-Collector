@@ -125,6 +125,13 @@ describe('OfflineDurability draft integration', () => {
     expect(durabilitySrc).toContain('`curation:${targetCurationId}`');
   });
 
+  test('catches up when a cold deep link opened the editor before the restore wrapper installed', () => {
+    expect(durabilitySrc).toContain('const activeCuration = uiManager.restaurantModule?.currentCuration || null');
+    expect(durabilitySrc).toContain('const editorAlreadyOpen = !uiManager.isEditingEntity');
+    expect(durabilitySrc).toContain('this.restoreDraftForTarget(activeCuration, uiManager)');
+    expect(durabilitySrc).toContain('Late draft restore failed');
+  });
+
   test('flushes on visibilitychange and pagehide', () => {
     expect(durabilitySrc).toContain('visibilitychange');
     expect(durabilitySrc).toContain('pagehide');
