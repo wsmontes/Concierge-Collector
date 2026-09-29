@@ -170,12 +170,12 @@
                 this._pollWriterInstall();
                 return;
             }
-            if (attempt >= 300) {
-                this.log.warn('Save coordinator could not attach after all compatibility wrappers');
-                return;
+            if (attempt === 300) {
+                this.log.warn('Save coordinator is still waiting for compatibility wrappers; retrying slowly');
             }
+            const retryMs = attempt < 300 ? 100 : 5000;
             clearTimeout(this._timer);
-            this._timer = this.runtime.setTimeout?.(() => this._pollInstall(attempt + 1), 100);
+            this._timer = this.runtime.setTimeout?.(() => this._pollInstall(attempt + 1), retryMs);
         }
 
         start() {
