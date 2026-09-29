@@ -68,6 +68,7 @@ export function createReleasePlan(mode = 'standard', { env = process.env } = {})
 
   const adminEnv = withAdminTestEnv(env)
   const standard = [
+    npmStep('Tracked secret scan', 'check:secrets'),
     npmStep('Collector build freshness', 'build:collector:check'),
     npmStep('Collector lint', 'lint:collector'),
     // Os testes do Collector incluem integração contra o FastAPI do stack
