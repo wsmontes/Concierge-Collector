@@ -7,7 +7,7 @@ import { parseWhereClauses } from '../../explorer/url-state'
 import { isCurationSort } from '../../explorer/types'
 import { summariesRowsFor, withoutCollectionsPage } from '../../explorer/without-collections'
 import { AdminHttpError, adminErrorResponse } from '../../http/errors'
-import { withAdmin } from '../../http/with-admin'
+import { withAdmin, type AdminRequest } from '../../http/with-admin'
 import { RecordsAdapter } from '../../records/client'
 
 type CatalogSearch = Pick<CurationAdapter, 'search' | 'scanPage' | 'startScan'>
@@ -215,10 +215,12 @@ function curationViewEndpoints(): Endpoint[] {
   ]
 }
 
+type AdminExplorerRequest = AdminRequest & PayloadRequest
+
 /** Browser BFF for the Explorer. It always derives actor and service credentials server-side. */
 export function explorerEndpoints(
-  adapterForRequest: (request: PayloadRequest) => CatalogSearch = () => new CurationAdapter(),
-  rowsAdapterForRequest: (request: PayloadRequest) => CurationRows = () => new RecordsAdapter(),
+  adapterForRequest: (request: AdminExplorerRequest) => CatalogSearch = (request) => new CurationAdapter(request.requestId),
+  rowsAdapterForRequest: (request: AdminExplorerRequest) => CurationRows = (request) => new RecordsAdapter(request.requestId),
 ): Endpoint[] {
   return [
     ...curationViewEndpoints(),
@@ -226,23 +228,24 @@ export function explorerEndpoints(
       method: 'get', path: '/admin/v1/curations',
       handler: (request: PayloadRequest) => withAdmin(async (adminRequest, actor) => {
         try {
-          const input = searchInput(request, actor.user_id)
-          if (withoutCollectionsMode(request)) {
-            const catalog = adapterForRequest(request)
-            const summaries = rowsAdapterForRequest(request)
+          const guardedRequest = adminRequest as AdminExplorerRequest
+          const input = searchInput(guardedRequest, actor.user_id)
+          if (withoutCollectionsMode(guardedRequest)) {
+            const catalog = adapterForRequest(guardedRequest)
+            const summaries = rowsAdapterForRequest(guardedRequest)
             return Response.json(await withoutCollectionsPage({
               actorId: input.actorId,
               cursor: input.cursor,
               filters: input.filters,
               limit: input.limit,
-              memberCurationIds: await exclusionIds(request),
+              memberCurationIds: await exclusionIds(guardedRequest),
               rowsFor: summariesRowsFor(async (ids, actorId) => (await summaries.curationSummaries(ids, actorId)).items),
               scan: catalog,
               ...(input.sort ? { sort: input.sort } : {}),
             }))
           }
-          const page = await adapterForRequest(request).search(input)
-          const counts = await collectionsCounts(request, page.items.map((row) => row.curation_id))
+          const page = await adapterForRequest(guardedRequest).search(input)
+          const counts = await collectionsCounts(guardedRequest, page.items.map((row) => row.curation_id))
           return Response.json({
             ...page,
             items: page.items.map((row) => ({ ...row, collections_count: counts.get(row.curation_id) ?? 0 })),
