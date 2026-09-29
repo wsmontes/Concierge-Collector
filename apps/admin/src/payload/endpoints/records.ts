@@ -225,8 +225,8 @@ function guard(handler: (request: AdminRecordRequest, actor: CmsIdentity) => Pro
  * way to move a record forward.
  */
 export function recordEndpoints(
-  adapterForRequest: (request: AdminRecordRequest) => RecordsAdapter = () => new RecordsAdapter(),
-  searchAdapterForRequest: (request: AdminRecordRequest) => Pick<CurationAdapter, 'search'> = () => new CurationAdapter(),
+  adapterForRequest: (request: AdminRecordRequest) => RecordsAdapter = (request) => new RecordsAdapter(request.requestId),
+  searchAdapterForRequest: (request: AdminRecordRequest) => Pick<CurationAdapter, 'search'> = (request) => new CurationAdapter(request.requestId),
 ): Endpoint[] {
   return [
     {
