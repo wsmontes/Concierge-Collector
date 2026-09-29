@@ -44,6 +44,42 @@ describe('withAdmin', () => {
     expect(handler).not.toHaveBeenCalled()
   })
 
+  test('materializes one safe request id for auth and the handler', async () => {
+    const requireCurrentAdmin = vi.fn().mockResolvedValue(admin)
+    const handler = vi.fn(async (request: Request & { actor: CmsIdentity; requestId: string }) => {
+      expect(request.requestId).toBe('req-123')
+      return Response.json({ requestId: request.requestId })
+    })
+    const guarded = withAdmin(handler, { requireCurrentAdmin })
+
+    const response = await guarded(new Request('https://admin.example.test/api/admin/v1/collections', {
+      headers: { 'X-Request-Id': 'req-123' },
+    }))
+
+    expect(response.status).toBe(200)
+    const authHeaders = requireCurrentAdmin.mock.calls[0][0] as Headers
+    expect(authHeaders.get('x-request-id')).toBe('req-123')
+    await expect(response.json()).resolves.toEqual({ requestId: 'req-123' })
+  })
+
+  test('replaces an unsafe request id before authorization', async () => {
+    const requireCurrentAdmin = vi.fn().mockResolvedValue(admin)
+    const handler = vi.fn(async (request: Request & { actor: CmsIdentity; requestId: string }) =>
+      Response.json({ requestId: request.requestId }),
+    )
+    const guarded = withAdmin(handler, { requireCurrentAdmin })
+
+    const response = await guarded(new Request('https://admin.example.test/api/admin/v1/collections', {
+      headers: { 'X-Request-Id': '<script>' },
+    }))
+
+    const body = await response.json() as { requestId: string }
+    expect(body.requestId).toMatch(/^[A-Fa-f0-9-]{36}$/)
+    expect(body.requestId).not.toBe('<script>')
+    const authHeaders = requireCurrentAdmin.mock.calls[0][0] as Headers
+    expect(authHeaders.get('x-request-id')).toBe(body.requestId)
+  })
+
   test('passes the current introspected identity as the authoritative actor', async () => {
     const handler = vi.fn(async (request: Request & { actor: CmsIdentity }, actor: CmsIdentity) => {
       expect(request.actor).toBe(admin)
