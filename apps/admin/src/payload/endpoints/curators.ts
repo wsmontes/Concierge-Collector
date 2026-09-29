@@ -57,8 +57,8 @@ function toCuratorRows(value: unknown): CuratorRow[] {
  * the actor header and the error mapping stay in one place; the browser never
  * learns the service key.
  */
-async function searchCurators(query: string | null, actorId: string): Promise<CuratorRow[]> {
-  const rows = await new RecordsAdapter().curatorDirectory(query, actorId)
+async function searchCurators(query: string | null, actorId: string, requestId?: string): Promise<CuratorRow[]> {
+  const rows = await new RecordsAdapter(requestId).curatorDirectory(query, actorId)
   return toCuratorRows(rows)
 }
 
@@ -75,15 +75,15 @@ function guard(handler: (request: AdminCuratorRequest, actor: CmsIdentity) => Pr
  * never as an empty list.
  */
 export function curatorEndpoints(
-  search: (input: { query: string | null; actorId: string }) => Promise<CuratorRow[]> = ({ query, actorId }) =>
-    searchCurators(query, actorId),
+  search: (input: { query: string | null; actorId: string; requestId?: string }) => Promise<CuratorRow[]> = ({ query, actorId, requestId }) =>
+    searchCurators(query, actorId, requestId),
 ): Endpoint[] {
   return [
     {
       method: 'get', path: '/admin/v1/records/curators',
       handler: guard(async (adminRequest, actor) => {
         const query = optionalParam(adminRequest, 'q', 200)
-        return Response.json({ items: await search({ query, actorId: actor.user_id }) })
+        return Response.json({ items: await search({ query, actorId: actor.user_id, requestId: adminRequest.requestId }) })
       }),
     },
   ]
