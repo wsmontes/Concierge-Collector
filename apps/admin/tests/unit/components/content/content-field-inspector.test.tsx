@@ -340,7 +340,7 @@ describe('ContentFieldInspector', () => {
     expect(row.textContent?.toLocaleLowerCase()).not.toContain('error')
   })
 
-  test('still offers an editor for a field the registry has never described', () => {
+  test('shows an unregistered field without offering edit controls', () => {
     const onRequestEdit = vi.fn<(node: FieldNode) => void>()
     render(
       <ContentFieldInspector
@@ -354,10 +354,10 @@ describe('ContentFieldInspector', () => {
       />,
     )
 
-    fireEvent.click(within(rowFor('legacy_note')).getByRole('button', { name: 'Edit' }))
-    expect(onRequestEdit).toHaveBeenCalledTimes(1)
-    expect(onRequestEdit.mock.calls[0][0].descriptor).toBeNull()
-    expect(onRequestEdit.mock.calls[0][0].path).toBe('legacy_note')
+    const row = rowFor('legacy_note')
+    expect(within(row).getByText('Not in the field registry')).toBeVisible()
+    expect(within(row).queryByRole('button', { name: 'Edit' })).toBeNull()
+    expect(onRequestEdit).not.toHaveBeenCalled()
   })
 
   test('binds the search input to the parent term and names it when nothing matches', () => {
