@@ -3,12 +3,12 @@ import type { Model } from 'mongoose'
 import type { AdminCurationRow } from '@concierge/fastapi-client'
 import type { CmsIdentity } from '../../auth/fastapi-authz-client'
 import { AdminHttpError } from '../../http/errors'
-import { withAdmin } from '../../http/with-admin'
+import { withAdmin, type AdminRequest } from '../../http/with-admin'
 import { RecordsAdapter } from '../../records/client'
 
 type DocumentModel = Model<Record<string, unknown>>
 type Cursor = { after: string }
-type AdminCollectionRequest = PayloadRequest & { actor: CmsIdentity }
+type AdminCollectionRequest = PayloadRequest & AdminRequest
 
 /** The one boundary capability these read models need: a batch of editorial rows. */
 type SummaryAdapter = Pick<RecordsAdapter, 'curationSummaries'>
@@ -74,7 +74,7 @@ async function summariesFor(
 
 /** Read models are cursor-paginated so the browser never receives a full Collection. */
 export function collectionReadEndpoints(
-  summariesForRequest: (request: AdminCollectionRequest) => SummaryAdapter = () => new RecordsAdapter(),
+  summariesForRequest: (request: AdminCollectionRequest) => SummaryAdapter = (request) => new RecordsAdapter(request.requestId),
 ): Endpoint[] {
   return [
     {
