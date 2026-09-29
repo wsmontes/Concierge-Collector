@@ -10,17 +10,18 @@ npm run verify
 
 O gate padrão executa, em ordem e com fail-fast:
 
-1. Collector build freshness (`build:collector:check`)
-2. Collector lint
-3. Collector unit tests
-4. Admin unit tests
-5. Admin typecheck
-6. Admin lint
-7. Admin production build com variáveis de teste seguras
-8. API unit tests, excluindo integrações, Mongo e APIs externas
-9. API formatting (`black --check`)
-10. API lint (`flake8`)
-11. Generated contract checks
+1. Tracked secret scan (`check:secrets`) — bloqueia padrões de credenciais reais em arquivos versionados
+2. Collector build freshness (`build:collector:check`)
+3. Collector lint
+4. Collector unit tests
+5. Admin unit tests
+6. Admin typecheck
+7. Admin lint
+8. Admin production build com variáveis de teste seguras
+9. API unit tests, excluindo integrações, Mongo e APIs externas
+10. API formatting (`black --check`)
+11. API lint (`flake8`)
+12. Generated contract checks
 
 Esse é o comando recomendado antes de push, merge e deploy normal.
 
