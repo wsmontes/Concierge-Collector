@@ -21,7 +21,7 @@ from app.models.llm_models import (
     LLMGetRestaurantAvailabilityResponse,
 )
 from app.models.llm_tools import get_all_tools, get_tools_manifest
-from app.core.rate_limit import limiter
+from app.core.rate_limit import auth_header_key, limiter
 from app.core.security import require_role
 from app.services.llm_place_service import LLMPlaceService
 from app.core.database import get_database
@@ -38,7 +38,7 @@ def get_llm_service() -> LLMPlaceService:
 
 
 @router.post("/search-restaurants", response_model=LLMSearchRestaurantsResponse)
-@limiter.limit("20/minute")
+@limiter.limit("20/minute", key_func=auth_header_key)
 def search_restaurants(
     request: Request,
     body: LLMSearchRestaurantsRequest,
@@ -94,7 +94,7 @@ def search_restaurants(
 
 
 @router.post("/get-restaurant-snapshot", response_model=LLMGetRestaurantSnapshotResponse)
-@limiter.limit("20/minute")
+@limiter.limit("20/minute", key_func=auth_header_key)
 def get_restaurant_snapshot(
     request: Request,
     body: LLMGetRestaurantSnapshotRequest,
@@ -169,7 +169,7 @@ def get_restaurant_snapshot(
 
 
 @router.post("/get-restaurant-availability", response_model=LLMGetRestaurantAvailabilityResponse)
-@limiter.limit("20/minute")
+@limiter.limit("20/minute", key_func=auth_header_key)
 def get_restaurant_availability(
     request: Request,
     body: LLMGetRestaurantAvailabilityRequest,
