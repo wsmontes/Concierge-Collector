@@ -2,17 +2,13 @@
  * Limpeza do boot x chaves do app (set/2026)
  *
  * Todo boot roda `cleanupBrowserData()` (scripts/core/main.js) ANTES do UIManager
- * e do DataStore, e ela apaga TODA chave de localStorage fora da lista de
- * preservação. Uma chave que o app grava e não está preservada desaparece em
- * silêncio a cada reload — foi assim que a persistência de filtros
- * (`collector.filters.v1`) e os rascunhos de formulário do StateStore
- * (`concierge-state`) morreram, sem nenhum teste acusar: a suíte de persistência
- * carrega só o uiManager, nunca o boot.
+ * e do DataStore. A limpeza agora é migration-driven: só chaves explicitamente
+ * obsoletas podem ser apagadas. Uma chave nova e ainda desconhecida pelo boot
+ * precisa sobreviver automaticamente, evitando repetir as regressões históricas
+ * que apagaram onboarding, filtros e drafts.
  *
- * Aqui a função REAL é extraída do arquivo publicado e executada contra as
- * chaves que o app grava, vindas de duas fontes:
- *   - o registro canônico `AppConfig.storage.keys` (scripts/core/config.js);
- *   - os literais escritos direto em `localStorage.setItem` no código publicado.
+ * Aqui a função REAL é extraída do arquivo publicado. O teste ainda inventaria
+ * todas as chaves vivas do app para provar que nenhuma migração as apaga.
  */
 import { readFileSync, readdirSync, statSync } from 'fs';
 import path from 'path';
@@ -145,9 +141,19 @@ describe('limpeza do boot preserva as chaves do app', () => {
     ).toEqual([]);
   });
 
-  test('a limpeza continua removendo chave que o app não conhece', () => {
-    localStorage.setItem('legacy_key_sem_dono', 'x');
+  test('uma chave nova que o boot ainda não conhece sobrevive', () => {
+    localStorage.setItem('future_feature_key', 'x');
     cleanup();
-    expect(localStorage.getItem('legacy_key_sem_dono')).toBeNull();
+    expect(localStorage.getItem('future_feature_key')).toBe('x');
+  });
+
+  test('a limpeza remove somente uma chave explicitamente obsoleta', () => {
+    localStorage.setItem('swipe_hint_seen', '1');
+    localStorage.setItem('future_feature_key', 'x');
+
+    cleanup();
+
+    expect(localStorage.getItem('swipe_hint_seen')).toBeNull();
+    expect(localStorage.getItem('future_feature_key')).toBe('x');
   });
 });
