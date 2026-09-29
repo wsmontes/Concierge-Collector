@@ -35,10 +35,15 @@ export interface SaveRecordInput {
  */
 export class RecordsAdapter {
   private readonly env = readEnv()
-  private readonly client = new FastApiAdminClient({
-    baseUrl: this.env.fastApiBaseUrl,
-    serviceKey: this.env.cmsServiceKey,
-  })
+  private readonly client: FastApiAdminClient
+
+  constructor(requestId?: string) {
+    this.client = new FastApiAdminClient({
+      baseUrl: this.env.fastApiBaseUrl,
+      serviceKey: this.env.cmsServiceKey,
+      requestId,
+    })
+  }
 
   async curationRecord(curationId: string, actorId: string): Promise<Record<string, unknown>> {
     const response = await this.call(() => this.client.curationRecord(curationId, actorId))
