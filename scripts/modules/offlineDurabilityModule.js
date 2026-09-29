@@ -71,13 +71,13 @@
                 return;
             }
 
-            if (attempt >= 300) {
-                this.log.warn('Authoring runtime did not become ready; durability wrappers not installed');
-                return;
+            if (attempt === 300) {
+                this.log.warn('Authoring runtime is still starting; durability wrappers will keep retrying slowly');
             }
 
+            const retryMs = attempt < 300 ? 100 : 5000;
             clearTimeout(this._pollTimer);
-            this._pollTimer = setTimeout(() => this._pollForAuthoringRuntime(attempt + 1), 100);
+            this._pollTimer = setTimeout(() => this._pollForAuthoringRuntime(attempt + 1), retryMs);
         }
 
         _newSessionId() {
