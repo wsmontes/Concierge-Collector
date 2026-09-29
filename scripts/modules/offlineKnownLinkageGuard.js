@@ -24,12 +24,12 @@
 
         _pollInstall(attempt = 0) {
             if (this.install()) return;
-            if (attempt >= 300) {
-                this.log.warn('Known-linkage Save guard could not attach');
-                return;
+            if (attempt === 300) {
+                this.log.warn('Known-linkage Save guard is still waiting; retrying slowly');
             }
+            const retryMs = attempt < 300 ? 100 : 5000;
             clearTimeout(this._timer);
-            this._timer = setTimeout(() => this._pollInstall(attempt + 1), 100);
+            this._timer = setTimeout(() => this._pollInstall(attempt + 1), retryMs);
         }
 
         install() {
