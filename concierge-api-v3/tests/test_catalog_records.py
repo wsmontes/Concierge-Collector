@@ -612,44 +612,40 @@ async def test_display_media_is_api_state_hidden_from_the_record_and_read_only(a
 
 
 @pytest.mark.asyncio
-async def test_undeclared_root_keys_round_trip_and_stay_visible(async_client, in_memory_db):
-    """The whole point of the boundary: a legacy key no editor declared can be
-    edited and is readable back through the universal record route."""
+async def test_undeclared_root_keys_are_visible_but_not_writable(async_client, in_memory_db):
+    """Legacy data remains inspectable without granting arbitrary write authority."""
     in_memory_db._collections.clear()
     _seed_cms_admin(in_memory_db)
-    in_memory_db.curations.insert_one(active_curation(_id="c1", curation_id="c1"))
-    in_memory_db.entities.insert_one(active_entity(_id="e1", entity_id="e1"))
-
-    curated = await async_client.patch(
-        "/api/v3/catalog/curations/c1",
-        json={"legacy_provenance": {"batch": 7}, "restaurant_name": "Renamed"},
-        headers=_write_headers(),
+    in_memory_db.curations.insert_one(
+        active_curation(_id="c1", curation_id="c1", legacy_provenance={"batch": 7})
     )
-    assert curated.status_code == 200, curated.text
-    record = curated.json()["record"]
-    assert record["legacy_provenance"] == {"batch": 7}
-    assert record["restaurant_name"] == "Renamed"
-    assert record["version"] == 2
-    assert record["updatedBy"] == OWNER_ID
+    in_memory_db.entities.insert_one(
+        active_entity(_id="e1", entity_id="e1", legacy_flag=True)
+    )
 
     shown = await async_client.get("/api/v3/catalog/curations/c1/record", headers=_headers())
     assert shown.status_code == 200
     assert shown.json()["record"]["legacy_provenance"] == {"batch": 7}
 
-    entity = await async_client.patch(
-        "/api/v3/catalog/entities/e1",
-        json={"legacy_flag": True, "name": "Renamed Place"},
+    curated = await async_client.patch(
+        "/api/v3/catalog/curations/c1",
+        json={"legacy_provenance": {"batch": 8}},
         headers=_write_headers(),
     )
-    assert entity.status_code == 200, entity.text
-    entity_record = entity.json()["record"]
-    assert entity_record["legacy_flag"] is True
-    assert entity_record["name"] == "Renamed Place"
-    assert entity_record["version"] == 2
+    assert curated.status_code == 422
+    assert in_memory_db.curations.find_one({"_id": "c1"})["legacy_provenance"] == {"batch": 7}
 
     entity_shown = await async_client.get("/api/v3/catalog/entities/e1/record", headers=_headers())
     assert entity_shown.status_code == 200
     assert entity_shown.json()["record"]["legacy_flag"] is True
+
+    entity = await async_client.patch(
+        "/api/v3/catalog/entities/e1",
+        json={"legacy_flag": False},
+        headers=_write_headers(),
+    )
+    assert entity.status_code == 422
+    assert in_memory_db.entities.find_one({"_id": "e1"})["legacy_flag"] is True
 
 
 @pytest.mark.asyncio
