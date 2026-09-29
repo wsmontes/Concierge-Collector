@@ -23,7 +23,7 @@ import httpx
 import logging
 
 from app.core.config import settings
-from app.core.rate_limit import limiter
+from app.core.rate_limit import auth_header_key, limiter
 from app.core.security import require_role, verify_auth
 
 # Configure logging
@@ -232,7 +232,7 @@ def get_enhanced_field_mask(
 
 
 @router.get("/nearby", response_model=NearbySearchResponse, dependencies=[Depends(require_role("viewer"))])
-@limiter.limit("20/minute")
+@limiter.limit("20/minute", key_func=auth_header_key)
 async def search_nearby(
     request: Request,
     latitude: float = Query(..., description="Latitude for search center"),
@@ -565,7 +565,7 @@ def _convert_price_level(price_level_str: Optional[str]) -> Optional[int]:
 
 
 @router.get("/details/{place_id}", response_model=PlaceDetailsResponse, dependencies=[Depends(require_role("viewer"))])
-@limiter.limit("20/minute")
+@limiter.limit("20/minute", key_func=auth_header_key)
 async def get_place_details(
     request: Request,
     place_id: str,
@@ -748,7 +748,7 @@ async def proxy_place_photo(
 
 
 @router.get("/{place_id}/photos", dependencies=[Depends(require_role("viewer"))])
-@limiter.limit("20/minute")
+@limiter.limit("20/minute", key_func=auth_header_key)
 async def get_place_photos(
     request: Request,
     place_id: str,
@@ -1194,7 +1194,7 @@ async def call_bulk_multi_operations(
 
 
 @router.post("/orchestrate", response_model=PlacesOrchestrationResponse, dependencies=[Depends(require_role("viewer"))])
-@limiter.limit("20/minute")
+@limiter.limit("20/minute", key_func=auth_header_key)
 async def orchestrate_places_request(
     request: Request,
     body: PlacesOrchestrationRequest,
