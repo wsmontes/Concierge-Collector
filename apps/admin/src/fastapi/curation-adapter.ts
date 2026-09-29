@@ -36,7 +36,15 @@ export interface ScanCurationPageInput {
 /** Server-only boundary to FastAPI. The browser never learns the CMS service key. */
 export class CurationAdapter {
   private readonly env = readEnv()
-  private readonly client = new FastApiAdminClient({ baseUrl: this.env.fastApiBaseUrl, serviceKey: this.env.cmsServiceKey })
+  private readonly client: FastApiAdminClient
+
+  constructor(requestId?: string) {
+    this.client = new FastApiAdminClient({
+      baseUrl: this.env.fastApiBaseUrl,
+      serviceKey: this.env.cmsServiceKey,
+      requestId,
+    })
+  }
 
   async search(input: SearchCurationsInput): Promise<CurationSearchPage> {
     const { concepts: conceptFacets, where: whereClauses, ...query } = normalizeCurationFilters(input.filters)
