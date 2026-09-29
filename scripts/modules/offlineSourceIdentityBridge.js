@@ -26,12 +26,12 @@
 
         _pollInstall(attempt = 0) {
             if (this.install()) return;
-            if (attempt >= 300) {
-                this.log.warn('Stable source identity bridge could not attach to Save');
-                return;
+            if (attempt === 300) {
+                this.log.warn('Stable source identity bridge is still waiting for Save; retrying slowly');
             }
+            const retryMs = attempt < 300 ? 100 : 5000;
             clearTimeout(this._timer);
-            this._timer = setTimeout(() => this._pollInstall(attempt + 1), 100);
+            this._timer = setTimeout(() => this._pollInstall(attempt + 1), retryMs);
         }
 
         installSourceUtilsGuard() {
