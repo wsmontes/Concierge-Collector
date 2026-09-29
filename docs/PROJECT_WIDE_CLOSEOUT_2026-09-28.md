@@ -6,8 +6,8 @@
 
 ## P0 — before any merge/deploy
 
-- [ ] **Do not merge `feat/cms-record-access-mainline-20260928`.** It is an investigation/recovery branch. Compared with current main it is 16 commits ahead but unintentionally removes/reverts large portions of the modern Admin. Salvage only reviewed atomic changes onto a fresh branch from main.
-- [ ] Rebuild editorial/whole-record work additively on this closeout branch.
+- [x] **Do not merge `feat/cms-record-access-mainline-20260928`.** It is an investigation/recovery branch. Compared with current main it is 16 commits ahead but unintentionally removes/reverts large portions of the modern Admin. Salvage only reviewed atomic changes onto a fresh branch from main.
+- [x] Reconcile editorial/whole-record work additively against modern `main`; the active closeout branch hardens the existing record stack rather than porting the stale branch.
 - [ ] Run `npm run verify` on desktop before reconstructed code is mergeable.
 - [ ] Run `npm run verify:full` on the final candidate with disposable `*-test` DBs and replica-set Mongo. Baseline 1 was qualified at its historical snapshot; the current candidate needs a new qualification.
 - [ ] Regenerate OpenAPI + `@concierge/fastapi-client`; never copy generated artifacts from an old commit.
@@ -16,30 +16,30 @@
 
 ### Admin/CMS
 - [ ] Reconcile the modern main implementation with useful Sep-14 universal-record work; do not replace current Entity/Curation/search/UI wholesale.
-- [ ] Unknown/legacy keys remain visible; embedding vectors never leave the API raw.
-- [ ] **Unknown fields default read-only.** Registry metadata is the edit allowlist; visibility does not imply editability.
+- [x] Unknown/legacy keys remain visible; existing whole-record serialization keeps embedding vectors summarized/redacted.
+- [x] **Unknown fields default read-only.** Registry metadata is now the edit allowlist; API models also forbid undeclared roots. Tests pin visible-but-read-only behavior.
 - [ ] Curation PATCH: mandatory `If-Match`, CAS conflict, live actor authorization, explicit editable paths; block ids, version, timestamps/audit, `catalog_sequence`, embeddings and Entity-derived projections.
-- [ ] Browser BFF derives actor from live Admin auth; browser never supplies trusted actor identity.
-- [ ] Preserve route invariant: do not resurrect native `/admin/collections`; Collection detail remains the Payload collection route.
+- [x] Browser BFF derives actor from live Admin auth; browser never supplies trusted actor identity.
+- [x] Preserve route invariant: no native custom `/admin/collections` route was reintroduced; Collection detail remains the Payload collection route.
 - [ ] Conflict UX preserves draft on 409/412 and never implies a failed save landed.
-- [ ] Fix known `draftSelectedCount` explicit-operation drift using draft-delta semantics.
+- [x] `draftSelectedCount` explicit-operation drift was already fixed on current `main`: apply-draft recomputes the count from draft membership instead of incrementing blindly.
 - [ ] Keep Curation history snapshots, Entity Collections join/filter and curator reassignment explicitly deferred until their domain/API support exists.
 
 ### FastAPI / contracts
 - [ ] Re-review router inventory against `docs/API_ENDPOINT_REVIEW.md`.
 - [ ] Whole-record serialization must be total for BSON and redact/summarize binary/vector payloads.
-- [ ] Every CMS mutation uses a server-side allowlist and live role; arbitrary unknown dotted roots are rejected.
+- [x] CMS record mutation models now forbid undeclared roots; system/derived field guards and live actor authorization remain in the existing boundary.
 - [ ] Standardize 409/412 semantics across API, generated client, BFF and UI.
-- [ ] Preserve redacted 5xx responses while retaining actionable internal codes/request IDs.
+- [x] Existing 5xx redaction preserved; closeout adds end-to-end Admin→FastAPI request-ID propagation for authenticated BFF reads/writes.
 - [ ] If catalog rows still transport full transcript only to derive `has_transcript`, replace with a safe server-side derived boolean and validate against real Mongo.
 - [ ] Instrument exhaustive semantic fallback latency/candidate count while preserving recall correctness.
 - [ ] Remove deprecated compatibility code only after caller search proves it dead.
 
 ### Collector / Capture
-- [ ] Replace destructive `cleanupBrowserData()` “everything not preserved” policy with explicit obsolete-key migrations + tests.
-- [ ] Replace 30-second wrapper installation windows with lifecycle/event-driven or durable slow retry.
-- [ ] Fix cold-boot deep-link draft restore for `#/curation/<id>/edit`.
-- [ ] Keep authoring E2E contract: create → save → reload → edit → unsaved draft restore → save → Entity link.
+- [x] Replaced destructive `cleanupBrowserData()` policy with explicit obsolete-key migration; future unknown localStorage keys survive and tests pin the behavior.
+- [x] Wrapper installation no longer gives up after 30s: fast 100ms boot retry transitions to 5s slow retry; source-level guard covers all compatibility wrappers.
+- [x] Added late-install catch-up: if the Curation editor opened before durability wrapper installation, its draft is restored when the wrapper attaches. Desktop Playwright deep-link qualification remains.
+- [x] Existing authoring E2E already covers create → save → reload → edit → unsaved draft restore → save → Entity link; final desktop batch must rerun it.
 - [ ] Pin repeated `ids` encoding/chunk behavior with tests, including comma-containing Entity IDs.
 - [ ] Audit/remove active deprecated API-key/sync/card compatibility paths only with caller evidence.
 - [ ] Retire legacy CSS incrementally with rendered coverage.
@@ -50,14 +50,14 @@
 - [ ] Inventory OAuth, refresh, cookie/Bearer, ops-login, CMS handoff, consumer credentials and service-key trust boundaries.
 - [ ] Confirm live-role revalidation on every paid/write/admin boundary.
 - [ ] Keep `OPS_LOGIN_*` fail-closed; disable/rotate when qualification no longer needs it.
-- [ ] Add a secret-pattern audit to the local gate; no GitHub Actions dependency.
+- [x] Added tracked secret-pattern audit as the first `npm run verify` step, with tests and no matched-value echo.
 - [ ] Audit exact CORS/CSRF/callback origins and CSP; static-site `frame-ancestors` remains a hosting-header task.
-- [ ] Review rate limits and stable identity for AI/Places/capture/auth/media.
-- [ ] Review SSRF defenses for media/OG fetches: scheme, DNS/IP, redirects, private networks, byte/time limits.
+- [x] Reviewed provider rate identity; authenticated Places and LLM Gateway routes now use the existing stable authenticated bucket. Anonymous `<img>` photo proxy intentionally remains IP-keyed.
+- [x] Reviewed SSRF defenses: scheme/userinfo/DNS/IP/private-network/redirect hooks and byte/time bounds already exist with tests. DNS-rebinding/TOCTOU remains a documented residual risk; no transport rewrite without runtime qualification.
 - [ ] Verify audit events for CMS writes, Collections lifecycle, credentials and destructive/operator actions.
 
 ### Database / data model
-- [ ] Tie every allowed catalog sort to a declared index.
+- [x] Current API already pins every allowlisted Curation sort to a declared index with a regression test; live index existence remains a desktop/Atlas verification.
 - [ ] Verify Payload indexes remain migration-owned (`autoIndex=false`) and migrations match live collections.
 - [ ] Verify `catalog_sequence` integrity and counter position.
 - [ ] Audit cross-DB ownership: operational Entity/Curation in FastAPI DB; Collection/publication/CMS state in CMS DB.
@@ -74,10 +74,21 @@
 
 ### Observability / operations
 - [ ] Health surfaces distinguish API DB, CMS DB, worker/queue, storage and feature readiness without secrets.
-- [ ] Correlate request IDs through nginx → API/Admin → jobs/audit where applicable.
+- [x] Admin requests now normalize one safe request ID, use it for live auth introspection, and propagate it through record/catalog/media BFF calls to FastAPI. Worker-only flows continue with their own job/audit IDs.
 - [ ] Metrics: image states, catalog latency, semantic fallback, queue age, job retries/failures, publish duration, memory.
 - [ ] Update stale topology docs: jobs runner is in-process with Next by default; local gate is quality authority.
 - [ ] Evaluate Render build filters so docs-only changes do not restart the fused service unnecessarily.
+
+## Implemented during this closeout branch
+
+- CMS policy hardened to **universal read, curated write**; generated OpenAPI/client regeneration is intentionally deferred to the desktop gate instead of hand-editing generated files.
+- Collector startup localStorage cleanup is migration-driven rather than destructive-by-default.
+- Authoring wrappers remain recoverable after cold starts longer than 30 seconds, and early-opened Curation editors get late draft restoration.
+- Authenticated Google Places/LLM Gateway provider quotas use stable authenticated identity; public image proxy remains IP-keyed by design.
+- The local release gate now scans tracked files for live-shaped secrets before other checks.
+- Admin request correlation now survives the Payload→FastAPI hop across auth, record/editorial, Explorer, dashboard, Collection summary, curator and media paths.
+
+**Not executed here:** none of these changes are being claimed green. Contract generation, typecheck, unit/integration tests, browser E2E and runtime validation are part of the desktop batch below.
 
 ## Desktop/runtime qualification batch
 
