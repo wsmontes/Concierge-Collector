@@ -4,6 +4,7 @@ import { authzClient, mirrorCmsUser } from './cms-strategy'
 import { resolveCmsSession, revokeCmsSession } from './cms-session'
 import type { CmsIdentity } from './fastapi-authz-client'
 import { AdminHttpError } from '../http/errors'
+import { requestIdOf } from '../http/request-id'
 
 export class CmsAuthorizationError extends AdminHttpError {
   constructor(
@@ -27,7 +28,7 @@ async function currentPayload(): Promise<Payload> {
 export interface CurrentAdminDependencies {
   loadPayload: () => Promise<Payload>
   resolveSession: typeof resolveCmsSession
-  introspect: (subject: string) => Promise<CmsIdentity>
+  introspect: (subject: string, requestId?: string) => Promise<CmsIdentity>
   mirrorUser: typeof mirrorCmsUser
   revokeSession: typeof revokeCmsSession
 }
@@ -35,7 +36,7 @@ export interface CurrentAdminDependencies {
 const dependencies: CurrentAdminDependencies = {
   loadPayload: currentPayload,
   resolveSession: resolveCmsSession,
-  introspect: (subject) => authzClient().introspectSubject(subject),
+  introspect: (subject, requestId) => authzClient().introspectSubject(subject, requestId),
   mirrorUser: mirrorCmsUser,
   revokeSession: revokeCmsSession,
 }
@@ -52,7 +53,7 @@ export async function requireCurrentAdmin(
 
   let identity: CmsIdentity
   try {
-    identity = await deps.introspect(session.subject)
+    identity = await deps.introspect(session.subject, requestIdOf(headers) ?? undefined)
   } catch (error) {
     console.warn('[withAdmin] cms authorization introspection failed', error)
     throw new AdminHttpError(503, 'authorization_unavailable')
