@@ -6,11 +6,12 @@
  * this module changes responsibility and hierarchy before legacy internals
  * are removed, avoiding a schema/sync big bang.
  */
-// Retry do installSaveCompatibility: 300 × 100ms = 30s, a mesma janela que os
-// módulos de durabilidade usam. O retry existe porque o conceptModule chega
-// DEPOIS do primeiro install (ver o docstring do método).
-const SAVE_COMPATIBILITY_MAX_ATTEMPTS = 300;
-const SAVE_COMPATIBILITY_RETRY_MS = 100;
+// O conceptModule chega DEPOIS do primeiro install. Tentar rápido durante o
+// boot normal e depois continuar devagar mantém a cadeia recuperável mesmo em
+// cold starts extremos, sem polling agressivo permanente.
+const SAVE_COMPATIBILITY_FAST_ATTEMPTS = 300;
+const SAVE_COMPATIBILITY_FAST_RETRY_MS = 100;
+const SAVE_COMPATIBILITY_SLOW_RETRY_MS = 5000;
 
 class CurationWorkspaceModule {
     constructor(uiManager = null) {
@@ -689,17 +690,19 @@ class CurationWorkspaceModule {
         const conceptModule = this.uiManager?.conceptModule;
 
         if (!conceptModule?.saveRestaurant) {
-            if (attempt >= SAVE_COMPATIBILITY_MAX_ATTEMPTS) {
+            if (attempt === SAVE_COMPATIBILITY_FAST_ATTEMPTS) {
                 const logger = window.Logger?.module?.('CurationWorkspace');
-                const message = 'Save compatibility could not attach: conceptModule.saveRestaurant ausente';
+                const message = 'Save compatibility is still waiting for conceptModule; retrying slowly';
                 if (logger?.warn) logger.warn(message);
                 else console.warn(message);
-                return;
             }
+            const retryMs = attempt < SAVE_COMPATIBILITY_FAST_ATTEMPTS
+                ? SAVE_COMPATIBILITY_FAST_RETRY_MS
+                : SAVE_COMPATIBILITY_SLOW_RETRY_MS;
             clearTimeout(this._saveCompatibilityTimer);
             this._saveCompatibilityTimer = setTimeout(
                 () => this.installSaveCompatibility(attempt + 1),
-                SAVE_COMPATIBILITY_RETRY_MS
+                retryMs
             );
             return;
         }
