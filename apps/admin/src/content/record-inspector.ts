@@ -1,188 +1,134 @@
+import { joinPath } from './field-path'
+import { inferFieldType } from './field-types'
+import type { FieldType } from './field-types'
+import { CURATION_FIELDS, ENTITY_FIELDS, describeField } from './field-registry'
+import type { FieldOwner } from './field-registry'
+
+export interface FieldNode {
+  path: string
+  label: string
+  value: unknown
+  type: FieldType
+  owner: FieldOwner
+  editable: boolean
+  system: boolean
+  derivedIn?: FieldOwner
+  children: FieldNode[]
+  leafCount: number
+}
+
+type ContentKind = 'curation' | 'entity'
+type Container = Record<string, unknown> | unknown[]
+
+const INDEX_KEY = /^\d+$/
+
 /**
- * Field tree of an arbitrary stored record.
- *
- * The record is the source of truth: the walk emits one node per own
- * enumerable key — and per array slot — so a field nobody described still
- * shows up, which is the plan's "nothing disappears" promise. The registry
- * only annotates nodes whose path it knows.
+ * Tree of every field present in the record: registered fields first (registry
+ * order), then unknown fields in document order. Nothing is dropped, so a new
+ * backend field is visible before anyone registers it.
  */
-
-import { fieldPathLabel, formatFieldPath, matchesFieldQuery, type PathSegment } from './field-path'
-import {
-  inferFieldType,
-  isFieldEditable,
-  type ContentRecordKind,
-  type FieldDescriptor,
-  type FieldNode,
-} from './field-types'
-import { isRecord } from './value-guards'
-
-const TEMPLATE_PATH = /\[\]/
-
-/**
- * A descriptor paired with the question the walk keeps asking about it:
- * literal paths are matched exactly, `[]` paths pattern-match every index.
- */
-interface DescriptorPattern {
-  descriptor: FieldDescriptor
-  templated: boolean
+export function inspectRecord(record: unknown, kind: ContentKind): FieldNode[] {
+  if (typeof record !== 'object' || record === null || Array.isArray(record)) return []
+  return childNodes(record as Container, '', kind)
 }
 
-function toPatterns(descriptors: readonly FieldDescriptor[]): DescriptorPattern[] {
-  const patterns: DescriptorPattern[] = []
-  for (const descriptor of descriptors) {
-    patterns.push({ descriptor, templated: TEMPLATE_PATH.test(descriptor.path) })
-  }
-  return patterns
+export function flattenFields(nodes: readonly FieldNode[]): FieldNode[] {
+  const flat: FieldNode[] = []
+  collectFields(nodes, flat)
+  return flat
 }
 
-/** Canonical notation with every array index collapsed to `[]`. */
-function templateOf(segments: readonly PathSegment[]): string {
-  let path = ''
-  for (const segment of segments) {
-    if (segment.kind === 'index') {
-      path += '[]'
-      continue
-    }
-    path += path.length === 0 ? segment.key : `.${segment.key}`
-  }
-  return path
-}
-
-/** Exact path first, then the `[]` template that covers this index — else null. */
-function descriptorFor(patterns: readonly DescriptorPattern[], path: string, template: string): FieldDescriptor | null {
-  let templated: FieldDescriptor | null = null
-  for (const pattern of patterns) {
-    if (pattern.templated) {
-      if (templated === null && pattern.descriptor.path === template) templated = pattern.descriptor
-      continue
-    }
-    if (pattern.descriptor.path === path) return pattern.descriptor
-  }
-  return templated
-}
-
-function buildNode(
-  value: unknown,
-  segments: readonly PathSegment[],
-  depth: number,
-  kind: ContentRecordKind,
-  patterns: readonly DescriptorPattern[],
-): FieldNode {
-  const path = formatFieldPath(segments)
-  const descriptor = descriptorFor(patterns, path, templateOf(segments))
-  const system = descriptor?.system === true
-  const type = descriptor?.type ?? inferFieldType(value)
-  return {
-    path,
-    label: descriptor?.label ?? fieldPathLabel(path),
-    type,
-    value,
-    depth,
-    descriptor,
-    owner: descriptor?.owner ?? kind,
-    // The plan's promise: a field the UI was never written for is still
-    // editable through the structured editor. `system` always wins as
-    // read-only, and a known field opts out with an explicit `editable: false`.
-    editable: !system && descriptor?.editable !== false && isFieldEditable(type),
-    system,
-    children: childrenOf(value, segments, depth + 1, kind, patterns),
+function collectFields(nodes: readonly FieldNode[], into: FieldNode[]): void {
+  for (const node of nodes) {
+    into.push(node)
+    collectFields(node.children, into)
   }
 }
 
-function childrenOf(
-  value: unknown,
-  segments: readonly PathSegment[],
-  depth: number,
-  kind: ContentRecordKind,
-  patterns: readonly DescriptorPattern[],
-): FieldNode[] {
+export function filterFields(nodes: readonly FieldNode[], query: string): FieldNode[] {
+  const needle = query.trim().toLowerCase()
+  if (needle === '') return nodes.slice()
+  const filtered: FieldNode[] = []
+  for (const node of nodes) {
+    const match = selectNode(node, needle)
+    if (match) filtered.push(match)
+  }
+  return filtered
+}
+
+function childNodes(container: Container, parent: string, kind: ContentKind): FieldNode[] {
+  const registry = kind === 'entity' ? ENTITY_FIELDS : CURATION_FIELDS
   const nodes: FieldNode[] = []
-  if (Array.isArray(value)) {
-    for (let position = 0; position < value.length; position += 1) {
-      nodes.push(buildNode(value[position], [...segments, { kind: 'index', index: position }], depth, kind, patterns))
-    }
-    return nodes
+  const covered = new Set<string>()
+  for (const field of registry) {
+    const separator = field.path.lastIndexOf('.')
+    const fieldParent = separator === -1 ? '' : field.path.slice(0, separator)
+    if (fieldParent !== parent) continue
+    const key = field.path.slice(separator + 1)
+    if (!Object.prototype.hasOwnProperty.call(container, key)) continue
+    covered.add(key)
+    nodes.push(buildNode(field.path, (container as Record<string, unknown>)[key], kind))
   }
-  if (!isRecord(value)) return nodes
-  for (const key of Object.keys(value)) {
-    nodes.push(buildNode(value[key], [...segments, { kind: 'key', key }], depth, kind, patterns))
+  for (const key of Object.keys(container)) {
+    if (covered.has(key)) continue
+    const arrayElement = Array.isArray(container) && INDEX_KEY.test(key)
+    nodes.push(buildNode(joinPath(parent, key), (container as Record<string, unknown>)[key], kind, arrayElement ? `[${key}]` : undefined))
   }
   return nodes
 }
 
-/** One node per stored field, in stored order, annotated where the registry knows the path. */
-export function buildFieldTree(
-  record: unknown,
-  descriptors: readonly FieldDescriptor[],
-  kind: ContentRecordKind,
-): FieldNode[] {
-  return childrenOf(record, [], 0, kind, toPatterns(descriptors))
-}
-
-function appendFlat(nodes: readonly FieldNode[], flat: FieldNode[]): void {
-  for (const node of nodes) {
-    flat.push(node)
-    appendFlat(node.children, flat)
+function buildNode(path: string, value: unknown, kind: ContentKind, label?: string): FieldNode {
+  const descriptor = describeField(kind, path)
+  // A scalar array is data, not structure: recursing into its indexes would
+  // produce a child per element with no interesting shape.
+  const scalarArray = Array.isArray(value) && value.every((item) => item === null || typeof item !== 'object')
+  const children =
+    scalarArray || typeof value !== 'object' || value === null ? [] : childNodes(value as Container, path, kind)
+  const system = descriptor.system ?? false
+  const registry = kind === 'entity' ? ENTITY_FIELDS : CURATION_FIELDS
+  const type: FieldType = scalarArray
+    ? 'array'
+    : (registry.find((field) => field.path === path)?.type ?? inferFieldType(value))
+  const node: FieldNode = {
+    path,
+    label: label ?? descriptor.label,
+    value,
+    type,
+    owner: descriptor.owner,
+    editable: descriptor.editable ?? !system,
+    system,
+    children,
+    leafCount: children.length === 0 ? 1 : children.reduce((total, child) => total + child.leafCount, 0),
   }
+  if (descriptor.derivedIn !== undefined) node.derivedIn = descriptor.derivedIn
+  return node
 }
 
-/** Pre-order walk over a tree, container nodes included. */
-export function flattenFieldTree(nodes: readonly FieldNode[]): FieldNode[] {
-  const flat: FieldNode[] = []
-  appendFlat(nodes, flat)
-  return flat
-}
-
-function cloneNodes(nodes: readonly FieldNode[]): FieldNode[] {
-  const clones: FieldNode[] = []
-  for (const node of nodes) clones.push({ ...node, children: cloneNodes(node.children) })
-  return clones
-}
-
-function pruneNodes(nodes: readonly FieldNode[], query: string): FieldNode[] {
-  const kept: FieldNode[] = []
-  for (const node of nodes) {
-    if (matchesFieldQuery(node.path, node.value, query)) {
-      kept.push({ ...node, children: cloneNodes(node.children) })
-      continue
-    }
-    const children = pruneNodes(node.children, query)
-    if (children.length > 0) kept.push({ ...node, children })
+function selectNode(node: FieldNode, needle: string): FieldNode | null {
+  const matchedSelf = node.path.toLowerCase().includes(needle) || node.label.toLowerCase().includes(needle)
+  const children: FieldNode[] = []
+  for (const child of node.children) {
+    const match = selectNode(child, needle)
+    if (match) children.push(match)
   }
-  return kept
+  // A node matched on its own path/label is kept whole: the query asked for the
+  // field, not for one of its leaves.
+  if (matchedSelf) return node
+  if (node.children.length === 0) return stringifyLeaf(node.value).toLowerCase().includes(needle) ? node : null
+  if (children.length === 0) return null
+  // Only ancestors of matches are kept, pruned to the matching branches, so
+  // counts describe what is actually displayed.
+  return { ...node, children, leafCount: children.reduce((total, child) => total + child.leafCount, 0) }
 }
 
-/**
- * Prunes a tree to a record-local query. A match keeps its whole subtree (the
- * children are the matched container's context); a deeper match keeps its
- * ancestors with only the matching branch.
- */
-export function filterFieldTree(nodes: readonly FieldNode[], query: string): FieldNode[] {
-  // A blank query is the identity — callers compare the result, so hand back
-  // the very same array instead of an equal copy.
-  if (query.trim().length === 0) return nodes as FieldNode[]
-  return pruneNodes(nodes, query)
-}
-
-/**
- * Registry entries the record does not store — the fields a record page has to
- * render as empty. `[]` templates are not addressable, so they never count.
- */
-export function declaredButAbsent(
-  descriptors: readonly FieldDescriptor[],
-  nodes: readonly FieldNode[],
-): FieldDescriptor[] {
-  const present: Record<string, true | undefined> = {}
-  for (const node of flattenFieldTree(nodes)) present[node.path] = true
-  const absent: FieldDescriptor[] = []
-  const seen: Record<string, true | undefined> = {}
-  for (const descriptor of descriptors) {
-    if (TEMPLATE_PATH.test(descriptor.path)) continue
-    if (present[descriptor.path] === true) continue
-    if (seen[descriptor.path] === true) continue
-    seen[descriptor.path] = true
-    absent.push(descriptor)
+function stringifyLeaf(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) return value.map(stringifyLeaf).filter((item) => item !== '').join(' ')
+  try {
+    return JSON.stringify(value) ?? ''
+  } catch {
+    return ''
   }
-  return absent
 }

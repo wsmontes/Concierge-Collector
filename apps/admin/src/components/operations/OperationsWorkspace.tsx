@@ -1,6 +1,5 @@
 'use client'
 
-import { Button } from '@payloadcms/ui'
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import {
@@ -9,18 +8,6 @@ import {
   type OperationsAdminClient,
   type PublishJobHistoryRow,
 } from '../../operations/admin-client'
-import { AdminPage } from '../ui/AdminPage'
-import { FactList } from '../ui/Card'
-import { Chip, statusTone } from '../ui/Chip'
-import { DataTable, type DataTableColumn } from '../ui/DataTable'
-import { Drawer } from '../ui/Drawer'
-import { EmptyState } from '../ui/EmptyState'
-import { ErrorBoundary } from '../ui/ErrorBoundary'
-import { ErrorState } from '../ui/ErrorState'
-import { InlineNotice } from '../ui/InlineNotice'
-import { Skeleton } from '../ui/Skeleton'
-import { StatusPill } from '../ui/StatusPill'
-import { formatAbsoluteDate, formatRelativeDate } from '../ui/format-relative-date'
 
 const browserClient = createBrowserOperationsAdminClient()
 
@@ -33,17 +20,6 @@ const TERMINAL_PUBLISH = new Set([
   'authorization_revoked',
 ])
 
-/**
- * Uma fila, não duas. Antes a tela empilhava dois cartões por linha (bulk e
- * publicação) sem coluna, sem hierarquia e sem como abrir o detalhe — e o
- * histórico de operação só tinha o id como chave. Aqui bulk e publicação são
- * linhas do MESMO tipo, discriminadas por `kind`, para que a fila tenha colunas,
- * ordenação de leitura e um detalhe único no `Drawer` do kit.
- */
-type QueueRow =
-  | { key: string; kind: 'bulk'; operation: BulkOperationHistoryRow }
-  | { key: string; kind: 'publish'; job: PublishJobHistoryRow }
-
 function progressLabel(progress: BulkOperationHistoryRow['progress']): string {
   const parts = [
     progress.processed > 0 ? `${progress.processed} applied` : null,
@@ -53,56 +29,13 @@ function progressLabel(progress: BulkOperationHistoryRow['progress']): string {
   return parts.length > 0 ? parts.join(', ') : 'queued'
 }
 
-/**
- * Fração concluída da linha. Bulk tem contagem por filho (resolvidos/total);
- * publicação não expõe contagem de progresso, mas expõe a seleção e quantos
- * itens ficaram confirmadamente indisponíveis — que é a única fração real
- * disponível. Sem número, a coluna não inventa barra.
- */
-function rowProgress(row: QueueRow): { done: number; total: number; label: string } | null {
-  if (row.kind === 'bulk') {
-    const { active, completed, failed } = row.operation.parentSummary
-    const total = active + completed + failed
-    if (total === 0) return null
-    return { done: completed + failed, total, label: progressLabel(row.operation.progress) }
-  }
-  const { selectedCount, confirmedUnavailableCount } = row.job
-  if (selectedCount === null || selectedCount <= 0) return null
-  return {
-    done: confirmedUnavailableCount,
-    total: selectedCount,
-    label: `${confirmedUnavailableCount.toLocaleString('en-US')} of ${selectedCount.toLocaleString('en-US')} confirmed unavailable`,
-  }
+function publicationStatus(job: PublishJobHistoryRow): string {
+  return job.checkpoint ? `${job.status} · ${job.checkpoint}` : job.status
 }
 
-function rowTitle(row: QueueRow): string {
-  if (row.kind === 'bulk') return row.operation.action === 'add' ? 'Add to draft' : 'Remove from draft'
-  return `${row.job.collection.title} · version ${row.job.targetVersion}`
-}
-
-function rowSubtitle(row: QueueRow): string | null {
-  if (row.kind === 'bulk') {
-    const { active, completed, failed } = row.operation.parentSummary
-    return `${active} pending, ${completed} done, ${failed} failed`
-  }
-  return row.job.checkpoint
-}
-
-/** Resumo por estado, derivado do que a tela já carregou — nenhuma leitura extra. */
-function statusCounts(rows: QueueRow[]): Array<{ status: string; count: number }> {
-  const counts: Record<string, number> = {}
-  for (const row of rows) {
-    const status = row.kind === 'bulk' ? row.operation.status : row.job.status
-    counts[status] = (counts[status] ?? 0) + 1
-  }
-  return Object.entries(counts)
-    .map(([status, count]) => ({ status, count }))
-    .sort((left, right) => right.count - left.count || left.status.localeCompare(right.status))
-}
-
-/** Some com o clique do controle de linha: a linha abre o detalhe, os links navegam. */
-function swallowClick(event: { stopPropagation: () => void }) {
-  event.stopPropagation()
+function formatTime(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
 
 export function OperationsWorkspace({
@@ -119,7 +52,6 @@ export function OperationsWorkspace({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState<string | null>(null)
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
     try {
@@ -139,6 +71,8 @@ export function OperationsWorkspace({
     }
   }, [client])
 
+  // Carga inicial (e recarga quando o client muda): setState só dentro do bloco
+  // assíncrono — o corpo síncrono do efeito não pode disparar render.
   useEffect(() => {
     let active = true
     void (async () => {
@@ -207,311 +141,84 @@ export function OperationsWorkspace({
     }
   }
 
-  // As linhas são derivadas das duas páginas carregadas; o cursor de cada origem
-  // continua sendo o do servidor, então paginar segue sendo paginar.
-  const rows: QueueRow[] = [
-    ...bulk.map((operation): QueueRow => ({ key: `bulk:${operation.id}`, kind: 'bulk', operation })),
-    ...publishes.map((job): QueueRow => ({ key: `publish:${job.id}`, kind: 'publish', job })),
-  ]
-  const counts = statusCounts(rows)
-  const selected = rows.find((row) => row.key === selectedKey) ?? null
-  const blocked = error !== null && rows.length === 0 && !loading
-  const detailCollectionId = selected === null
-    ? null
-    : selected.kind === 'bulk'
-      ? selected.operation.collections[0]?.id ?? null
-      : selected.job.collection.id
-
-  function cancelButton(row: QueueRow) {
-    if (row.kind !== 'bulk') return null
-    const { operation } = row
-    if (operation.status !== 'active' || !operation.cancellable) return null
-    return (
-      <Button
-        aria-label="Cancel operation"
-        buttonStyle="error"
-        disabled={cancelling === operation.id}
-        margin={false}
-        onClick={() => void cancel(operation)}
-        size="small"
-        type="button"
-      >
-        {cancelling === operation.id ? 'Cancelling…' : 'Cancel'}
-      </Button>
-    )
-  }
-
-  /**
-   * Retomar trabalho falho não tem endpoint próprio — e não vai ter: o BFF expõe
-   * só leitura de histórico e cancelamento. A releitura do trabalho é a ação da
-   * Collection (draft ou publicação), que já valida permissão e estado. O que a
-   * fila pode fazer é levar o operador até lá, em vez de oferecer um botão que
-   * não existe.
-   */
-  function retryLink(row: QueueRow) {
-    const status = row.kind === 'bulk' ? row.operation.status : row.job.status
-    if (status !== 'failed') return null
-    const collectionId = row.kind === 'bulk' ? row.operation.collections[0]?.id : row.job.collection.id
-    if (!collectionId) return null
-    return (
-      <Link
-        className="operations-queue__retry"
-        href={`/admin/collections/collections/${encodeURIComponent(collectionId)}`}
-        title="Re-run this work from the Collection, where permissions and draft state are enforced"
-      >
-        Retry in Collection
-      </Link>
-    )
-  }
-
-  const columns: Array<DataTableColumn<QueueRow>> = [
-    {
-      key: 'work',
-      header: 'Work',
-      width: 'minmax(12rem, 1.4fr)',
-      cell: (row) => (
-        <span className="ui-table__cell-stack">
-          <span className="ui-table__primary">{rowTitle(row)}</span>
-          {rowSubtitle(row) && <span className="ui-table__secondary">{rowSubtitle(row)}</span>}
-        </span>
-      ),
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      width: '9rem',
-      cell: (row) => (
-        <StatusPill status={row.kind === 'bulk' ? row.operation.status : row.job.status} />
-      ),
-    },
-    {
-      key: 'progress',
-      header: 'Progress',
-      width: 'minmax(10rem, 1fr)',
-      cell: (row) => {
-        const progress = rowProgress(row)
-        if (!progress) return <span className="ui-table__secondary">Not started</span>
-        const percent = Math.round((progress.done / progress.total) * 100)
-        return (
-          <span className="ui-table__cell-stack">
-            <span
-              aria-label={`Progress: ${progress.label}`}
-              aria-valuemax={progress.total}
-              aria-valuemin={0}
-              aria-valuenow={progress.done}
-              className="ui-meter"
-              role="progressbar"
-            >
-              <span className="ui-meter__value" style={{ display: 'block', width: `${percent}%` }} />
-            </span>
-            <span className="ui-table__secondary">{progress.label}</span>
-          </span>
-        )
-      },
-    },
-    {
-      key: 'collections',
-      header: 'Collections',
-      width: 'minmax(8rem, 1fr)',
-      cell: (row) => {
-        const collections = row.kind === 'bulk'
-          ? row.operation.collections
-          : [row.job.collection]
-        return (
-          <span className="operations-queue__collections" onClick={swallowClick}>
-            {collections.map((collection) => (
-              <Link
-                className="operations-queue__collection"
-                href={`/admin/collections/collections/${encodeURIComponent(collection.id)}`}
-                key={collection.id}
-              >
-                {collection.title}
-              </Link>
-            ))}
-          </span>
-        )
-      },
-    },
-    {
-      key: 'updated',
-      header: 'Updated',
-      width: '9rem',
-      align: 'end',
-      cell: (row) => {
-        const value = row.kind === 'bulk' ? row.operation.updatedAt : row.job.updatedAt
-        const absolute = formatAbsoluteDate(value)
-        return <time dateTime={value} title={absolute ?? undefined}>{formatRelativeDate(value)}</time>
-      },
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      width: '12rem',
-      align: 'end',
-      cell: (row) => (
-        <span className="operations-queue__actions" onClick={swallowClick}>
-          {retryLink(row)}
-          {cancelButton(row)}
-        </span>
-      ),
-    },
-  ]
-
   return (
-    <AdminPage
-      className="operations-workspace"
-      eyebrow="Operations"
-      title="Operations"
-      description="Bulk draft work and Collection publication jobs, in one queue."
-      actions={(
-        <Button buttonStyle="secondary" margin={false} onClick={() => void reload()} type="button">
-          Refresh
-        </Button>
-      )}
-    >
-      <ErrorBoundary onRetry={() => void reload()} title="The queue summary could not be displayed">
-        {loading
-          ? (
-            <div className="operations-queue__summary" aria-hidden="true">
-              <Skeleton width="9rem" />
-              <Skeleton width="9rem" />
-              <Skeleton width="9rem" />
-            </div>
-          )
-          : counts.length > 0 && (
-            <ul className="operations-queue__summary" aria-label="Queue summary by status">
-              {counts.map((entry) => (
-                <li key={entry.status}>
-                  <Chip count={entry.count} tone={statusTone(entry.status)}>
-                    {entry.status === 'active' ? 'In progress' : entry.status}
-                  </Chip>
-                </li>
-              ))}
-            </ul>
-          )}
-      </ErrorBoundary>
+    <main className="operations-workspace">
+      <header className="operations-workspace__header">
+        <div>
+          <p className="collection-views__eyebrow">Operations</p>
+          <h1>Operations</h1>
+          <p>Current and recent bulk draft work plus Collection publication jobs.</p>
+        </div>
+        <button type="button" onClick={() => void reload()}>Refresh</button>
+      </header>
 
-      <ErrorBoundary onRetry={() => void reload()} title="The Operations queue could not be displayed">
-        {blocked ? (
-          <ErrorState
-            title="Operations could not load"
-            description={`The queue did not respond: ${error}. The container may be restarting.`}
-            onRetry={() => void reload()}
-            retryLabel="Try again"
-          />
-        ) : (
-          <>
-            {error && (
-              <InlineNotice
-                action={(
-                  <Button buttonStyle="secondary" margin={false} onClick={() => void reload()} size="small" type="button">
-                    Try again
-                  </Button>
-                )}
-                tone="error"
-              >
-                <p>Unable to refresh Operations: {error}</p>
-              </InlineNotice>
-            )}
-            <DataTable
-              caption="Operations"
-              columns={columns}
-              empty={(
-                <EmptyState
-                  action={(
-                    <Button buttonStyle="secondary" margin={false} onClick={() => void reload()} type="button">
-                      Refresh queue
-                    </Button>
+      {error && <p role="alert">Unable to refresh Operations: {error}</p>}
+      {loading && <p role="status">Loading Operations…</p>}
+
+      <section aria-labelledby="bulk-operations-title">
+        <h2 id="bulk-operations-title">Bulk operations</h2>
+        {!loading && bulk.length === 0 ? <p>No bulk operations yet.</p> : (
+          <ul className="operations-workspace__list">
+            {bulk.map((operation) => {
+              const { active, completed, failed } = operation.parentSummary
+              return (
+                <li className="operations-workspace__card" key={operation.id}>
+                  <div className="operations-workspace__card-header">
+                    <div>
+                      <strong>{operation.action === 'add' ? 'Add to draft' : 'Remove from draft'}</strong>
+                      <span className={`operations-workspace__status operations-workspace__status--${operation.status}`}>{operation.status}</span>
+                    </div>
+                    <time dateTime={operation.updatedAt}>{formatTime(operation.updatedAt)}</time>
+                  </div>
+                  <p>{active} pending, {completed} done, {failed} failed</p>
+                  <p>{progressLabel(operation.progress)}</p>
+                  <div className="operations-workspace__collections" aria-label="Affected Collections">
+                    {operation.collections.map((collection) => (
+                      <Link href={`/admin/collections/collections/${encodeURIComponent(collection.id)}`} key={collection.id}>{collection.title}</Link>
+                    ))}
+                  </div>
+                  {operation.status === 'active' && operation.cancellable && (
+                    <button
+                      type="button"
+                      aria-label="Cancel operation"
+                      disabled={cancelling === operation.id}
+                      onClick={() => void cancel(operation)}
+                    >
+                      {cancelling === operation.id ? 'Cancelling…' : 'Cancel remaining work'}
+                    </button>
                   )}
-                  description="Bulk draft work from the Curation Explorer and Collection publications will appear here as they run."
-                  title="No operations yet"
-                />
-              )}
-              footer={(
-                <div className="operations-queue__footer">
-                  <span className="ui-table__secondary">
-                    {rows.length.toLocaleString('en-US')} {rows.length === 1 ? 'entry' : 'entries'}
-                  </span>
-                  <span className="ui-toolbar__group ui-toolbar__group--end">
-                    {bulkCursor && (
-                      <Button buttonStyle="secondary" margin={false} onClick={() => void loadMoreBulk()} size="small" type="button">
-                        Load more draft work
-                      </Button>
-                    )}
-                    {publishCursor && (
-                      <Button buttonStyle="secondary" margin={false} onClick={() => void loadMorePublishes()} size="small" type="button">
-                        Load more publications
-                      </Button>
-                    )}
-                  </span>
-                </div>
-              )}
-              loading={loading}
-              onActivate={(row) => setSelectedKey(row.key)}
-              rowKey={(row) => row.key}
-              rows={rows}
-            />
-          </>
+                </li>
+              )
+            })}
+          </ul>
         )}
-      </ErrorBoundary>
+        {bulkCursor && <button type="button" onClick={() => void loadMoreBulk()}>Load more bulk operations</button>}
+      </section>
 
-      <Drawer
-        onClose={() => setSelectedKey(null)}
-        open={selected !== null}
-        title={selected ? rowTitle(selected) : 'Operation detail'}
-      >
-        <ErrorBoundary onRetry={() => void reload()} title="The operation detail could not be displayed">
-          {selected && (
-          <div className="operations-detail">
-            <FactList
-              facts={selected.kind === 'bulk'
-                ? [
-                  { label: 'Kind', value: 'Draft work' },
-                  { label: 'Action', value: selected.operation.action === 'add' ? 'Add to draft' : 'Remove from draft' },
-                  { label: 'Status', value: <StatusPill status={selected.operation.status} /> },
-                  {
-                    label: 'Children',
-                    value: `${selected.operation.parentSummary.active} pending, ${selected.operation.parentSummary.completed} done, ${selected.operation.parentSummary.failed} failed`,
-                  },
-                  { label: 'Progress', value: progressLabel(selected.operation.progress) },
-                  { label: 'Operation', value: <code className="ui-table__mono">{selected.operation.id}</code> },
-                  { label: 'Updated', value: formatRelativeDate(selected.operation.updatedAt) },
-                  { label: 'Created', value: formatRelativeDate(selected.operation.createdAt) },
-                ]
-                : [
-                  { label: 'Kind', value: 'Publication' },
-                  { label: 'Status', value: <StatusPill status={selected.job.status} /> },
-                  { label: 'Target version', value: String(selected.job.targetVersion) },
-                  { label: 'Checkpoint', value: selected.job.checkpoint ?? 'Pending' },
-                  {
-                    label: 'Selection',
-                    value: selected.job.selectedCount === null
-                      ? 'Count pending'
-                      : `${selected.job.selectedCount.toLocaleString('en-US')} selected`,
-                  },
-                  {
-                    label: 'Confirmed unavailable',
-                    value: selected.job.confirmedUnavailableCount.toLocaleString('en-US'),
-                  },
-                  { label: 'Updated', value: formatRelativeDate(selected.job.updatedAt) },
-                  { label: 'Created', value: formatRelativeDate(selected.job.createdAt) },
-                ]}
-            />
-            <div className="operations-detail__actions">
-              {detailCollectionId && (
-                <Link
-                  className="operations-detail__link"
-                  href={`/admin/collections/collections/${encodeURIComponent(detailCollectionId)}`}
-                >
-                  Open Collection
-                </Link>
-              )}
-              {cancelButton(selected)}
-            </div>
-          </div>
-          )}
-        </ErrorBoundary>
-      </Drawer>
-    </AdminPage>
+      <section aria-labelledby="publish-operations-title">
+        <h2 id="publish-operations-title">Publications</h2>
+        {!loading && publishes.length === 0 ? <p>No publication jobs yet.</p> : (
+          <ul className="operations-workspace__list">
+            {publishes.map((job) => (
+              <li className="operations-workspace__card" key={job.id}>
+                <div className="operations-workspace__card-header">
+                  <div>
+                    <Link href={`/admin/collections/collections/${encodeURIComponent(job.collection.id)}`}>{job.collection.title}</Link>
+                    <strong>Version {job.targetVersion}</strong>
+                  </div>
+                  <time dateTime={job.updatedAt}>{formatTime(job.updatedAt)}</time>
+                </div>
+                <p>{publicationStatus(job)}</p>
+                <p>
+                  {job.selectedCount === null ? 'Selection count pending' : `${job.selectedCount.toLocaleString('en-US')} selected`}
+                  {job.confirmedUnavailableCount > 0 ? ` · ${job.confirmedUnavailableCount} unavailable confirmed` : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+        {publishCursor && <button type="button" onClick={() => void loadMorePublishes()}>Load more publications</button>}
+      </section>
+    </main>
   )
 }

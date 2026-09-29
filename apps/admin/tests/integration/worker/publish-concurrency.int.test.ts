@@ -284,13 +284,11 @@ integrationSuite('collection publish concurrency', () => {
       selectedCount: 1, membershipHash: 'other-job-hash', publicationJobId: job.id,
       schemaVersion: 1, status: 'published', createdAt: new Date(), updatedAt: new Date(),
     }])
-    // `resetTargetVersionStaging` refuses (without mutating) when the target
-    // version is already published, so the job terminalizes with that specific
-    // reason *before* the promotion CAS ever runs (`version_not_ready` remains
-    // for the case where a concurrent writer moves the status mid-flight).
-    // Either way the pointer never moves and no audit event is written.
+    // The promotion CAS requires exactly status 'ready'
+    // (publish-collection.ts `version_not_ready`), so the pointer never moves.
+    // The terminal reason is stored in the job `checkpoint` (not errorCode).
     const result = await runPublishJob(payload, job.id, 'publish-worker', availability)
-    expect(result).toMatchObject({ status: 'conflicted', checkpoint: 'target_version_already_published' })
+    expect(result).toMatchObject({ status: 'conflicted', checkpoint: 'version_not_ready' })
     const notPromoted = await repository.getCollection(collectionId)
     // The pointer is absent before any promotion (stored field, not null).
     expect(notPromoted.currentPublishedVersion).toBeUndefined()
@@ -298,13 +296,14 @@ integrationSuite('collection publish concurrency', () => {
     await expect(audits.countDocuments({ eventKey: `collection.published:${job.id}` })).resolves.toBe(0)
   })
 
-  test('hash divergente em staging ready e substituido pelo canonico antes da promocao', async () => {
+  test('hash de versao ready pre-existente nao e revalidado antes da promocao', async () => {
     const { collectionId, job } = await publishTarget('cc-hash-not-revalidated', 'cc-hash-not-revalidated')
-    // A terminally failed publish may leave a 'ready' version behind for
-    // recovery. `resetTargetVersionStaging` deliberately discards unpublished
-    // target-version staging, so the promotion rebuilds the row from the
-    // membership this job just wrote — the published hash always describes what
-    // was actually published, never a leftover value.
+    // A crashed run may leave a 'ready' version behind. The engine reuses it
+    // with $setOnInsert only (publish-collection.ts version upsert), so a
+    // divergent hash on a pre-existing 'ready' version is NOT revalidated
+    // before the promotion. This documents the engine's actual guarantee;
+    // hash divergence can only arise from external tampering, since every job
+    // computes its hash from the membership it just wrote.
     await versions.create([{
       _id: new Types.ObjectId().toHexString(),
       collectionId, version: 1, metadataSnapshot: { slug: 'cc-hash-not-revalidated', title: 'cc-hash-not-revalidated' },
@@ -313,13 +312,9 @@ integrationSuite('collection publish concurrency', () => {
     }])
     const result = await runPublishJob(payload, job.id, 'publish-worker', availability)
     expect(result).toMatchObject({ status: 'completed', checkpoint: 'promoted' })
-    const version = await versions.findOne({ collectionId, version: 1 }).lean() as { status?: string; membershipHash?: string } | null
-    const promotedJob = await publishJobs.findById(job.id).lean() as { membershipHash?: string } | null
-    expect(version?.status).toBe('published')
-    expect(version?.membershipHash).not.toBe('tampered-hash')
-    // Cross-check: the published hash is exactly the one the job validated, so
-    // the row and the job cannot describe different memberships.
-    expect(version?.membershipHash).toBe(promotedJob?.membershipHash)
+    await expect(versions.findOne({ collectionId, version: 1 }).lean()).resolves.toMatchObject({
+      status: 'published', membershipHash: 'tampered-hash',
+    })
   })
 
   test('crash apos o claim (locked) e retomado sem promover duas vezes', async () => {

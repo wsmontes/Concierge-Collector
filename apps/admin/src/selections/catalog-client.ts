@@ -1,7 +1,6 @@
 import { FastApiAdminClient, FastApiClientError } from '@concierge/fastapi-client'
 import { readEnv } from '../env'
 import { AdminHttpError } from '../http/errors'
-import { catalogScanFilters } from '../explorer/without-collections'
 import type { SelectionCatalogClient } from './types'
 
 /** Typed catalog boundary used by manifest creation and worker materialization. */
@@ -30,22 +29,13 @@ export class FastApiSelectionCatalogClient implements SelectionCatalogClient {
     }
   }
 
-  async startScan(
-    filters: Parameters<SelectionCatalogClient['startScan']>[0],
-    actorId: string,
-    excludeCurationIds: readonly string[] = [],
-  ) {
+  async startScan(filters: Parameters<SelectionCatalogClient['startScan']>[0], actorId: string) {
     try {
-      // A materialized selection is a SET: order never changes which Curations
-      // are eligible, so the scan keeps the boundary's own default ordering
-      // (`catalog_sequence`), which is also the list's tie-breaker. The
-      // "Without Collections" mode is a CMS-side composition, so the boundary
-      // receives the exclusion the membership ledger produced, never the flag
-      // that asked for it.
-      const result = await this.client.startCatalogScan(
-        catalogScanFilters(filters, excludeCurationIds, 'sequence_asc'),
-        actorId,
-      )
+      const statuses = filters.status?.filter((status): status is 'draft' | 'linked' | 'active' | 'deleted' | 'archived' => (
+        ['draft', 'linked', 'active', 'deleted', 'archived'].includes(status)
+      ))
+      const { status: _ignoredStatus, ...baseFilters } = filters
+      const result = await this.client.startCatalogScan({ ...baseFilters, ...(statuses ? { status: statuses } : {}) }, actorId)
       return { maxCatalogSequence: result.max_catalog_sequence, scanToken: result.scan_token }
     } catch (error) {
       throw this.map(error)

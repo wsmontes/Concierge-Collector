@@ -636,30 +636,5 @@ function formatDuration(seconds) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// ── Nav: link para o Collector ──────────────────────────────────────────────
-/**
- * O Collector NÃO vive sob /app/ em lugar nenhum: o serviço da API só serve
- * /api/v3, /capture e "/" (que redireciona de volta ao capture), e o site
- * estático publica o Collector na raiz. O href relativo `../app/` apontava para
- * uma montagem que nunca existiu e dava 404 nas DUAS origens (verificado em
- * produção, 2026-09-16) — quem clicava em "Browse" caía em página inexistente.
- * Resolve por hostname, como o resto do repo: produção vai para o site
- * estático, desenvolvimento para o servidor de arquivos do Collector.
- */
-function collectorAppUrl() {
-  const { protocol, hostname } = window.location;
-  if (hostname === 'localhost' || hostname === '127.0.0.1') return `${protocol}//${hostname}:5500/`;
-  return 'https://concierge-collector.com/';
-}
-
-function wireBrowseLink() {
-  // `a[...]` e o href no seletor de propósito: `#auth-logout` também carrega a
-  // classe `.bottom-nav__link` (hoje é um <button hidden>, e o <a> vem antes no
-  // documento) — sem isto o link dependeria da ordem do markup.
-  const link = document.querySelector('a.bottom-nav__link[href]');
-  if (link) link.href = collectorAppUrl();
-}
-
 // ── Bootstrap ───────────────────────────────────────────────────────────────
-wireBrowseLink();
 init();

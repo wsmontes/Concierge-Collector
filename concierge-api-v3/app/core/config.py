@@ -59,20 +59,6 @@ class Settings(BaseSettings):
     # Google Places API
     google_places_api_key: str = ""
 
-    # Display media (o hero do card da Entity). O resultado da resolução fica
-    # PERSISTIDO no documento da Entity como referência opaca (nunca bytes,
-    # nunca URL assinada): a descoberta — HTML do site, og:image, Places,
-    # download e ranking — deixa de acontecer a cada render de card.
-    # Nível dos logs do PRÓPRIO processo (uvicorn tem o dele). Era uma env var que
-    # ninguém lia: `LOG_LEVEL=INFO` em produção não configurava nada, porque não
-    # existia handler no root — ver `observability.configure_logging`.
-    log_level: str = "INFO"
-    display_media_ttl_days: int = 14
-    display_media_failure_retry_seconds: int = 3600
-    # O enriquecimento é disparado em background pela própria leitura; nos
-    # testes fica desligado (sem rede e sem tarefa solta no loop).
-    display_media_enrich_enabled: bool = True
-
     # OpenAI API
     openai_api_key: str = ""
 
@@ -109,13 +95,6 @@ class Settings(BaseSettings):
     # Métricas são uma superfície operacional separada. Nunca reutilizar uma
     # API key, JWT ou credencial de serviço para expô-las.
     metrics_key: str = ""
-
-    # Acesso de operação sem Google, para qualificação das jornadas em produção
-    # (POST /api/v3/auth/ops-login). Substitui a PROVA de identidade, nunca a
-    # autorização: o sujeito precisa já existir autorizado como admin no banco.
-    # Sem as duas variáveis a rota responde 404, como se não existisse.
-    ops_login_key: str = ""
-    ops_login_subject: str = ""
 
     # JWT Token Settings
     access_token_expire_minutes: int = 60  # 1 hour

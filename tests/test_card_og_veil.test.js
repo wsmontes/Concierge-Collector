@@ -52,9 +52,6 @@ afterEach(() => {
   window.CurationBrowser = undefined;
   window.EntityBrowser = undefined;
   window.uiManager = undefined;
-  // Sem isto, o stub de navigator (onLine:false) do caso de falha offline
-  // sobrevivia ao teste e TODOS os seguintes rodavam offline em silêncio.
-  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -499,57 +496,6 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     expect(card.querySelector('.collection-card__thumb').classList.contains('is-loaded')).toBe(false);
   });
 
-  test('404 PENDENTE volta a perguntar e pinta quando a foto aparece', async () => {
-    // Medido no Collector com browser novo (2026-09-17): 12 de 30 cards pintados e
-    // o preenchimento PARAVA ali — 18 placeholders continuavam placeholders mesmo
-    // depois de a foto existir no servidor, porque o card já estava marcado como
-    // processado e nada voltava a perguntar. O servidor agora diz "ainda não
-    // resolvi" com `Retry-After` + `max-age` curto; o cliente tem de voltar.
-    const OgImageModuleClass = loadOgImageModule();
-    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:depois-1') });
-
-    const pendente = {
-      ok: false,
-      status: 404,
-      headers: { get: (nome) => (nome === 'Retry-After' ? '1' : 'private, max-age=60') }
-    };
-    const request = vi.fn()
-      .mockResolvedValueOnce(pendente) // ainda resolvendo
-      .mockResolvedValueOnce({
-        ok: true,
-        blob: async () => new Blob(['jpeg-depois'], { type: 'image/jpeg' })
-      });
-    window.ApiService = { request };
-
-    const module = new OgImageModuleClass();
-    await module.init();
-
-    const card = document.createElement('div');
-    card.dataset.entityId = 'ent_pendente';
-    card.dataset.ogSource = 'https://site.example.com';
-    card.innerHTML = `
-      <div class="collection-card__media">
-        <img class="collection-card__thumb" loading="lazy" alt="" />
-        <div class="collection-card__thumb-fallback"></div>
-      </div>
-    `;
-    document.body.appendChild(card);
-
-    module._queue(card);
-
-    // Primeira resposta: pendente — nada de negativo definitivo, nada de legado.
-    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
-    expect(card.dataset.ogFailed).toBeUndefined();
-    expect(request.mock.calls.every((chamada) => !String(chamada[1]).includes('ogImage?'))).toBe(true);
-
-    // A volta acontece sozinha e a imagem entra quando o servidor tiver o fato.
-    await vi.waitFor(() => {
-      const thumb = card.querySelector('.collection-card__thumb');
-      expect(thumb.src).toContain('blob:depois-1');
-    }, { timeout: 4000 });
-    expect(request.mock.calls[1][1]).toBe('/entities/ent_pendente/image?rank=0');
-  });
-
   test('hard reset (Cmd+Shift+R) marca o cache para limpeza no próximo load', async () => {
     const OgImageModuleClass = loadOgImageModule();
     window.ApiService = { request: vi.fn() };
@@ -728,9 +674,7 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     const module = new OgImageModuleClass();
     const url = await module._readCache('entity:e1:rank:0');
     expect(url).toBeNull();
-    // A chave do delete é a do Cache API (URL sintética), não a lógica:
-    // `cache.delete('entity:...')` não é Request válida e falhava em silêncio.
-    expect(fakeCache.delete).toHaveBeenCalledWith(module._cacheRequestKey('entity:e1:rank:0'));
+    expect(fakeCache.delete).toHaveBeenCalledWith('entity:e1:rank:0');
   });
 
   test('entrada de cache FRESCA (com x-cached-at recente) é reusada', async () => {
@@ -943,7 +887,7 @@ describe('OgImageModule — negativo em cache (2026-08-16)', () => {
     const module = new OgImageModuleClass();
     const result = await module._readCache('entity:e1:rank:0');
     expect(result).toBeNull();
-    expect(fakeCache.delete).toHaveBeenCalledWith(module._cacheRequestKey('entity:e1:rank:0'));
+    expect(fakeCache.delete).toHaveBeenCalledWith('entity:e1:rank:0');
   });
 
   test('404 grava negativo no Cache Storage', async () => {
@@ -984,28 +928,18 @@ describe('OgImageModule — negativo em cache (2026-08-16)', () => {
     expect(window.ApiService.request).not.toHaveBeenCalled();
   });
 
-  test('falha de rede online memoriza CURTO; offline não grava nada', async () => {
+  test('erro de rede NÃO grava negativo', async () => {
     const OgImageModuleClass = loadOgImageModule();
-    const put = vi.fn().mockResolvedValue(undefined);
-    window.caches = { open: vi.fn().mockResolvedValue({ match: vi.fn().mockResolvedValue(undefined), put, delete: vi.fn() }) };
+    const fakeCache = {
+      match: vi.fn().mockResolvedValue(undefined),
+      put: vi.fn().mockResolvedValue(undefined)
+    };
+    window.caches = { open: vi.fn().mockResolvedValue(fakeCache) };
     window.ApiService = { request: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) };
 
-    // Online: grava um negativo de validade curta — o reload numa conexão ruim
-    // não repete a busca inteira do servidor para os mesmos cards.
-    const online = new OgImageModuleClass();
-    await expect(online._resolve('https://flaky.example.com', '', 'url:flaky')).rejects.toBeTruthy();
-    expect(put).toHaveBeenCalledTimes(1);
-    const response = put.mock.calls[0][1];
-    const expiresIn = Number(response.headers.get('x-cache-expires')) - Date.now();
-    expect(expiresIn).toBeGreaterThan(0);
-    expect(expiresIn).toBeLessThan(60 * 60 * 1000); // minutos, não a semana do definitivo
-
-    // Offline: nada é memorizado — estar sem rede não é "este card não tem foto".
-    put.mockClear();
-    vi.stubGlobal('navigator', { onLine: false });
-    const offline = new OgImageModuleClass();
-    await expect(offline._resolve('https://offline.example.com', '', 'url:off')).rejects.toBeTruthy();
-    expect(put).not.toHaveBeenCalled();
+    const module = new OgImageModuleClass();
+    await expect(module._resolve('https://offline.example.com', '', 'url:off')).rejects.toBeTruthy();
+    expect(fakeCache.put).not.toHaveBeenCalled();
   });
 
   test('resolução por entity chama o ApiService com silent:true', async () => {
@@ -1019,109 +953,6 @@ describe('OgImageModule — negativo em cache (2026-08-16)', () => {
       '/entities/ent_sem_servidor/image?rank=0',
       { silent: true }
     );
-  });
-});
-
-describe('OgImageModule — TTL efetivo do negativo (2026-09-16)', () => {
-  // O negativo guardava 7 dias (404/400) e 10 min (falha transitória): um
-  // container reiniciando virava "este restaurante não tem foto" por dias. O que
-  // estes casos medem é o TTL EFETIVO gravado (x-cache-expires), não o texto
-  // das constantes.
-  function captureNegative() {
-    const put = vi.fn().mockResolvedValue(undefined);
-    window.caches = {
-      open: vi.fn().mockResolvedValue({ match: vi.fn().mockResolvedValue(undefined), put, delete: vi.fn() })
-    };
-    return {
-      put,
-      expiresIn() {
-        expect(put).toHaveBeenCalledTimes(1);
-        const response = put.mock.calls[0][1];
-        expect(response.headers.get('x-no-image')).toBe('1');
-        return Number(response.headers.get('x-cache-expires')) - Date.now();
-      }
-    };
-  }
-
-  test('falha transitória (rede) grava 60 segundos, não a semana do definitivo', async () => {
-    const OgImageModuleClass = loadOgImageModule();
-    const negative = captureNegative();
-    window.ApiService = { request: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) };
-
-    const module = new OgImageModuleClass();
-    await expect(module._resolve('https://flaky.example.com', '', 'url:flaky')).rejects.toBeTruthy();
-
-    const expiresIn = negative.expiresIn();
-    expect(expiresIn).toBeGreaterThan(50 * 1000);
-    expect(expiresIn).toBeLessThanOrEqual(60 * 1000);
-  });
-
-  test('404 definitivo grava 30 minutos (era 7 dias)', async () => {
-    const OgImageModuleClass = loadOgImageModule();
-    const negative = captureNegative();
-    window.ApiService = { request: vi.fn().mockResolvedValue({ ok: false, status: 404 }) };
-
-    const module = new OgImageModuleClass();
-    const result = await module._resolve('https://sem-og.example.com', '', 'url:sem-og');
-
-    expect(result).toBeNull();
-    const expiresIn = negative.expiresIn();
-    expect(expiresIn).toBeGreaterThan(29 * 60 * 1000);
-    expect(expiresIn).toBeLessThanOrEqual(30 * 60 * 1000);
-  });
-
-  test('o max-age=60 do servidor no 404 (hero ainda resolvendo) não vira 30 min de cache local', async () => {
-    const OgImageModuleClass = loadOgImageModule();
-    const negative = captureNegative();
-    window.ApiService = {
-      request: vi.fn().mockResolvedValue({
-        ok: false,
-        status: 404,
-        headers: new Headers({ 'Cache-Control': 'private, max-age=60' })
-      })
-    };
-
-    const module = new OgImageModuleClass();
-    await module._resolve('https://sem-og.example.com', '', 'url:sem-og');
-
-    // O servidor é quem sabe por quanto tempo a própria resposta vale.
-    expect(negative.expiresIn()).toBeLessThanOrEqual(60 * 1000);
-  });
-
-  test('max-age MAIOR que o teto do cliente não estica o negativo', async () => {
-    const OgImageModuleClass = loadOgImageModule();
-    const negative = captureNegative();
-    window.ApiService = {
-      request: vi.fn().mockResolvedValue({
-        ok: false,
-        status: 404,
-        headers: new Headers({ 'Cache-Control': 'private, max-age=3600' })
-      })
-    };
-
-    const module = new OgImageModuleClass();
-    await module._resolve('https://sem-og.example.com', '', 'url:sem-og');
-
-    const expiresIn = negative.expiresIn();
-    expect(expiresIn).toBeGreaterThan(29 * 60 * 1000);
-    expect(expiresIn).toBeLessThanOrEqual(30 * 60 * 1000);
-  });
-
-  test('no-store do servidor não deixa negativo persistido', async () => {
-    const OgImageModuleClass = loadOgImageModule();
-    const negative = captureNegative();
-    window.ApiService = {
-      request: vi.fn().mockResolvedValue({
-        ok: false,
-        status: 404,
-        headers: new Headers({ 'Cache-Control': 'no-store' })
-      })
-    };
-
-    const module = new OgImageModuleClass();
-    await module._resolve('https://sem-og.example.com', '', 'url:sem-og');
-
-    expect(negative.put).not.toHaveBeenCalled();
   });
 });
 
@@ -1370,14 +1201,7 @@ describe('OgImageModule — não repete a busca que o servidor já fez (2026-09-
     expect(calls).toHaveLength(2);
   });
 
-  test('erro de REDE (sem status) continua tentando o fallback legado', async () => {
-    // Mantido de propósito (decisão de 2026-09-12, revista em 2026-09-16): existe
-    // assimetria real entre as duas rotas — a legada é mais barata (não ranqueia
-    // a galeria e resolve só com `url`), então ela pode responder quando a rota
-    // por entity estoura ou demora. A medição de 2026-09-16 não mostrou timeout
-    // (116 chamadas legadas em 25s, antes do limite de 30s) e sim VOLUME na
-    // página inteira; o corte foi feito no prefetch (`_prefetchNextPage` só roda
-    // com a página assentada), não aqui.
+  test('erro de REDE (sem status) continua tentando o fallback', async () => {
     const OgImageModuleClass = loadOgImageModule();
     const { calls } = stubFetch({
       entity: () => { throw new TypeError('Failed to fetch'); },
@@ -1388,65 +1212,7 @@ describe('OgImageModule — não repete a busca que o servidor já fez (2026-09-
     const module = new OgImageModuleClass();
     await module._resolveEntityImage('e4', 0, 'http://site.com.br', '', 'entity:e4:rank:0');
 
-    expect(calls).toHaveLength(2); // entity + legado
-  });
-
-  test('o prefetch é ADIADO, não cancelado: rearma quando a fila esvazia', async () => {
-    // Sem o rearme no dreno, uma carga fria (fila cheia no disparo do timer)
-    // simplesmente perdia o aquecimento da próxima página nesta visita — o gate
-    // virava cancelamento e a promessa do comentário era falsa.
-    vi.useFakeTimers();
-    try {
-      const OgImageModuleClass = loadOgImageModule();
-      const peekPage = vi.fn().mockResolvedValue([]);
-      window.CurationBrowser = { peekPage };
-      window.EntityBrowser = { peekPage };
-      window.uiManager = { curationPagination: { currentPage: 1 }, entityPagination: { currentPage: 1 } };
-
-      const module = new OgImageModuleClass();
-      module._waiting.push({ card: null, key: 'entity:x:rank:0', start: () => Promise.resolve(null) });
-      module._drain();
-      await vi.advanceTimersByTimeAsync(3000);
-
-      expect(peekPage).toHaveBeenCalled(); // a fila esvaziou → o prefetch aconteceu
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test('a página ainda resolvendo NÃO dispara o prefetch da próxima', async () => {
-    // O prefetch é otimização: quando a página atual ainda tem itens na fila ou
-    // em voo, aquecer a próxima só dobra o volume contra um servidor sem folga.
-    const OgImageModuleClass = loadOgImageModule();
-    const peekPage = vi.fn().mockResolvedValue([]);
-    window.CurationBrowser = { peekPage };
-    window.EntityBrowser = { peekPage };
-    window.uiManager = { curationPagination: { currentPage: 1 }, entityPagination: { currentPage: 1 } };
-
-    const module = new OgImageModuleClass();
-    module._waiting.push({ card: null, key: 'entity:x:rank:0', start: () => Promise.resolve(null) });
-    module._prefetchNextPage();
-    expect(peekPage).not.toHaveBeenCalled();
-
-    module._waiting.length = 0;
-    module._prefetchNextPage();
-    expect(peekPage).toHaveBeenCalled();
-  });
-
-  test('404 "not found" (entity que o servidor não conhece) AINDA tenta a rota legada', async () => {
-    // É exatamente para isto que a exceção existe: o servidor nunca avaliou as
-    // fontes desta entity (registro local/pending ainda não sincronizado).
-    const OgImageModuleClass = loadOgImageModule();
-    const { calls } = stubFetch({
-      entity: () => { throw httpError(404, 'Entity e9 not found'); },
-      legacy: () => ({ ok: false, status: 404 })
-    });
-    window.DataStore = { getEntity: vi.fn().mockResolvedValue({ entity_id: 'e9', sync: { status: 'synced' } }) };
-
-    const module = new OgImageModuleClass();
-    await module._resolveEntityImage('e9', 0, 'http://site.com.br', '', 'entity:e9:rank:0');
-
-    expect(calls).toHaveLength(2); // entity + legado
+    expect(calls).toHaveLength(2);
   });
 
   test('imagem encontrada no endpoint por entity: uma única chamada', async () => {

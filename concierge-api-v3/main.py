@@ -17,7 +17,7 @@ from app.core.http_error_contract import http_exception_content
 from app.core.lifespan import lifespan
 from app.core.rate_limit import limiter
 from app.core.security import require_role
-from app.core.observability import configure_logging, install_log_redaction, request_context_middleware
+from app.core.observability import install_log_redaction, request_context_middleware
 from app.core.provider_response_sanitization import places_provider_response_middleware
 from app.api import (
     entities,
@@ -32,9 +32,6 @@ from app.api import (
     openai_compat,
     capture,
     catalog,
-    catalog_records,
-    catalog_curators,
-    catalog_media,
     internal_curations,
     internal_consumer_usage,
     curators,
@@ -58,7 +55,6 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
-configure_logging()
 install_log_redaction()
 app.middleware("http")(request_context_middleware)
 app.middleware("http")(places_provider_response_middleware)
@@ -152,18 +148,6 @@ app.include_router(
 )
 app.include_router(distribution.router, prefix="/api/v3", dependencies=_distribution_enabled)
 app.include_router(catalog.router, prefix="/api/v3", dependencies=_catalog_scan_enabled)
-# Acesso universal aos dados (Fase 0 do CMS editorial): leituras completas de
-# Curation/Entity para o Inspector. Fica FORA do gate catalog_scan de
-# propósito — o Admin precisa renderizar 100% de um registro, não apenas a
-# listagem do Explorer.
-app.include_router(catalog_records.router, prefix="/api/v3")
-# Mesmo boundary, mesma razão: o seletor de curator do registro de Curation
-# precisa de uma listagem real, fora do gate catalog_scan.
-app.include_router(catalog_curators.router, prefix="/api/v3")
-# Mídia da Entity (<img> da seção Media & sources): mesma fronteira e mesma
-# razão — o Admin chega com a service key, não com sessão de curator, e
-# precisa dos bytes fora do gate catalog_scan.
-app.include_router(catalog_media.router, prefix="/api/v3")
 app.include_router(internal_curations.router, prefix="/api/v3")
 app.include_router(internal_consumer_usage.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")

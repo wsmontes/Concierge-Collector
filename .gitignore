@@ -146,8 +146,6 @@ coverage/
 .vitest/
 /apps/admin/playwright-report/
 /apps/admin/test-results/
-/e2e/authoring/playwright-report/
-/e2e/authoring/test-results/
 
 ############################
 # LOGS
@@ -209,9 +207,6 @@ archive/
 # Superpowers plugin local state (SDD progress, scratch)
 .superpowers/
 .worktrees/
-# Contexto local de agente (AGENTS/RULES/WATCHDOG/skills deste projeto, não
-# versionados: são estado de máquina e foram escritos fora do repo)
-.omp/
 
 # Scripts de diagnóstico locais (não versionar — podem conter credenciais)
 concierge-api-v3/delete_orphaned_curation.py

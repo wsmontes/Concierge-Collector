@@ -1,12 +1,8 @@
 'use client'
 
-import { Button } from '@payloadcms/ui'
-import type { ReactNode } from 'react'
 import type { ActivityRow } from '../collections/ActivityView'
 import type { DraftDiffRow } from '../collections/DraftDiffView'
 import type { VersionRow } from '../collections/VersionsView'
-import { InlineNotice } from '../ui/InlineNotice'
-import { StatusPill } from '../ui/StatusPill'
 
 /**
  * Collection Overview aggregation tab. It is the default tab of the
@@ -41,6 +37,13 @@ export interface OverviewViewProps {
   onNavigate?: (target: OverviewTarget) => void
 }
 
+const DRAFT_STATE_LABEL: Record<OverviewCollectionRecord['draftState'], string> = {
+  clean: 'Clean',
+  dirty: 'Dirty',
+  publishing: 'Publishing',
+  failed: 'Failed',
+}
+
 function count(value: number) {
   return new Intl.NumberFormat('en-US').format(value)
 }
@@ -55,14 +58,6 @@ function navigate(onNavigate: OverviewViewProps['onNavigate'], target: OverviewT
   return () => onNavigate?.(target)
 }
 
-function OverviewAction({ children, onClick }: { children: ReactNode; onClick: () => void }) {
-  return (
-    <Button buttonStyle="secondary" margin={false} size="small" type="button" onClick={onClick}>
-      {children}
-    </Button>
-  )
-}
-
 /** Compact per-Collection Overview with real links to each management tab. */
 export function OverviewView({ collection, versions = [], activity = [], diff = [], onNavigate }: OverviewViewProps) {
   const publishing = collection.draftState === 'publishing'
@@ -73,66 +68,57 @@ export function OverviewView({ collection, versions = [], activity = [], diff = 
   return (
     <div className="overview-view" aria-label="Collection overview">
       <section aria-labelledby="overview-draft">
-        <div className="overview-view__section-heading">
-          <h2 id="overview-draft">Draft</h2>
-          <StatusPill status={collection.draftState} />
-        </div>
-        <p className="overview-view__meta">Revision {collection.draftRevision}</p>
+        <h2 id="overview-draft">Draft</h2>
+        <p role="status" className="overview-view__state">
+          <strong>{DRAFT_STATE_LABEL[collection.draftState]}</strong> · revision {collection.draftRevision}
+        </p>
         <p>{count(collection.draftSelectedCount)} selected in draft · {count(collection.publishedSelectedCount)} selected published</p>
-        {failed && (
-          <InlineNotice tone="error">
-            <p>Draft failed — review and retry.</p>
-          </InlineNotice>
-        )}
-        {publishing && (
-          <InlineNotice tone="info">
-            <p>Active publish job in progress — membership and metadata are locked.</p>
-          </InlineNotice>
-        )}
-        <OverviewAction onClick={navigate(onNavigate, 'Draft Changes')}>Review draft changes</OverviewAction>
+        {failed && <p role="alert">Draft failed — review and retry.</p>}
+        {publishing && <p role="status">Active publish job in progress — membership and metadata are locked.</p>}
+        <button type="button" onClick={navigate(onNavigate, 'Draft Changes')}>Review draft changes</button>
       </section>
 
       <section aria-labelledby="overview-versions">
         <h2 id="overview-versions">Recent publications</h2>
         {versions.length === 0 ? (
-          <p className="overview-view__empty">No published versions yet.</p>
+          <p>No published versions yet.</p>
         ) : (
-          <ul className="overview-view__list overview-view__list--actions">
+          <ul className="overview-view__list">
             {versions.slice(0, 5).map((version) => (
               <li key={version.version}>
-                <Button buttonStyle="secondary" margin={false} size="small" type="button" onClick={navigate(onNavigate, 'Versions')}>
+                <button type="button" onClick={navigate(onNavigate, 'Versions')}>
                   Version {version.version} · {count(version.selectedCount)} selected · {when(version.publishedAt)}
-                </Button>
+                </button>
               </li>
             ))}
           </ul>
         )}
-        <OverviewAction onClick={navigate(onNavigate, 'Versions')}>View all versions</OverviewAction>
+        <button type="button" onClick={navigate(onNavigate, 'Versions')}>View all versions</button>
       </section>
 
       <section aria-labelledby="overview-activity">
         <h2 id="overview-activity">Jobs and activity</h2>
         {activity.length === 0 ? (
-          <p className="overview-view__empty">No recent activity.</p>
+          <p>No recent activity.</p>
         ) : (
-          <ul className="overview-view__list overview-view__list--text">
+          <ul className="overview-view__list">
             {activity.slice(0, 5).map((event, index) => (
               <li key={`${event.createdAt}-${index}`}>{event.eventType} · {event.actorId} · {when(event.createdAt)}</li>
             ))}
           </ul>
         )}
-        <OverviewAction onClick={navigate(onNavigate, 'Activity')}>View activity</OverviewAction>
+        <button type="button" onClick={navigate(onNavigate, 'Activity')}>View activity</button>
       </section>
 
       <section aria-labelledby="overview-availability">
         <h2 id="overview-availability">Availability</h2>
         {diff.length === 0 ? (
-          <p className="overview-view__empty">No draft changes pending.</p>
+          <p>No draft changes pending.</p>
         ) : (
           <p>{adds} add{adds === 1 ? '' : 's'} · {removes} remove{removes === 1 ? '' : 's'} pending in the draft.</p>
         )}
-        <p className="overview-view__meta">Live availability is confirmed at publish and distribution time.</p>
-        <OverviewAction onClick={navigate(onNavigate, 'Members')}>Review members</OverviewAction>
+        <p>Live availability is confirmed at publish and distribution time.</p>
+        <button type="button" onClick={navigate(onNavigate, 'Members')}>Review members</button>
       </section>
     </div>
   )

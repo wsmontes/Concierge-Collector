@@ -16,10 +16,6 @@
  * - Dedupe por URL: N cards do mesmo site compartilham uma única busca
  *   (promise cache do módulo) e o mesmo objectURL.
  * - Falha silenciosa (404/offline/sem imagem) = card limpo, sem retry.
- *   Negativo (sem imagem) fica no cache por 30 min quando o servidor afirmou
- *   404/400 e por 60 s quando a falha foi transitória (rede/5xx) — nunca mais
- *   que o `max-age` que o servidor mandou junto da resposta. O positivo
- *   (imagem) não tem TTL: sai só por hard reset/Refresh photos.
  *
  * O véu em si é estilizado em components.css (.card-og-veil): degradê
  * topo→transparente com wash branco pra legibilidade, opacidade baixa.
@@ -62,37 +58,6 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         // ainda expiram em 24h uma última vez. Tudo que este código grava
         // recebe policy=persistent e NÃO expira automaticamente.
         this._legacyCacheTtlMs = 24 * 3600 * 1000;
-        // NEGATIVO DEFINITIVO (404/400: o servidor já avaliou as fontes e não
-        // há imagem) vale 30 MINUTOS — eram 7 dias. Uma semana transformava
-        // uma resposta velha do servidor em "este restaurante não tem foto"
-        // POR DIAS: o site foi cadastrado depois, o Places passou a responder,
-        // o hero foi escolhido mais tarde — e a única saída era "Refresh
-        // photos"/hard reset, que ninguém descobre. Meia hora mantém o ganho
-        // (o reload não re-pergunta, e nada de rede enquanto o negativo vale)
-        // e devolve o card ao estado certo ainda no turno do curador.
-        this._definitiveNoImageTtlMs = 30 * 60 * 1000;
-        // NEGATIVO TRANSITÓRIO: a falha foi no caminho até o servidor (rede,
-        // timeout, 5xx, container reiniciando), NÃO um "não existe imagem" que
-        // o servidor afirmou. Vale 60 SEGUNDOS — eram 10 minutos. Dez minutos
-        // de 502 viravam "sem foto" para o resto da sessão; um minuto cobre o
-        // objetivo original (não repetir a busca inteira a cada card enquanto
-        // a instabilidade dura) e o card se cura no refresh seguinte. E só com
-        // o navegador online: estar offline não é "este card não tem imagem".
-        this._transientNegativeTtlMs = 60 * 1000;
-        // RETENTATIVA DE PENDENTE (2026-09-17). O servidor responde "ainda não
-        // resolvi" com `Cache-Control` curto e `Retry-After`; essa resposta NÃO
-        // pode marcar o card como processado para sempre. Medido no Collector com
-        // browser novo: 12 de 30 cards pintados e o preenchimento PARAVA ali, com
-        // 18 placeholders que continuavam placeholders mesmo depois de a foto
-        // existir no servidor — porque `data-og-resolved` já estava no card e nada
-        // voltava a perguntar.
-        this._maxPendingRetries = 3;
-        this._pendingRetryFallbackMs = 15000;
-        this._retryCounts = new Map();
-        this._pendingKeys = new Set();
-        // Espera que o SERVIDOR pediu para esta chave (`Retry-After`), quando ele
-        // mandou uma: o fallback de 15 s é o piso, não a regra.
-        this._pendingRetryDelayMs = new Map();
         // prefetch da próxima página (padrão ImagePrefetcher do feedmine)
         this._prefetchedPages = new Set();
         this._prefetchTimer = null;
@@ -125,11 +90,6 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             this.log.warn('ApiService indisponível — véu OG desativado');
             return;
         }
-
-        // O ApiService lança os 4xx e o `Cache-Control` da resposta morre nesse
-        // caminho; sem ele o cliente não vê o piso do servidor nos 404 do hero
-        // (ver _installCacheControlBridge).
-        this._installCacheControlBridge(window.ApiService);
 
         // Detecta o ATALHO do hard reset para o PRÓXIMO load (o reload
         // deste atalho acontece depois do keydown; a flag sobrevive no
@@ -291,13 +251,6 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                 .then((objectUrl) => {
                     if (!item.card) return; // prefetch: só aquece o cache
                     if (!objectUrl) {
-                        if (this._pendingKeys.has(item.key)) {
-                            // Resolução em andamento no servidor: o placeholder do
-                            // markup já é o estado visual certo, e a volta é
-                            // agendada em vez de o card ser dado como processado.
-                            this._schedulePendingRetry(item.card, item.key);
-                            return;
-                        }
                         // sem imagem em nenhuma fonte — véu de fallback
                         this._applyFallback(item.card);
                         return;
@@ -319,16 +272,6 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                 .finally(() => {
                     this._active--;
                     this._drain();
-                    // Fila assentada = hora de aquecer a próxima página. O gate do
-                    // prefetch ADIA sob carga; sem este rearme ele simplesmente
-                    // nunca dispararia numa carga fria (o timer só é armado dentro
-                    // do _queue) e o aquecimento da página 2 se perderia na visita
-                    // em que ele mais importa. `_prefetchedPages` impede repetir a
-                    // mesma página, então o ciclo termina sozinho.
-                    if (this._active === 0 && this._waiting.length === 0) {
-                        clearTimeout(this._prefetchTimer);
-                        this._prefetchTimer = setTimeout(() => this._prefetchNextPage(), 1500);
-                    }
                 });
         }
     }
@@ -357,10 +300,6 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         // `serverKnowsEntity`: o servidor RESPONDEU sobre as fontes DESTA entity
         // (website/place_id). É o que decide se o fallback legado acrescenta algo.
         let serverKnowsEntity = false;
-        // A resposta (ou o erro) que classificou esta chave: é ela que carrega o
-        // `Cache-Control` com que o servidor limita por quanto tempo a própria
-        // resposta vale — o negativo abaixo nunca dura mais do que isso.
-        let serverHint = null;
         try {
             const response = await window.ApiService.request(
                 'GET',
@@ -376,19 +315,9 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                 entityDefinitive = true; // 200 mas vazio: sem imagem
                 serverKnowsEntity = true;
             } else if (response) {
-                const retryMs = this._pendingRetryMs(response);
-                if (retryMs > 0) {
-                    // "Ainda não resolvi": negativa transitória. Não grava negativo
-                    // (bloquearia a própria retentativa) e não marca definitivo.
-                    this._pendingKeys.add(key);
-                    this._pendingRetryDelayMs.set(key, retryMs);
-                    serverHint = response;
-                    return null;
-                }
                 entityDefinitive = true; // 404/400 do servidor: sem imagem
                 serverKnowsEntity = true;
             }
-            serverHint = response || null;
         } catch (error) {
             // O ApiService LANÇA em 4xx (handleErrorResponse consome o body e
             // converte em Error). Tratar todo throw como "erro de rede" fazia o
@@ -399,15 +328,6 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             // overture_fc7bec32… (sushidoescadao.foxdelivery.app) devolvia 400 no
             // endpoint por entity e o cliente repetia a MESMA URL no og-image.
             const status = error && error.status;
-            if (status === 404 && this._pendingRetryMs(error) > 0) {
-                // O servidor não tem o fato AINDA (o enriquecimento foi disparado
-                // nesta própria leitura). Gravar "sem foto" aqui é o defeito que
-                // deixava o card placeholder para sempre.
-                this._pendingKeys.add(key);
-                this._pendingRetryDelayMs.set(key, this._pendingRetryMs(error));
-                serverHint = error;
-                return null;
-            }
             if (status === 400 || status === 404) {
                 entityDefinitive = true;
                 // 404 "Entity … not found" = o servidor nunca olhou as fontes
@@ -417,19 +337,7 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                 const detail = String((error && error.detail) || '');
                 serverKnowsEntity = !/not\s*found/i.test(detail);
             }
-            // Falha SEM status (rede/timeout/5xx) → não definitiva, e o fallback
-            // legado CONTINUA. Decisão de 2026-09-12, revista em 2026-09-16 e
-            // mantida por assimetria real: a rota legada é mais barata (não faz o
-            // ranking da galeria e pode resolver com `url` só), então tem valor
-            // justamente quando a rota por entity estoura ou demora. O que a
-            // medição de 2026-09-16 mostrou não foi timeout — foram 116 chamadas
-            // legadas dentro de 25s, antes de qualquer limite de 30s — e sim
-            // VOLUME: 236 pipelines numa única carga fria. O corte foi feito onde
-            // o volume nasce (`_prefetchNextPage` só roda com a página assentada).
-            // O erro também é hint: `_installCacheControlBridge` copia os
-            // headers da resposta para ele antes de re-lançá-lo (o throw do
-            // ApiService leva só status/detail; o header morreria com o body).
-            serverHint = error;
+            // sem status (falha de rede/offline) → não definitivo, como antes
             this.log.debug(`imagem por entity falhou para ${entityId}:`, error);
         }
 
@@ -437,14 +345,7 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         if (!url && !placeId) {
             // servidor sem imagem E sem fonte legada → negativo persistido
             // (o reload não re-dispareava mais o 404 desta chave)
-            if (entityDefinitive) {
-                await this._writeNoImage(key, this._definitiveNoImageTtlMs, serverHint);
-            } else if (this._isOnline()) {
-                // Nem o servidor respondeu (rede/5xx) e não há fonte legada para
-                // tentar: memoriza curto para o reload não repetir a mesma
-                // tentativa falha em cima dos mesmos cards.
-                await this._writeNoImage(key, this._transientNegativeTtlMs, serverHint);
-            }
+            if (entityDefinitive) await this._writeNoImage(key);
             return null;
         }
 
@@ -454,7 +355,7 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         // (pending/conflict) — aí o servidor pode ter uma URL antiga e o
         // fallback com a URL do curador é legítimo.
         if (entityDefinitive && serverKnowsEntity && !(await this._hasUnsyncedLocalEdit(entityId))) {
-            await this._writeNoImage(key, this._definitiveNoImageTtlMs, serverHint);
+            await this._writeNoImage(key);
             return null;
         }
 
@@ -495,16 +396,6 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
      * hero ranqueado da entity; sem entity_id, pelo caminho legado.
      */
     _prefetchNextPage() {
-        // Não aquece a PRÓXIMA página enquanto a atual ainda tem trabalho: numa
-        // carga fria isto dobrava o volume (60 cards + 60 do prefetch) e era
-        // exatamente o que estourava o servidor — medido em 2026-09-16: 120
-        // chamadas por entity + 116 do legado, nenhum card resolvido em 25s e o
-        // container reiniciando. Com o gate, a próxima página continua sendo
-        // aquecida, só não às custas da que o usuário está olhando.
-        if (this._waiting.length > 0 || this._active > 0) {
-            this.log.debug('prefetch adiado: a página atual ainda está resolvendo');
-            return;
-        }
         const targets = [
             {
                 browser: window.CurationBrowser,
@@ -531,13 +422,7 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                     const url = d.contact?.website || d.contacts?.website || d.website || item.website || '';
                     const placeId = d.place_id || d.google_place_id || item.place_id || '';
                     const entityId = item.entity_id || d.entity_id || '';
-                    // Mesmo rank que o CARD vai usar: o hero escolhido pelo
-                    // concierge (data.image_rank ≥ 1) tem chave própria, então
-                    // prefetch fixo em rank:0 aquecia uma chave que o card nunca
-                    // lê — e o card pagava a rede inteira mesmo com a próxima
-                    // página "preparada".
-                    const rank = Number(d.image_rank) || 0;
-                    const key = entityId ? `entity:${entityId}:rank:${rank}` : (url || (placeId ? `place:${placeId}` : ''));
+                    const key = entityId ? `entity:${entityId}:rank:0` : (url || (placeId ? `place:${placeId}` : ''));
                     if (key && !this._pending.has(key) && !this._waiting.some((w) => w.key === key)) {
                         // Prefetch entra no escalonador na prioridade MAIS
                         // baixa — nunca disputa conexão com a página atual
@@ -548,7 +433,7 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                                 let promise = this._pending.get(key);
                                 if (!promise) {
                                     promise = entityId
-                                        ? this._resolveEntityImage(entityId, rank, url, placeId, key)
+                                        ? this._resolveEntityImage(entityId, 0, url, placeId, key)
                                         : this._resolve(url, placeId, key);
                                     this._pending.set(key, promise);
                                 }
@@ -600,32 +485,19 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                 { silent: true } // falha esperada (sem og:meta) — sem log de erro
             );
             if (!response || !response.ok) {
-                await this._writeNoImage(key, this._definitiveNoImageTtlMs, response); // 404/400 definitivo
+                await this._writeNoImage(key); // 404/400 definitivo
                 return null;
             }
             const blob = await response.blob();
             if (!blob || blob.size === 0) {
-                await this._writeNoImage(key, this._definitiveNoImageTtlMs, response);
+                await this._writeNoImage(key);
                 return null;
             }
 
             await this._writeCache(key, blob);
             return this._freshObjectUrl(key, blob);
         } catch (error) {
-            // `ApiService.request` LANÇA em 4xx/5xx — o ramo `!response.ok` acima
-            // só cobre um 2xx que não serve. Sem tratar o throw aqui, um 404 do
-            // og-image NUNCA virava negativo: cada load repetia a pergunta, e o
-            // servidor refazia a busca inteira (download da página + Places)
-            // para o mesmo card, em toda visita.
-            const status = error && error.status;
-            if (status === 400 || status === 404) {
-                await this._writeNoImage(key, this._definitiveNoImageTtlMs, error); // definitivo: o servidor já avaliou
-                return null;
-            }
-            // Falha transitória (rede/timeout/5xx): memoriza MUITO CURTO e só
-            // online, para um reload em conexão ruim não repetir 30 buscas no
-            // servidor — sem transformar 502 em "sem foto".
-            if (this._isOnline()) await this._writeNoImage(key, this._transientNegativeTtlMs, error);
+            // erro de REDE não é definitivo — não grava negativo
             this.log.debug(`og-image falhou para ${key}:`, error);
             throw error;
         }
@@ -664,12 +536,9 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
 
     /**
      * Lê o blob persistido no Cache Storage (null sem hit/sem suporte).
-     * Imagem (positivo) não tem TTL de aplicação: só sai por hard reset
-     * explícito ou eviction do navegador. Negativo carrega `x-cache-expires`
-     * (30 min quando o servidor disse "não existe imagem", 60 s quando a falha
-     * foi transitória — ou o `max-age` do servidor, se menor) e vence.
-     * Entradas legadas sem policy têm uma expiração de migração de 24h para
-     * descartar cache v2 antigo.
+     * Entradas novas não têm TTL de aplicação: só saem por hard reset
+     * explícito ou eviction do navegador. Entradas legadas sem policy têm
+     * uma expiração de migração de 24h para descartar cache v2 antigo.
      * @param {string} key - chave lógica de cache/dedupe
      * @returns {Promise<string|null|false>} objectURL, null (miss) ou false (negativo)
      */
@@ -688,19 +557,7 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             const policy = headers && headers.get ? headers.get('x-cache-policy') : null;
             const cachedAt = Number(headers && headers.get ? headers.get('x-cached-at') : 0) || 0;
             if (policy !== 'persistent' && cachedAt && Date.now() - cachedAt > this._legacyCacheTtlMs) {
-                // `cacheKey`, não `key`: a chave lógica (entity:/place:) não é
-                // uma Request válida, então o delete com ela falhava em
-                // silêncio e a entrada vencida voltava a ser lida a cada load.
-                await cache.delete(cacheKey);
-                return null;
-            }
-            // Expiração explícita (negativos: 404/400 em 30 min, falha
-            // transitória em 60 s — ou o `max-age` do servidor, se menor).
-            // Vencida = miss de verdade: apaga e deixa re-resolver, que é como
-            // um card sem foto se cura sozinho.
-            const expiresAt = Number(headers && headers.get ? headers.get('x-cache-expires') : 0) || 0;
-            if (expiresAt && Date.now() > expiresAt) {
-                await cache.delete(cacheKey);
+                await cache.delete(key);
                 return null;
             }
             // Negativo persistido (404/400 já visto nesta chave): false
@@ -719,13 +576,6 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
      * Persiste o blob no Cache Storage (no-op sem suporte/em falha).
      * O cache persistente não tem LRU da aplicação: o navegador gerencia
      * quota/eviction e o usuário controla a limpeza via hard reset de fotos.
-     * O `Cache-Control` da resposta POSITIVA (o servidor também manda um
-     * `max-age` no JPEG) é deliberadamente IGNORADO: o positivo continua
-     * persistente até Refresh photos/hard reset. Aplicá-lo re-baixaria a
-     * galeria inteira a cada janela — exatamente o tráfego que este cache
-     * existe para evitar — e o curador já tem o botão de refresh explícito.
-     * (Isto vale só para o positivo: o NEGATIVO respeita o max-age do
-     * servidor, ver `_boundedNegativeTtlMs`.)
      * @param {string} key - chave lógica de cache/dedupe
      * @param {Blob} blob - imagem já redimensionada pelo backend
      */
@@ -751,192 +601,30 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
     }
 
     /**
-     * `Cache-Control` do servidor traduzido em ms: o `max-age` quando há um,
-     * `0` quando ele pediu `no-store`/`no-cache` (nada pode ser guardado) e
-     * `null` quando não mandou header nenhum.
-     *
-     * O objeto pode ser a resposta do ApiService ou o ERRO que ele lançou: o
-     * throw de 4xx leva só `status`/`detail` e o header morreria com o body —
-     * `_installCacheControlBridge` copia os headers para o erro por isso.
-     * @param {Response|Error|null} source
-     * @returns {number|null} ms, 0 (não guardar) ou null (sem header)
-     */
-    _serverMaxAgeMs(source) {
-        let header = '';
-        try {
-            const headers = source && source.headers;
-            if (headers && typeof headers.get === 'function') {
-                header = headers.get('Cache-Control') || '';
-            }
-        } catch (error) {
-            return null;
-        }
-        const value = String(header || '');
-        if (/\bno-store\b|\bno-cache\b/i.test(value)) return 0;
-        const match = /(?:^|[\s,])max-age\s*=\s*"?(\d+)"?/i.exec(value);
-        if (!match) return null;
-        return Number(match[1]) * 1000;
-    }
-
-    /**
-     * Quanto esperar antes de perguntar DE NOVO por esta imagem (0 = não é pendente).
-     *
-     * O sinal é do SERVIDOR, não um palpite do cliente: `Retry-After` explícito
-     * manda; sem ele, um `max-age` curto (≤ 120 s) já significa "a resolução
-     * acabou de ser enfileirada" — o caso definitivo (`failed`, `no_sources`) vem
-     * com 3600. Sem essa separação o cliente só tinha "sem imagem" para os dois, e
-     * escolhia a leitura pessimista.
-     * @param {Response|Error|null} source - resposta/erro da tentativa
-     * @returns {number} espera em ms (0 = definitivo, não insistir)
-     */
-    _pendingRetryMs(source) {
-        let retryAfter = '';
-        try {
-            const headers = source && source.headers;
-            if (headers && typeof headers.get === 'function') {
-                retryAfter = headers.get('Retry-After') || '';
-            }
-        } catch (error) {
-            retryAfter = '';
-        }
-        const seconds = Number(String(retryAfter).trim());
-        if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, 60000);
-        const maxAgeMs = this._serverMaxAgeMs(source);
-        if (maxAgeMs !== null && maxAgeMs > 0 && maxAgeMs <= 120000) return this._pendingRetryFallbackMs;
-        return 0;
-    }
-
-    /**
-     * Reenfileira um card cuja imagem ainda está sendo resolvida no servidor.
-     *
-     * Bounded por `_maxPendingRetries` e com espera crescente: a resolução típica
-     * leva segundos, e desistir depois de três tentativas (15 s, 30 s, 45 s) evita
-     * laço apertado em cima de uma Entity que não vai resolver.
-     * @param {HTMLElement} card - card alvo
-     * @param {string} key - chave lógica (entity:<id>:rank:<n>)
-     */
-    _schedulePendingRetry(card, key) {
-        const attempts = this._retryCounts.get(key) || 0;
-        if (attempts >= this._maxPendingRetries) {
-            this._pendingKeys.delete(key);
-            this._applyFallback(card);
-            return;
-        }
-        this._retryCounts.set(key, attempts + 1);
-        const base = this._pendingRetryDelayMs.get(key) || this._pendingRetryFallbackMs;
-        const delay = base * (attempts + 1);
-        setTimeout(() => {
-            if (!card || !card.isConnected) return;
-            // A promessa deduplicada já assentou em `null`; sem soltar as duas
-            // marcas a próxima passada devolveria o cache e nada seria perguntado.
-            this._pending.delete(key);
-            this._pendingKeys.delete(key);
-            this._pendingRetryDelayMs.delete(key);
-            if (card.dataset) delete card.dataset.ogResolved;
-            this._queue(card);
-        }, delay);
-    }
-
-    /**
-     * TTL efetivo de um negativo: NUNCA maior que o `max-age` que o servidor
-     * mandou junto da resposta que o classificou.
-     *
-     * Quem sabe por quanto tempo a própria resposta vale é o servidor: o 404
-     * do hero vem com `max-age=60` enquanto ele ainda não resolveu a imagem e
-     * com `max-age=3600` quando a Entity comprovadamente não tem fonte. Guardar
-     * os 30 min do cliente nos DOIS casos congelaria o "ainda não resolvi"
-     * depois de o servidor já ter a foto. Daí o TTL do cliente ser limitado
-     * pelo do servidor (o menor dos dois, nunca o maior); sem header, vale o
-     * teto do cliente, que é o que evita re-perguntar a cada load.
-     * @param {number} ttlMs - teto do cliente para esta classe de negativo
-     * @param {Response|Error|null} source - resposta/erro que gerou o negativo
-     * @returns {number} TTL em ms (0 = não persistir)
-     */
-    _boundedNegativeTtlMs(ttlMs, source) {
-        const serverMaxAgeMs = this._serverMaxAgeMs(source);
-        if (serverMaxAgeMs === null) return ttlMs;
-        return Math.min(ttlMs, serverMaxAgeMs);
-    }
-
-    /**
-     * Persiste um NEGATIVO no Cache Storage: esta chave foi resolvida e NÃO
-     * tem imagem. O próximo load pula a rede até a validade vencer — 30 min
-     * quando o servidor afirmou que não existe imagem (404/400) e 60 s quando
-     * o que falhou foi o caminho até ele (rede/timeout/5xx, o chamador passa o
-     * TTL curto) — ou até um hard reset/Refresh photos explícito. Offline NÃO
-     * usa isto: estar sem rede não é "este card não tem foto".
-     * Quando a resposta traz `Cache-Control`, o `max-age` do servidor limita o
-     * TTL do cliente (`_boundedNegativeTtlMs`): um `max-age=60` não pode virar
-     * 30 min de cache local, e `no-store` não vira entrada nenhuma.
+     * Persiste um NEGATIVO no Cache Storage: esta chave já foi resolvida
+     * e NÃO tem imagem (404/400 definitivo do servidor). O próximo load
+     * pula a rede até um hard reset/Refresh photos explícito. Falha de rede
+     * NÃO grava negativo: offline não pode congelar o card como "sem foto".
      * @param {string} key - chave lógica do cache
-     * @param {number} [ttlMs] - teto do cliente para esta classe de negativo
-     * @param {Response|Error|null} [source] - resposta/erro que gerou o negativo
      */
-    async _writeNoImage(key, ttlMs = this._definitiveNoImageTtlMs, source = null) {
+    async _writeNoImage(key) {
         if (!window.caches) return;
-        const effectiveTtlMs = this._boundedNegativeTtlMs(ttlMs, source);
-        if (!(effectiveTtlMs > 0)) return; // Cache-Control: no-store — não persiste
         try {
             const cache = await caches.open(this._cacheName);
             const cacheKey = this._cacheRequestKey(key);
-            const now = Date.now();
             await cache.put(
                 cacheKey,
                 new Response('', {
                     headers: {
                         'Content-Type': 'text/plain',
                         'x-no-image': '1',
-                        'x-cached-at': String(now),
-                        'x-cache-expires': String(now + effectiveTtlMs),
+                        'x-cached-at': String(Date.now()),
                         'x-cache-policy': 'persistent'
                     }
                 })
             );
         } catch (error) {
             this.log.debug('escrita do negativo no Cache Storage falhou:', error);
-        }
-    }
-
-    /**
-     * Mantém visível o `Cache-Control` das respostas que o ApiService converte
-     * em throw: `handleErrorResponse` consome o body e re-lança um Error com
-     * `status`/`detail`, então o header morreria ali — e o cliente não
-     * conseguiria respeitar o piso que o servidor manda nos 404 do hero
-     * (`max-age=60` enquanto ainda resolve, `max-age=3600` quando não há
-     * fonte). O bridge envolve `handleErrorResponse` UMA vez e copia os headers
-     * para o erro antes de re-lançá-lo; é o mesmo padrão aditivo do
-     * `syncOwnershipFailureGuard.installErrorCodeBridge` (status, mensagem e
-     * tipo do erro não mudam — só ganha `headers`).
-     * @param {object} api - instância do ApiService
-     */
-    _installCacheControlBridge(api) {
-        if (!api || typeof api.handleErrorResponse !== 'function') return;
-        if (api.__ogImageCacheControlBridgeInstalled) return;
-        const originalHandle = api.handleErrorResponse.bind(api);
-        api.__ogImageCacheControlBridgeInstalled = true;
-        api.__ogImageCacheControlOriginalHandleErrorResponse = originalHandle;
-        api.handleErrorResponse = async (response, ...args) => {
-            try {
-                return await originalHandle(response, ...args);
-            } catch (error) {
-                if (error && !error.headers && response && response.headers) {
-                    error.headers = response.headers;
-                }
-                throw error;
-            }
-        };
-    }
-
-    /**
-     * O navegador está online? Só com rede presumida vale memorizar uma falha
-     * transitória — offline é uma condição normal, não um "sem imagem".
-     * @returns {boolean}
-     */
-    _isOnline() {
-        try {
-            return typeof navigator === 'undefined' || navigator.onLine !== false;
-        } catch (error) {
-            return true;
         }
     }
 

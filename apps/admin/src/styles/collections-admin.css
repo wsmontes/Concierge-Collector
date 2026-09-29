@@ -1,495 +1,281 @@
-/*
- * Collections — a lista de Collections e o workspace de uma Collection.
- *
- * Purpose: só a composição que o kit não cobre. Tabela, cartão, chip, diálogo,
- * gaveta, campo, esqueleto, vazio, erro e abas moram no kit (`kit.css` +
- * `src/components/ui/**`); aqui ficam a lista de membros, os grupos do diff, a
- * linha do tempo de atividade e os poucos encaixes de layout entre eles.
- *
- * Responsibilities: layout e tom dessas peças, com tokens `--cms-*` e classes
- * `ui-*` do kit. Nenhum literal de cor, espaço, raio, sombra ou duração.
- *
- * Dependencies: `theme.css` (tokens semânticos) e `kit.css` (componentes).
- *
- * O que saiu daqui: a tabela feita à mão (a lista virou `DataTable` com
- * `stacked`, então o cartão mobile de 900px morreu junto), o backdrop e a caixa
- * dos quatro diálogos desta tela (agora `ui/Dialog` sobre o `Modal` do Payload),
- * e o visual das abas (agora `ui/Tabs`).
- */
-
-/* ---------------------------------------------------------------------------
-   1. Encaixes de página
-   --------------------------------------------------------------------------- */
-
-/* Carregamento e falha da página de detalhe, antes de existir a Collection. */
-.collection-detail-shell {
+.collections-workspace {
   display: grid;
-  gap: var(--cms-spacing-4);
+  gap: 1.25rem;
   margin: 0 auto;
-  max-width: min(1760px, 100%);
-  padding: var(--cms-spacing-5) clamp(var(--cms-spacing-4), 2vw, var(--cms-spacing-8));
+  max-width: 1200px;
+  padding: 1.5rem;
+}
+
+.collections-workspace__header,
+.collection-views__actions,
+.collection-dialog__header,
+.collection-dialog__footer {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.collections-workspace__header h1,
+.collections-workspace__header p,
+.collection-dialog__header h2,
+.collection-dialog__header p {
+  margin: 0;
+}
+
+.collections-workspace__filters {
+  align-items: end;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(15rem, 2fr) minmax(9rem, 1fr) minmax(9rem, 1fr);
+}
+
+.collections-workspace__filters label,
+.collection-dialog form label {
+  display: grid;
+  font-weight: 600;
+  gap: 0.25rem;
+}
+
+.collections-workspace__filters input,
+.collections-workspace__filters select,
+.collection-dialog input,
+.collection-dialog textarea {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
+  color: var(--theme-text);
+  padding: 0.55rem;
+}
+
+.collections-workspace__table-wrap {
+  border: 1px solid var(--theme-border-color);
+  overflow-x: auto;
+}
+
+.collections-workspace__table {
+  border-collapse: collapse;
+  min-width: 760px;
   width: 100%;
 }
 
-/* Link que age como controle secundário (as ações do cabeçalho misturam
-   `Button` do Payload com navegação; sem esta classe o link destoava). */
-.collections-link-button {
+.collections-workspace__table th,
+.collections-workspace__table td {
+  border-bottom: 1px solid var(--cms-limestone-200);
+  padding: 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.collections-workspace__table th {
+  background: var(--cms-limestone-100);
+  color: var(--cms-olive-800);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.collections-workspace__table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.collections-workspace__table a {
+  font-weight: 700;
+}
+
+.collections-workspace__slug {
+  color: var(--cms-olive-600);
+  display: block;
+  font-size: 0.8125rem;
+  margin-top: 0.2rem;
+}
+
+.collections-workspace__error {
   align-items: center;
-  background: var(--cms-surface-1);
-  border: 1px solid var(--cms-border);
-  border-radius: var(--cms-radius-input);
-  color: var(--cms-fg);
-  display: inline-flex;
-  font-size: var(--cms-text-sm);
-  font-weight: 600;
-  min-height: var(--cms-control-height);
-  padding: 0 var(--cms-spacing-3);
-  text-decoration: none;
-  transition: background-color var(--cms-duration-fast) var(--cms-ease-standard),
-    border-color var(--cms-duration-fast) var(--cms-ease-standard);
-}
-
-.collections-link-button:hover {
-  background: var(--cms-surface-2);
-  border-color: var(--cms-border-strong);
-}
-
-/* O título da linha é um link: sublinhado por padrão dentro de tabela vira
-   ruído em 100 linhas. */
-.collections-workspace__title {
-  text-decoration: none;
-}
-
-.collections-workspace__title:hover {
-  text-decoration: underline;
-}
-
-/* Corpo das abas: um passo entre o bloco de dados e o controle de paginação. O
-   layout é do chamador porque `ui-section__body` é uma div sem ritmo próprio. */
-.collection-members,
-.collection-draft-diff,
-.collection-activity-view,
-.collection-distribution {
-  display: grid;
-  gap: var(--cms-spacing-3);
-  min-width: 0;
-}
-
-.collection-view__more {
+  background: var(--cms-limestone-100);
+  border: 1px solid var(--theme-border-color);
   display: flex;
-  justify-content: flex-start;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.75rem;
 }
 
-/* ---------------------------------------------------------------------------
-   2. Diálogos desta tela (a caixa e o backdrop são do kit)
-   --------------------------------------------------------------------------- */
-
-.collections-dialog-form {
-  display: grid;
-  gap: var(--cms-spacing-3);
-  min-width: 0;
-}
-
-.collections-dialog__version {
-  color: var(--cms-fg-strong);
-  font-size: var(--cms-text-lg);
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
+.collections-workspace__error p {
   margin: 0;
 }
 
-/* Publicar com Curations indisponíveis é a decisão que exige confirmação: a
-   caixa leva o tom de aviso e o texto já diz o número. */
-.collections-dialog__confirmation {
-  align-items: center;
-  background: var(--cms-tone-warning-bg);
-  border: 1px solid var(--cms-tone-warning-border);
-  border-radius: var(--cms-radius-input);
-  color: var(--cms-tone-warning-fg);
-  display: flex;
-  gap: var(--cms-spacing-2);
-  padding: var(--cms-spacing-2-5);
-}
-
-.collections-dialog__confirmation .ui-field {
-  gap: var(--cms-spacing-0-5);
-}
-
-/* ---------------------------------------------------------------------------
-   3. Membros de uma Collection
-   --------------------------------------------------------------------------- */
-
-.collection-members__list {
-  display: grid;
-  gap: var(--cms-spacing-2);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.collection-members__card {
-  align-items: start;
-  gap: var(--cms-spacing-2) var(--cms-spacing-4);
-  grid-template-columns: minmax(0, 2fr) minmax(9rem, 1fr) auto;
-}
-
-.collection-members__card > .collection-technical {
-  grid-column: 1 / -1;
-}
-
-.collection-members__updated,
-.collection-members__unknown {
-  color: var(--cms-fg-muted);
-  font-size: var(--cms-text-sm);
-  margin: 0;
-}
-
-.collection-members__unknown {
-  font-style: italic;
-}
-
-.collection-members__actions {
-  align-items: center;
-  display: flex;
-  gap: var(--cms-spacing-2);
+.collection-views__actions {
+  flex-wrap: wrap;
   justify-content: flex-end;
 }
 
-.collection-members__open {
-  font-weight: 600;
-}
-
-/* A gaveta de pré-visualização pertence à lista de Curations e cobre a tela; o
-   caminho de volta viaja com ela, preso na borda inferior. */
-.collection-member-preview__back {
-  background: var(--cms-surface-1);
-  border: 1px solid var(--cms-border);
-  border-radius: var(--cms-radius-full);
-  bottom: var(--cms-spacing-4);
-  box-shadow: var(--cms-elevation-2);
-  font-weight: 600;
-  left: var(--cms-spacing-4);
-  padding: var(--cms-spacing-1-5) var(--cms-spacing-3);
-  position: fixed;
-  text-decoration: none;
-  z-index: var(--cms-z-drawer);
-}
-
-.collection-member-preview__back:hover {
-  text-decoration: underline;
-}
-
-/* ---------------------------------------------------------------------------
-   4. Diff do rascunho: adição e remoção com tom E sinal
-   --------------------------------------------------------------------------- */
-
-.collection-draft-diff__group {
-  background: var(--collection-group-bg, var(--cms-surface-1));
-  border: 1px solid var(--collection-group-border, var(--cms-border-subtle));
-  border-left-width: 4px;
-  border-radius: var(--cms-radius-card);
-  display: grid;
-  gap: var(--cms-spacing-2);
-  padding: var(--cms-spacing-3);
-}
-
-.collection-draft-diff__group[data-tone='add'] {
-  --collection-group-bg: var(--cms-tone-success-bg);
-  --collection-group-border: var(--cms-tone-success-border);
-  --collection-group-fg: var(--cms-tone-success-fg);
-}
-
-.collection-draft-diff__group[data-tone='remove'] {
-  --collection-group-bg: var(--cms-tone-error-bg);
-  --collection-group-border: var(--cms-tone-error-border);
-  --collection-group-fg: var(--cms-tone-error-fg);
-}
-
-.collection-draft-diff__heading {
-  align-items: baseline;
-  color: var(--collection-group-fg, var(--cms-fg-strong));
+.collection-dialog-backdrop {
+  align-items: center;
+  background: rgb(24 38 24 / 55%);
   display: flex;
-  font-size: var(--cms-text-xs);
-  font-variant-numeric: tabular-nums;
-  gap: var(--cms-spacing-1-5);
-  letter-spacing: 0.06em;
-  margin: 0;
+  inset: 0;
+  justify-content: center;
+  padding: 1rem;
+  position: fixed;
+  z-index: 110;
 }
 
-.collection-draft-diff__count {
-  color: var(--collection-group-fg, var(--cms-fg-muted));
-  font-weight: 400;
-  opacity: 0.8;
-}
-
-.collection-draft-diff__list {
+.collection-dialog {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-border-color);
   display: grid;
-  gap: var(--cms-spacing-2);
-  list-style: none;
-  margin: 0;
-  padding: 0;
+  gap: 1rem;
+  max-height: min(88vh, 48rem);
+  max-width: 640px;
+  overflow-y: auto;
+  padding: 1.5rem;
+  width: 100%;
 }
 
-.collection-draft-diff__row {
+.collection-dialog form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.collection-dialog__header {
   align-items: start;
-  border-top: 1px solid var(--collection-group-border, var(--cms-border-subtle));
-  display: grid;
-  gap: var(--cms-spacing-1) var(--cms-spacing-2);
-  grid-template-columns: auto minmax(0, 1fr);
-  padding-top: var(--cms-spacing-2);
 }
 
-.collection-draft-diff__row:first-child {
-  border-top: 0;
-  padding-top: 0;
+.collection-dialog__footer {
+  justify-content: flex-end;
 }
 
-.collection-draft-diff__row > .collection-technical {
-  grid-column: 2;
-}
-
-.collection-draft-diff__sign {
-  color: var(--collection-group-fg, var(--cms-fg-strong));
-  font-size: var(--cms-text-lg);
+.collection-dialog__version {
+  font-size: 1.1rem;
   font-weight: 700;
-  line-height: 1;
-  min-width: 1ch;
-  text-align: center;
-}
-
-.collection-draft-diff__empty {
-  color: var(--cms-fg-muted);
-  font-size: var(--cms-text-sm);
   margin: 0;
 }
 
-/* ---------------------------------------------------------------------------
-   5. Identidade da Curation e detalhes técnicos
-   --------------------------------------------------------------------------- */
-
-.collection-curation {
+.collection-dialog__summary {
   display: grid;
-  gap: var(--cms-spacing-0-5);
-  min-width: 0;
-}
-
-.collection-curation__name,
-.collection-curation__curator,
-.collection-curation__place,
-.collection-curation__missing {
+  gap: 0.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
 }
 
-.collection-curation__name {
-  color: var(--cms-fg-strong);
+.collection-dialog__summary div {
+  background: var(--cms-limestone-100);
+  border: 1px solid var(--theme-border-color);
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.65rem;
+}
+
+.collection-dialog__summary dt {
+  color: var(--cms-olive-600);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.collection-dialog__summary dd {
+  margin: 0;
+}
+
+.collection-dialog__confirmation {
+  align-items: center;
+  background: var(--cms-limestone-100);
+  border: 1px solid var(--theme-border-color);
+  display: flex;
   font-weight: 600;
+  gap: 0.65rem;
+  padding: 0.75rem;
 }
 
-.collection-curation__curator {
-  color: var(--cms-fg);
+.collection-dialog__confirmation input {
+  min-height: auto;
 }
 
-.collection-curation__place,
-.collection-curation__missing {
-  color: var(--cms-fg-muted);
-  font-size: var(--cms-text-sm);
+.collection-dialog__hint {
+  color: var(--cms-olive-600);
+  font-size: 0.875rem;
+  margin: 0;
 }
 
-.collection-curation__missing {
-  font-style: italic;
+.collection-views [aria-label='Published versions'] li,
+.collection-views [aria-label='Collection members'] li,
+.collection-views [aria-label='Draft changes'] li,
+.collection-views [aria-label='Collection activity'] li {
+  margin-bottom: 0.5rem;
 }
 
-.collection-curation__id {
-  font-family: var(--cms-font-mono);
-  font-size: var(--cms-text-xs);
+.collection-views [aria-label='Published versions'] li button {
+  margin-left: 0.75rem;
 }
 
-.collection-curation__concepts {
+.collection-distribution {
+  display: grid;
+  gap: 1rem;
+}
+
+.collection-distribution header h2,
+.collection-distribution header p,
+.collection-distribution__heading h3 {
+  margin: 0;
+}
+
+.collection-distribution header {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.collection-distribution__heading {
+  align-items: baseline;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--cms-spacing-1);
-  list-style: none;
-  margin: var(--cms-spacing-1) 0 0;
-  padding: 0;
-}
-
-.collection-curation__concepts li {
-  background: var(--cms-surface-2);
-  border: 1px solid var(--cms-border-subtle);
-  border-radius: var(--cms-radius-full);
-  color: var(--cms-fg);
-  font-size: var(--cms-text-xs);
-  padding: var(--cms-spacing-0-5) var(--cms-spacing-2);
-}
-
-.collection-technical {
-  color: var(--cms-fg-muted);
-  font-size: var(--cms-text-xs);
-}
-
-.collection-technical summary {
-  cursor: pointer;
-}
-
-.collection-technical .ui-facts {
-  margin-top: var(--cms-spacing-1-5);
-}
-
-.collection-technical .ui-facts dt {
-  font-size: var(--cms-text-xs);
-}
-
-/* ---------------------------------------------------------------------------
-   6. Relacionamentos e distribuição
-   --------------------------------------------------------------------------- */
-
-.collection-relationships__note {
-  color: var(--cms-fg-muted);
-  font-size: var(--cms-text-sm);
-  margin: 0;
+  gap: 0.75rem;
+  justify-content: space-between;
 }
 
 .collection-distribution__applications {
   display: grid;
-  gap: var(--cms-spacing-2);
+  gap: 0.65rem;
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.collection-distribution__applications li {
+  border: 1px solid var(--theme-border-color);
+  padding: 0.75rem;
+}
+
+.collection-distribution__applications h3,
+.collection-distribution__applications p {
+  margin: 0;
 }
 
 .collection-distribution__applications p {
-  color: var(--cms-fg-muted);
-  margin: 0;
+  color: var(--cms-olive-600);
+  margin-top: 0.25rem;
 }
 
-/* ---------------------------------------------------------------------------
-   7. Atividade
-   --------------------------------------------------------------------------- */
+@media (max-width: 720px) {
+  .collections-workspace,
+  .collection-views {
+    padding: 1rem;
+  }
 
-.collection-activity {
-  display: grid;
-  gap: 0;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
+  .collections-workspace__header,
+  .collection-views__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
 
-.collection-activity__row {
-  align-items: baseline;
-  border-bottom: 1px solid var(--cms-border-subtle);
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cms-spacing-2);
-  min-height: var(--cms-row-height-compact);
-  padding: var(--cms-spacing-2) 0;
-}
-
-.collection-activity__row:last-child {
-  border-bottom: 0;
-}
-
-.collection-activity__event {
-  color: var(--cms-fg-strong);
-  font-family: var(--cms-font-mono);
-  font-size: var(--cms-text-xs);
-}
-
-.collection-activity__actor {
-  color: var(--cms-fg-muted);
-  font-size: var(--cms-text-sm);
-}
-
-.collection-activity__when {
-  color: var(--cms-fg-faint);
-  font-size: var(--cms-text-xs);
-  margin-left: auto;
-}
-
-.collection-activity__empty {
-  color: var(--cms-fg-muted);
-  font-size: var(--cms-text-sm);
-  padding: var(--cms-spacing-3) 0;
-}
-
-/* ---------------------------------------------------------------------------
-   8. Overview — as regras vivem aqui até `OverviewView` virar widget de painel
-      (o componente é de outra tela e ainda lê estas classes).
-   --------------------------------------------------------------------------- */
-
-.overview-view {
-  display: grid;
-  gap: var(--cms-spacing-3);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.overview-view > section {
-  align-content: start;
-  background: var(--cms-surface-1);
-  border: 1px solid var(--cms-border-subtle);
-  border-radius: var(--cms-radius-card);
-  display: grid;
-  gap: var(--cms-spacing-2-5);
-  min-width: 0;
-  padding: var(--cms-spacing-3);
-}
-
-.overview-view > section h2,
-.overview-view > section p {
-  margin: 0;
-}
-
-.overview-view__section-heading {
-  align-items: center;
-  display: flex;
-  gap: var(--cms-spacing-2-5);
-  justify-content: space-between;
-}
-
-.overview-view__meta,
-.overview-view__empty {
-  color: var(--cms-fg-muted);
-  font-size: var(--cms-text-sm);
-}
-
-.overview-view__list {
-  display: grid;
-  gap: var(--cms-spacing-1-5);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.overview-view__list--actions .btn {
-  justify-content: flex-start;
-  max-width: 100%;
-  text-align: left;
-  white-space: normal;
-}
-
-.overview-view__list--text li {
-  border-bottom: 1px solid var(--cms-border-subtle);
-  padding-bottom: var(--cms-spacing-1-5);
-}
-
-.overview-view__list--text li:last-child {
-  border-bottom: 0;
-  padding-bottom: 0;
-}
-
-/* ---------------------------------------------------------------------------
-   9. Responsivo
-   --------------------------------------------------------------------------- */
-
-@media (max-width: 900px) {
-  .overview-view {
+  .collections-workspace__filters {
     grid-template-columns: 1fr;
   }
 
-  .collection-members__card {
-    grid-template-columns: 1fr;
-  }
-
-  .collection-members__actions {
+  .collection-views__actions {
     justify-content: flex-start;
+  }
+
+  .collection-dialog__summary {
+    grid-template-columns: 1fr;
   }
 }

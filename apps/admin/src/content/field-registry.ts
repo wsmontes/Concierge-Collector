@@ -1,476 +1,446 @@
-/**
- * Editorial registry for the three record families the Admin renders.
- *
- * The registry describes fields; it never decides which fields exist. Anything
- * a stored record carries but this file does not list still renders — it is
- * simply unlabelled, see `record-inspector.ts`.
- */
+import { pathSegments } from './field-path'
+import type { FieldType } from './field-types'
 
-import type { ContentRecordKind, FieldDescriptor } from './field-types'
+export type FieldOwner = 'curation' | 'entity' | 'collection' | 'system'
+
+export interface FieldDescriptor {
+  path: string
+  label: string
+  owner: FieldOwner
+  type: FieldType
+  section: string
+  searchable?: boolean
+  filterable?: boolean
+  editable?: boolean
+  listable?: boolean
+  system?: boolean
+  derivedIn?: FieldOwner
+}
+
+type FieldSection =
+  | 'about'
+  | 'identity'
+  | 'curation'
+  | 'concepts'
+  | 'media'
+  | 'relationships'
+  | 'history'
+  | 'system'
+  | 'other'
+
+type ContentKind = 'curation' | 'entity'
+
+/** Entries omit `owner`: ownership is a property of the document, not of the field. */
+interface FieldInit {
+  path: string
+  label: string
+  type: FieldType
+  section: FieldSection
+  searchable?: boolean
+  filterable?: boolean
+  editable?: boolean
+  listable?: boolean
+  system?: boolean
+  derivedIn?: FieldOwner
+}
+
+function ownedBy(owner: FieldOwner, fields: readonly FieldInit[]): readonly FieldDescriptor[] {
+  return fields.map((field) => ({ owner, ...field }))
+}
 
 /**
- * Curation documents: the curator's recommendation and its sources.
- *
- * `filterable` marks the paths the catalog clause boundary evaluates, so the
- * advanced field search (plan §8) can offer exactly those. The open-ended
- * `categories.<Category>` and `sources.<key>` shapes are covered by their root
- * entries and are surfaced as templates by the filter builder.
+ * Curation records (see concierge-api-v3 app/models/schemas.py Curation).
+ * `city`/`type` are denormalized from the linked Entity and are therefore
+ * read-only projections: the Entity is the canonical owner.
  */
-export const CURATION_FIELDS = [
+export const CURATION_FIELDS: readonly FieldDescriptor[] = ownedBy('curation', [
+  { path: '_id', label: 'Mongo ID', type: 'text', section: 'system', searchable: true, system: true, editable: false },
   {
     path: 'curation_id',
-    label: 'Curation id',
-    owner: 'system',
+    label: 'Curation ID',
     type: 'text',
-    system: true,
-    section: 'Identity',
-  },
-  {
-    path: 'entity_id',
-    label: 'Entity',
-    owner: 'curation',
-    type: 'relationship',
-    relationship: { kind: 'entity', edit: 'identifier' },
-    editable: true,
+    section: 'identity',
     searchable: true,
     filterable: true,
-    section: 'About',
+    listable: true,
+    editable: false,
   },
   {
     path: 'restaurant_name',
     label: 'Restaurant name',
-    owner: 'curation',
     type: 'text',
-    editable: true,
+    section: 'about',
     searchable: true,
     filterable: true,
     listable: true,
-    section: 'About',
+    editable: true,
   },
   {
     path: 'status',
-    label: 'Status',
-    owner: 'curation',
+    label: 'Curation status',
     type: 'enum',
-    enumValues: ['draft', 'linked', 'active', 'deleted', 'archived'],
-    editable: true,
+    section: 'curation',
+    searchable: true,
     filterable: true,
     listable: true,
-    section: 'About',
-  },
-  {
-    path: 'curator_id',
-    label: 'Curator',
-    owner: 'curation',
-    type: 'text',
     editable: true,
-    filterable: true,
-    section: 'About',
-    help: 'Search the curator directory and apply a curator to reassign this Curation.',
-  },
-  {
-    path: 'curator.name',
-    label: 'Curator',
-    owner: 'curation',
-    type: 'text',
-    editable: false,
-    derivedIn: 'curation',
-    derivedFrom: 'Curator',
-    filterable: true,
-    section: 'About',
-  },
-  {
-    path: 'curator.email',
-    label: 'Curator email',
-    owner: 'curation',
-    type: 'text',
-    editable: false,
-    system: true,
-    section: 'About',
-  },
-  {
-    path: 'curator_type',
-    label: 'Curator type',
-    owner: 'curation',
-    type: 'enum',
-    enumValues: ['human', 'synthetic'],
-    editable: true,
-    filterable: true,
-    section: 'About',
-  },
-  {
-    path: 'notes.public',
-    label: 'Public recommendation',
-    owner: 'curation',
-    type: 'longText',
-    editable: true,
-    searchable: true,
-    filterable: true,
-    section: 'Your curation',
-  },
-  {
-    path: 'notes.private',
-    label: 'Private note',
-    owner: 'curation',
-    type: 'longText',
-    editable: true,
-    searchable: true,
-    filterable: true,
-    section: 'Your curation',
   },
   {
     path: 'city',
     label: 'City',
-    owner: 'entity',
     type: 'text',
-    editable: false,
-    derivedIn: 'curation',
-    derivedFrom: 'Entity',
+    section: 'about',
+    searchable: true,
     filterable: true,
     listable: true,
-    section: 'About',
+    editable: false,
+    derivedIn: 'entity',
   },
   {
     path: 'type',
-    label: 'Type',
-    owner: 'entity',
-    type: 'text',
-    editable: false,
-    derivedIn: 'curation',
-    derivedFrom: 'Entity',
+    label: 'Entity type',
+    type: 'enum',
+    section: 'about',
     filterable: true,
     listable: true,
-    section: 'About',
+    editable: false,
+    derivedIn: 'entity',
   },
+  { path: 'notes', label: 'Notes', type: 'object', section: 'curation', searchable: true, editable: true },
+  {
+    path: 'notes.public',
+    label: 'Public recommendation',
+    type: 'longText',
+    section: 'curation',
+    searchable: true,
+    filterable: true,
+    editable: true,
+  },
+  { path: 'notes.private', label: 'Private note', type: 'longText', section: 'curation', searchable: true, editable: true },
   {
     path: 'categories',
     label: 'Concepts',
-    owner: 'curation',
-    type: 'concept',
-    editable: true,
+    type: 'object',
+    section: 'concepts',
     searchable: true,
     filterable: true,
-    section: 'Concepts',
+    editable: true,
+  },
+  { path: 'transcript', label: 'Transcript', type: 'longText', section: 'media', searchable: true, editable: true },
+  { path: 'sources', label: 'Sources', type: 'object', section: 'media', searchable: true, editable: true },
+  { path: 'items', label: 'Items', type: 'array', section: 'concepts', searchable: true, editable: true },
+  {
+    path: 'entity_id',
+    label: 'Linked entity',
+    type: 'relationship',
+    section: 'relationships',
+    filterable: true,
+    editable: true,
   },
   {
-    path: 'transcript',
-    label: 'Transcript',
-    owner: 'curation',
-    type: 'longText',
-    editable: true,
+    path: 'curator',
+    label: 'Curator',
+    type: 'relationship',
+    section: 'relationships',
     searchable: true,
     filterable: true,
-    section: 'Media & sources',
+    editable: false,
   },
   {
-    path: 'sources',
-    label: 'Sources',
-    owner: 'curation',
-    type: 'object',
-    editable: true,
+    path: 'curator.id',
+    label: 'Curator ID',
+    type: 'text',
+    section: 'relationships',
     filterable: true,
-    section: 'Media & sources',
+    editable: false,
   },
+  { path: 'curator.name', label: 'Curator name', type: 'text', section: 'relationships', searchable: true, editable: false },
   {
-    path: 'items',
-    label: 'Items',
-    owner: 'curation',
-    type: 'array',
-    editable: true,
-    section: 'Your curation',
-  },
-  {
-    path: 'embeddings',
-    label: 'Embeddings',
-    owner: 'system',
-    type: 'binary',
-    system: true,
-    section: 'Advanced',
-    help: 'Stored inline as Binary float32; the API returns its shape, never the raw bytes.',
-  },
-  {
-    path: 'embeddings_metadata',
-    label: 'Embeddings metadata',
-    owner: 'system',
-    type: 'object',
-    system: true,
-    section: 'Advanced',
-  },
-  {
-    path: 'createdBy',
-    label: 'Created by',
-    owner: 'system',
+    path: 'curator.email',
+    label: 'Curator email',
     type: 'text',
-    system: true,
-    section: 'History',
+    section: 'relationships',
+    searchable: true,
+    editable: false,
   },
   {
-    path: 'updatedBy',
-    label: 'Updated by',
-    owner: 'system',
-    type: 'text',
-    system: true,
-    section: 'History',
+    path: 'curator_id',
+    label: 'Curator reference',
+    type: 'relationship',
+    section: 'relationships',
+    filterable: true,
+    editable: false,
+  },
+  {
+    path: 'curator_type',
+    label: 'Curator type',
+    type: 'enum',
+    section: 'curation',
+    filterable: true,
+    editable: false,
   },
   {
     path: 'createdAt',
-    label: 'Created',
-    owner: 'system',
+    label: 'Created at',
     type: 'dateTime',
-    system: true,
+    section: 'history',
     filterable: true,
-    section: 'History',
+    system: true,
+    editable: false,
   },
   {
     path: 'updatedAt',
-    label: 'Updated',
-    owner: 'system',
+    label: 'Updated at',
     type: 'dateTime',
-    system: true,
-    listable: true,
+    section: 'history',
     filterable: true,
-    section: 'History',
-  },
-  {
-    path: 'version',
-    label: 'Version',
-    owner: 'system',
-    type: 'number',
     system: true,
-    filterable: true,
-    section: 'History',
+    editable: false,
   },
+  { path: 'createdBy', label: 'Created by', type: 'text', section: 'history', searchable: true, system: true, editable: false },
+  { path: 'updatedBy', label: 'Updated by', type: 'text', section: 'history', searchable: true, system: true, editable: false },
+  { path: 'version', label: 'Version', type: 'number', section: 'system', system: true, editable: false },
   {
     path: 'catalog_sequence',
     label: 'Catalog sequence',
-    owner: 'system',
     type: 'number',
-    system: true,
+    section: 'system',
     filterable: true,
-    section: 'Advanced',
+    listable: true,
+    system: true,
+    editable: false,
   },
-] satisfies readonly FieldDescriptor[]
+  { path: 'embeddings', label: 'Embeddings', type: 'array', section: 'system', system: true, editable: false },
+  {
+    path: 'embeddings_metadata',
+    label: 'Embeddings metadata',
+    type: 'object',
+    section: 'system',
+    system: true,
+    editable: false,
+  },
+])
 
-/** Canonical entities: restaurants, hotels and the like. */
-export const ENTITY_FIELDS = [
+/**
+ * Entity records (see concierge-api-v3 app/models/schemas.py Entity). `data` is
+ * the flexible payload; the registered sub-paths are the ones the pipeline and
+ * the consumer distribution actually read.
+ */
+export const ENTITY_FIELDS: readonly FieldDescriptor[] = ownedBy('entity', [
+  { path: '_id', label: 'Mongo ID', type: 'text', section: 'system', searchable: true, system: true, editable: false },
   {
     path: 'entity_id',
-    label: 'Entity id',
-    owner: 'system',
+    label: 'Entity ID',
     type: 'text',
-    system: true,
-    section: 'Identity',
+    section: 'identity',
+    searchable: true,
+    filterable: true,
+    listable: true,
+    editable: false,
   },
   {
     path: 'name',
     label: 'Name',
-    owner: 'entity',
     type: 'text',
-    editable: true,
+    section: 'about',
     searchable: true,
+    filterable: true,
     listable: true,
-    section: 'Canonical identity',
+    editable: true,
   },
   {
     path: 'type',
-    label: 'Type',
-    owner: 'entity',
+    label: 'Entity type',
     type: 'enum',
-    enumValues: ['restaurant', 'hotel', 'venue', 'bar', 'cafe', 'other'],
-    editable: true,
+    section: 'about',
     searchable: true,
+    filterable: true,
     listable: true,
-    section: 'Canonical identity',
+    editable: true,
   },
   {
     path: 'status',
-    label: 'Status',
-    owner: 'entity',
+    label: 'Entity status',
     type: 'enum',
-    enumValues: ['active', 'inactive', 'draft'],
-    editable: true,
+    section: 'about',
+    searchable: true,
+    filterable: true,
     listable: true,
-    section: 'Canonical identity',
+    editable: true,
   },
   {
     path: 'externalId',
-    label: 'External id',
-    owner: 'entity',
+    label: 'External ID',
     type: 'text',
-    editable: true,
+    section: 'identity',
     searchable: true,
-    section: 'Identity',
+    filterable: true,
+    editable: true,
+  },
+  { path: 'metadata', label: 'Metadata', type: 'array', section: 'about', searchable: true, editable: true },
+  { path: 'sync', label: 'Sync state', type: 'object', section: 'system', system: true, editable: false },
+  { path: 'data', label: 'Data', type: 'object', section: 'about', editable: true },
+  { path: 'data.location', label: 'Location', type: 'object', section: 'about', editable: true },
+  {
+    path: 'data.location.address',
+    label: 'Address',
+    type: 'text',
+    section: 'about',
+    searchable: true,
+    filterable: true,
+    editable: true,
   },
   {
-    path: 'metadata',
-    label: 'Metadata',
-    owner: 'entity',
+    path: 'data.location.city',
+    label: 'City',
+    type: 'text',
+    section: 'about',
+    searchable: true,
+    filterable: true,
+    listable: true,
+    editable: true,
+  },
+  {
+    path: 'data.location.country',
+    label: 'Country',
+    type: 'text',
+    section: 'about',
+    searchable: true,
+    filterable: true,
+    editable: true,
+  },
+  { path: 'data.location.latitude', label: 'Latitude', type: 'number', section: 'about', editable: true },
+  { path: 'data.location.longitude', label: 'Longitude', type: 'number', section: 'about', editable: true },
+  { path: 'data.address', label: 'Address', type: 'object', section: 'about', editable: true },
+  { path: 'data.address.street', label: 'Street', type: 'text', section: 'about', searchable: true, editable: true },
+  {
+    path: 'data.address.city',
+    label: 'City',
+    type: 'text',
+    section: 'about',
+    searchable: true,
+    filterable: true,
+    listable: true,
+    editable: true,
+  },
+  {
+    path: 'data.formatted_address',
+    label: 'Formatted address',
+    type: 'text',
+    section: 'about',
+    searchable: true,
+    editable: true,
+  },
+  {
+    path: 'data.place_id',
+    label: 'Google Place ID',
+    type: 'text',
+    section: 'identity',
+    searchable: true,
+    filterable: true,
+    editable: false,
+  },
+  {
+    path: 'data.cuisine',
+    label: 'Cuisine',
+    type: 'text',
+    section: 'about',
+    searchable: true,
+    filterable: true,
+    editable: true,
+  },
+  { path: 'data.description', label: 'Description', type: 'longText', section: 'about', searchable: true, editable: true },
+  { path: 'data.rating', label: 'Rating', type: 'number', section: 'about', filterable: true, editable: true },
+  {
+    path: 'data.google_rating',
+    label: 'Google rating',
+    type: 'number',
+    section: 'about',
+    filterable: true,
+    editable: true,
+  },
+  {
+    path: 'data.types',
+    label: 'Place types',
     type: 'array',
-    editable: true,
-    section: 'Metadata',
-  },
-  {
-    path: 'sync',
-    label: 'Sync',
-    owner: 'entity',
-    type: 'object',
-    editable: true,
-    section: 'Metadata',
-  },
-  {
-    path: 'data',
-    label: 'Attributes',
-    owner: 'entity',
-    type: 'object',
-    editable: true,
+    section: 'about',
     searchable: true,
-    section: 'Attributes',
+    filterable: true,
+    editable: true,
   },
-  {
-    path: 'createdBy',
-    label: 'Created by',
-    owner: 'system',
-    type: 'text',
-    system: true,
-    section: 'History',
-  },
-  {
-    path: 'updatedBy',
-    label: 'Updated by',
-    owner: 'system',
-    type: 'text',
-    system: true,
-    section: 'History',
-  },
+  { path: 'data.website', label: 'Website', type: 'text', section: 'about', searchable: true, editable: true },
+  { path: 'data.phone', label: 'Phone', type: 'text', section: 'about', searchable: true, editable: true },
+  { path: 'data.contacts', label: 'Contacts', type: 'object', section: 'about', editable: true },
+  { path: 'data.contacts.phone', label: 'Phone', type: 'text', section: 'about', searchable: true, editable: true },
+  { path: 'data.contacts.website', label: 'Website', type: 'text', section: 'about', searchable: true, editable: true },
+  { path: 'data.media', label: 'Media', type: 'array', section: 'media', editable: true },
+  { path: 'data.media.photos', label: 'Photos', type: 'array', section: 'media', editable: true },
   {
     path: 'createdAt',
-    label: 'Created',
-    owner: 'system',
+    label: 'Created at',
     type: 'dateTime',
+    section: 'history',
+    filterable: true,
     system: true,
-    section: 'History',
-  },
-  {
-    path: 'updatedAt',
-    label: 'Updated',
-    owner: 'system',
-    type: 'dateTime',
-    system: true,
-    section: 'History',
-  },
-  {
-    path: 'version',
-    label: 'Version',
-    owner: 'system',
-    type: 'number',
-    system: true,
-    section: 'History',
-  },
-] satisfies readonly FieldDescriptor[]
-
-/** Payload-side Collection records: the published editorial groupings. */
-export const COLLECTION_FIELDS = [
-  {
-    path: 'title',
-    label: 'Title',
-    owner: 'collection',
-    type: 'text',
-    editable: true,
-    searchable: true,
-    listable: true,
-  },
-  {
-    path: 'slug',
-    label: 'Slug',
-    owner: 'collection',
-    type: 'text',
-    editable: true,
-    searchable: true,
-    listable: true,
-  },
-  {
-    path: 'description',
-    label: 'Description',
-    owner: 'collection',
-    type: 'longText',
-    editable: true,
-    searchable: true,
-  },
-  {
-    path: 'lifecycle',
-    label: 'Lifecycle',
-    owner: 'collection',
-    type: 'enum',
-    enumValues: ['draft', 'published', 'archived'],
-    editable: false,
-    listable: true,
-  },
-  {
-    path: 'currentPublishedVersion',
-    label: 'Published version',
-    owner: 'collection',
-    type: 'number',
-    system: true,
-  },
-  {
-    path: 'draftRevision',
-    label: 'Draft revision',
-    owner: 'collection',
-    type: 'number',
-    system: true,
-  },
-  {
-    path: 'draftState',
-    label: 'Draft state',
-    owner: 'collection',
-    type: 'enum',
-    enumValues: ['clean', 'dirty'],
     editable: false,
   },
   {
-    path: 'publishedSelectedCount',
-    label: 'Published members',
-    owner: 'collection',
-    type: 'number',
-    system: true,
-  },
-  {
-    path: 'draftSelectedCount',
-    label: 'Draft members',
-    owner: 'collection',
-    type: 'number',
-    system: true,
-  },
-  {
-    path: 'revision',
-    label: 'Revision',
-    owner: 'collection',
-    type: 'number',
-    system: true,
-  },
-  {
-    path: 'createdAt',
-    label: 'Created',
-    owner: 'system',
-    type: 'dateTime',
-    system: true,
-  },
-  {
     path: 'updatedAt',
-    label: 'Updated',
-    owner: 'system',
+    label: 'Updated at',
     type: 'dateTime',
+    section: 'history',
+    filterable: true,
     system: true,
+    editable: false,
   },
-] satisfies readonly FieldDescriptor[]
+  { path: 'createdBy', label: 'Created by', type: 'text', section: 'history', searchable: true, system: true, editable: false },
+  { path: 'updatedBy', label: 'Updated by', type: 'text', section: 'history', searchable: true, system: true, editable: false },
+  { path: 'version', label: 'Version', type: 'number', section: 'system', filterable: true, system: true, editable: false },
+])
 
-const REGISTRY: Record<ContentRecordKind, readonly FieldDescriptor[]> = {
-  curation: CURATION_FIELDS,
-  entity: ENTITY_FIELDS,
-  collection: COLLECTION_FIELDS,
+/** `categories.<concept>` is open by design: the concept vocabulary lives in Mongo, not here. */
+function dynamicField(kind: ContentKind, path: string): FieldDescriptor | undefined {
+  if (kind !== 'curation') return undefined
+  const segments = pathSegments(path)
+  if (segments.length !== 2 || segments[0] !== 'categories') return undefined
+  return {
+    path,
+    label: humanizeSegment(segments[1]),
+    owner: 'curation',
+    type: 'concept',
+    section: 'concepts',
+    searchable: true,
+    filterable: true,
+    editable: true,
+  }
 }
 
-/** The descriptors of one record family, in registry order. */
-export function descriptorsFor(kind: ContentRecordKind): readonly FieldDescriptor[] {
-  return REGISTRY[kind]
+function humanizeSegment(segment: string): string {
+  const spaced = segment
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\bid\b/gi, 'ID')
+    .trim()
+  if (spaced === '') return segment
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+function findFieldDescriptor(kind: ContentKind, path: string): FieldDescriptor | undefined {
+  const registry = kind === 'entity' ? ENTITY_FIELDS : CURATION_FIELDS
+  const registered = registry.find((field) => field.path === path)
+  return registered ?? dynamicField(kind, path)
+}
+
+/** Unregistered paths stay visible: the Inspector never hides backend fields. */
+export function describeField(kind: 'curation' | 'entity', path: string): FieldDescriptor {
+  const known = findFieldDescriptor(kind, path)
+  if (known) return known
+  const segments = pathSegments(path)
+  return {
+    path,
+    label: humanizeSegment(segments.length > 0 ? segments[segments.length - 1] : path),
+    owner: kind === 'entity' ? 'entity' : 'curation',
+    type: 'json',
+    section: 'other',
+  }
 }

@@ -91,7 +91,7 @@ live('creates, edits, publishes, archives/restores and targets Explorer through 
   await page.getByRole('dialog', { name: 'New Collection' }).getByLabel('Title').fill(title)
   await page.getByRole('dialog', { name: 'New Collection' }).getByLabel('Slug').fill(`e2e-admin-ui-${stamp}`)
   await page.getByRole('dialog', { name: 'New Collection' }).getByLabel('Description').fill('Created by the Collections Admin UI E2E.')
-  await page.getByRole('dialog', { name: 'New Collection' }).getByRole('button', { name: 'Create Collection' }).click()
+  await page.getByRole('button', { name: 'Create Collection' }).click()
 
   await page.waitForURL(/\/admin\/collections\/collections\/[a-f0-9]{24}$/i)
   const collectionId = new URL(page.url()).pathname.split('/').pop()
@@ -108,14 +108,12 @@ live('creates, edits, publishes, archives/restores and targets Explorer through 
   const operationId = await enqueueOneCuration(page, collectionId)
   await waitForOperation(page, operationId)
   await page.reload()
-  // O contador do workspace ("1 selected in draft · 0 selected published") contém o mesmo
-  // prefixo; sem `exact` o locator casa com dois elementos e o strict mode do Playwright falha.
-  await expect(page.getByText('1 selected', { exact: true })).toBeVisible()
+  await expect(page.getByText('1 selected')).toBeVisible()
 
   await page.getByRole('button', { name: 'Publish new version' }).click()
   const publishDialog = page.getByRole('dialog', { name: 'Publish Collection' })
   await expect(publishDialog.getByText('First publish → Version 1')).toBeVisible()
-  await expect(publishDialog.getByText('1 selected', { exact: true })).toBeVisible()
+  await expect(publishDialog.getByText('1 selected')).toBeVisible()
   const unavailableConfirmation = publishDialog.getByRole('checkbox', { name: /Publish with .* unavailable/ })
   if (await unavailableConfirmation.count()) await unavailableConfirmation.check()
   await publishDialog.getByRole('button', { name: 'Publish Collection now' }).click()
@@ -132,13 +130,9 @@ live('creates, edits, publishes, archives/restores and targets Explorer through 
   await expect(page.getByRole('button', { name: 'Publish new version' })).toBeVisible()
 
   await page.getByRole('link', { name: 'Add Curations' }).click()
-  await page.waitForURL(new RegExp(`/admin/curations\\?collection=${collectionId}$`))
-  await expect(page.getByRole('heading', { name: 'Curations' })).toBeVisible()
-  // A lista aberta no contexto de um rascunho diz isso e devolve ao Collection —
-  // o caminho de detalhe mantém o slug duplicado de propósito.
-  await expect(page.getByText('Selecting Curations for a Collection draft.')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Back to Collection' }))
-    .toHaveAttribute('href', `/admin/collections/collections/${collectionId}`)
+  await page.waitForURL(new RegExp(`/admin/explorer\\?collection=${collectionId}$`))
+  await expect(page.getByRole('heading', { name: 'Curation Explorer' })).toBeVisible()
+  await expect(page.getByLabel('Target Collection')).toBeVisible()
   await page.getByRole('link', { name: 'Back to Collection' }).click()
   await page.waitForURL(new RegExp(`/admin/collections/collections/${collectionId}$`))
   await expect(page.getByRole('heading', { name: updatedTitle })).toBeVisible()

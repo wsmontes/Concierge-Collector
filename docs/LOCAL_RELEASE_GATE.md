@@ -15,12 +15,11 @@ O gate padrão executa, em ordem e com fail-fast:
 3. Collector unit tests
 4. Admin unit tests
 5. Admin typecheck
-6. Admin lint
-7. Admin production build com variáveis de teste seguras
-8. API unit tests, excluindo integrações, Mongo e APIs externas
-9. API formatting (`black --check`)
-10. API lint (`flake8`)
-11. Generated contract checks
+6. Admin production build com variáveis de teste seguras
+7. API unit tests, excluindo integrações, Mongo e APIs externas
+8. API formatting (`black --check`)
+9. API lint (`flake8`)
+10. Generated contract checks
 
 Esse é o comando recomendado antes de push, merge e deploy normal.
 
@@ -43,14 +42,6 @@ O modo completo habilita obrigatoriamente as suites live do CMS:
 - `CMS_E2E_AUTH_HANDOFF=1`
 - `CMS_E2E_PUBLISH=1`
 - `CMS_E2E_EXPLORER=1`
-- `CMS_E2E_COLLECTIONS_UI=1`
-
-`CMS_E2E_BULK` (`curations/bulk-to-draft.spec.ts`) e `CMS_E2E_CREDENTIALS`
-(`credentials/lifecycle.spec.ts`) são opt-in próprios e **não** entram no gate completo: rode-os à mão
-com o stack no ar quando mexer na fila de operações ou em credenciais de consumidor. A suíte de
-credenciais exige um pré-requisito que o boot do runbook não traz: suba a FastAPI também com
-`CMS_MONGODB_READ_URL`/`CMS_MONGODB_DB_NAME` apontando para o banco CMS `-test`, porque a autenticação
-de consumidor valida contra as credenciais que a própria suíte cria.
 
 Por isso, `verify:full` exige o stack local de integração disponível: MongoDB de teste, FastAPI em development, Admin CMS, CMS worker e os dados de teste esperados pelas suites E2E. Ele é intencionalmente um release qualification gate; se o stack não estiver pronto, o comando deve falhar em vez de produzir um falso verde.
 

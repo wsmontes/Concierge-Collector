@@ -199,24 +199,24 @@ def test_list_entities_ids_filter(client, test_db, clean_test_entities, auth_hea
     test_db.entities.insert_many(
         [
             {
-                "_id": "test_ids_slug_ent",
-                "entity_id": "test_ids_slug_ent",
+                "_id": "ids_slug_ent",
+                "entity_id": "ids_slug_ent",
                 "name": "Alvo Slug",
                 "status": "active",
                 "type": "restaurant",
                 "updatedAt": "2026-08-13T00:00:00Z",
             },
             {
-                "_id": "test_ids_hex_ent",
-                "entity_id": "test_ids_hex_ent",
+                "_id": "ids_hex_ent",
+                "entity_id": "ids_hex_ent",
                 "name": "Alvo Hex",
                 "status": "active",
                 "type": "restaurant",
                 "updatedAt": "2026-08-13T00:00:00Z",
             },
             {
-                "_id": "test_ids_noise",
-                "entity_id": "test_ids_noise",
+                "_id": "ids_noise",
+                "entity_id": "ids_noise",
                 "name": "Ruído",
                 "status": "active",
                 "type": "restaurant",
@@ -227,26 +227,22 @@ def test_list_entities_ids_filter(client, test_db, clean_test_entities, auth_hea
 
     r = client.get(
         "/api/v3/entities",
-        params={"ids": ["test_ids_slug_ent", "test_ids_hex_ent"], "limit": 50},
+        params={"ids": ["ids_slug_ent", "ids_hex_ent"], "limit": 50},
         headers=auth_headers,
     )
     assert r.status_code == 200
     items = r.json()["items"]
     ids = {i.get("entity_id") or i.get("_id") for i in items}
-    assert "test_ids_slug_ent" in ids
-    assert "test_ids_hex_ent" in ids
-    assert "test_ids_noise" not in ids
+    assert "ids_slug_ent" in ids
+    assert "ids_hex_ent" in ids
+    assert "ids_noise" not in ids
 
     # hex válido casa ObjectId ($in de string NÃO casa ObjectId sem variante)
     from bson import ObjectId
 
-    # Um id por execução: um ObjectId fixo não é removido pela fixture de
-    # limpeza (que apaga só `^test_`), então a segunda execução da suíte contra
-    # o mesmo banco morria com duplicate key antes mesmo de testar nada.
-    oid = ObjectId()
     test_db.entities.insert_one(
         {
-            "_id": oid,
+            "_id": ObjectId("507f1f77bcf86cd799439011"),
             "entity_id": "hex-oid-slug",
             "name": "Alvo ObjectId",
             "status": "active",
@@ -256,13 +252,12 @@ def test_list_entities_ids_filter(client, test_db, clean_test_entities, auth_hea
     )
     r2 = client.get(
         "/api/v3/entities",
-        params={"ids": [str(oid)], "limit": 50},
+        params={"ids": ["507f1f77bcf86cd799439011"], "limit": 50},
         headers=auth_headers,
     )
     assert r2.status_code == 200
     r2_ids = [i.get("entity_id") or i.get("_id") for i in r2.json()["items"]]
-    assert any(str(i) == str(oid) for i in r2_ids) or "hex-oid-slug" in r2_ids
-    test_db.entities.delete_one({"_id": oid})
+    assert any(str(i) == "507f1f77bcf86cd799439011" for i in r2_ids) or "hex-oid-slug" in r2_ids
 
 
 @pytest.mark.mongo
@@ -598,10 +593,8 @@ def test_list_entities_ids_filter_finds_ids_containing_comma(client, test_db, cl
     """
     from bson import ObjectId
 
-    comma_id = "test_rest_a_pizza_da_mooca_-23.5520,_-46.6200"
-    # Por execução, e removido no fim: a fixture de limpeza só apaga `^test_`,
-    # então um ObjectId fixo fazia a segunda execução colidir.
-    oid = ObjectId()
+    comma_id = "rest_a_pizza_da_mooca_-23.5520,_-46.6200"
+    oid = ObjectId("507f1f77bcf86cd799439011")
     test_db.entities.insert_many(
         [
             {
@@ -643,7 +636,6 @@ def test_list_entities_ids_filter_finds_ids_containing_comma(client, test_db, cl
     assert r2.status_code == 200
     dois = {i.get("entity_id") or str(i.get("_id")) for i in r2.json()["items"]}
     assert len(dois) == 2, f"esperava os dois ids, veio {dois}"
-    test_db.entities.delete_one({"_id": oid})
 
 
 # ============================================================================
@@ -651,27 +643,24 @@ def test_list_entities_ids_filter_finds_ids_containing_comma(client, test_db, cl
 # ============================================================================
 
 
-def _call_entity_image(db_doc=None, hero=None):
-    """Chama get_entity_image direto (sem TestClient) com db mockado.
-
-    Rank 0 (o default) serve a DISPLAY MEDIA persistida — a leitura é
-    `read_hero_media`, que o helper entrega pronta; ranks > 0 seguem no serviço
-    de imagens ranqueado, mockado no próprio teste.
-    """
+def _call_entity_image(db_doc=None, service_result=(b"jpeg", "image/jpeg"), service_side_effect=None):
+    """Chama get_entity_image direto (sem TestClient) com db mockado e o
+    serviço de imagem patcheado — unit test sem mongo."""
     import asyncio
     from unittest.mock import AsyncMock, MagicMock, patch
     from fastapi import HTTPException
     from app.api.entities import get_entity_image
-    from app.services.display_media_service import HeroMediaRead, STATE_RESOLVED
 
     mock_db = MagicMock()
     # find_entity faz 3 probes (_id → entity_id → ObjectId); o mock
     # responde só ao primeiro com o doc desejado
     mock_db.entities.find_one.side_effect = lambda q: db_doc if q.get("_id") == "e1" else None
-    read = hero if hero is not None else HeroMediaRead(state=STATE_RESOLVED, image=(b"jpeg", "image/jpeg"))
 
     async def run():
-        with patch("app.api.entities.read_hero_media", new=AsyncMock(return_value=read)) as svc:
+        with patch(
+            "app.api.entities.get_og_image_bytes",
+            new=AsyncMock(return_value=service_result, side_effect=service_side_effect),
+        ) as svc:
             try:
                 return await get_entity_image("e1", db=mock_db, auth={"role": "curator"}), svc
             except HTTPException as exc:
@@ -681,11 +670,10 @@ def _call_entity_image(db_doc=None, hero=None):
 
 
 def test_entity_image_resolve_website_da_entity():
-    """data.contact.website (shape v3) vem do doc resolvido e o rank 0 serve a
-    display media persistida — sem redescobrir a imagem."""
+    """data.contact.website (shape v3) vira page_url do serviço."""
     doc = {"_id": "e1", "data": {"contact": {"website": "https://example.com"}}}
-    (result, svc), mock_db = _call_entity_image(db_doc=doc)
-    assert svc.await_args.args[1] is doc
+    (result, svc), _ = _call_entity_image(db_doc=doc)
+    svc.assert_awaited_once_with(page_url="https://example.com", place_id=None)
     assert result.status_code == 200
     assert result.body == b"jpeg"
     assert result.media_type == "image/jpeg"
@@ -696,6 +684,7 @@ def test_entity_image_resolve_place_id_bulk():
     """Shape bulk (data.contacts.website ausente) cai no place_id."""
     doc = {"_id": "e1", "data": {"contacts": {"phone": "x"}, "place_id": "ChIJ123"}}
     (result, svc), _ = _call_entity_image(db_doc=doc)
+    svc.assert_awaited_once_with(page_url=None, place_id="ChIJ123")
     assert result.status_code == 200
 
 
@@ -706,68 +695,27 @@ def test_entity_image_404_entity_inexistente():
 
 
 def test_entity_image_404_sem_fonte_de_imagem():
-    """Entity sem website nem place_id → 404 com cache LONGO (o fato é do
-    documento, não muda sem alguém editar a Entity) e sem enriquecimento."""
-    from app.services.display_media_service import HeroMediaRead, STATE_NO_SOURCES
-
+    """Entity sem website nem place_id → 404 sem tocar o serviço."""
     doc = {"_id": "e1", "data": {"contact": {"phone": "x"}}}
-    (result, svc), _ = _call_entity_image(db_doc=doc, hero=HeroMediaRead(state=STATE_NO_SOURCES))
+    (result, svc), _ = _call_entity_image(db_doc=doc)
     assert result.status_code == 404
-    assert result.headers["Cache-Control"] == "private, max-age=3600"
-    svc.assert_awaited_once()
+    svc.assert_not_awaited()
 
 
-def test_entity_image_404_curto_para_pendente_e_longo_para_falha():
-    """As DUAS classes de 404 sem imagem, e por que elas não podem ser a mesma.
+def test_entity_image_404_e_400_do_servico():
+    # serviço sem imagem em nenhuma fonte → 404
+    (result, _), _ = _call_entity_image(
+        db_doc={"_id": "e1", "data": {"place_id": "ChIJ123"}},
+        service_result=None,
+    )
+    assert result.status_code == 404
 
-    `missing` = não há fato gravado; o enriquecimento acabou de ser disparado nesta
-    leitura → 404 CURTO com `Retry-After`, que é o que autoriza o cliente a voltar.
-    `failed` = o servidor avaliou as fontes e o fato persistido tem prazo próprio →
-    404 LONGO; insistir antes de `expires_at` não muda nada.
-
-    Colapsar as duas (o contrato anterior) fazia o cliente ler "não há foto" onde o
-    servidor dizia "ainda não resolvi": o card ficava placeholder para sempre. Foi
-    medido no Collector em 2026-09-17 (12 de 30 cards pintados, plano por 2,5 min).
-    """
-    from app.services.display_media_service import HeroMediaRead, STATE_FAILED, STATE_MISSING
-
-    doc = {"_id": "e1", "data": {"place_id": "ChIJ123"}}
-
-    (pendente, _), _ = _call_entity_image(db_doc=doc, hero=HeroMediaRead(state=STATE_MISSING))
-    assert pendente.status_code == 404
-    assert pendente.headers["Cache-Control"] == "private, max-age=60"
-    assert pendente.headers["Retry-After"] == "15"
-
-    (falhou, _), _ = _call_entity_image(db_doc=doc, hero=HeroMediaRead(state=STATE_FAILED))
-    assert falhou.status_code == 404
-    assert falhou.headers["Cache-Control"] == "private, max-age=3600"
-    assert "Retry-After" not in falhou.headers
-
-
-def test_entity_image_gallery_keeps_400_and_404_contracts():
-    """Ranks > 0 continuam no serviço ranqueado: URL rejeitada → 400 e sem
-    imagem → 404 (mesmo contrato do /og-image)."""
-    import asyncio
-    from unittest.mock import AsyncMock, MagicMock, patch
-    from fastapi import HTTPException
-    from app.api.entities import get_entity_image
-
-    db_doc = {"_id": "e1", "data": {"contact": {"website": "https://x.com"}}}
-
-    async def run(side_effect=None, result=None):
-        mock_db = MagicMock()
-        mock_db.entities.find_one.side_effect = lambda q: db_doc if q.get("_id") == "e1" else None
-        with patch(
-            "app.api.entities.get_restaurant_image_bytes",
-            new=AsyncMock(return_value=result, side_effect=side_effect),
-        ):
-            try:
-                return await get_entity_image("e1", rank=1, db=mock_db, auth={"role": "curator"})
-            except HTTPException as exc:
-                return exc
-
-    assert asyncio.run(run(side_effect=ValueError("URL inválida"))).status_code == 400
-    assert asyncio.run(run(result=None)).status_code == 404
+    # URL rejeitada pelo serviço → 400 (mesmo contrato do /og-image)
+    (result2, _), _ = _call_entity_image(
+        db_doc={"_id": "e1", "data": {"contact": {"website": "https://x.com"}}},
+        service_side_effect=ValueError("URL inválida"),
+    )
+    assert result2.status_code == 400
 
 
 def test_extract_image_sources_cadeia_tolerante():

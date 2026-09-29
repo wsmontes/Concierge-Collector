@@ -1,6 +1,5 @@
 'use client'
 
-import { Button } from '@payloadcms/ui'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -9,15 +8,6 @@ import {
   type AdminCollectionRecord,
   type CollectionsAdminClient,
 } from '../../collections/admin-client'
-import { AdminPage } from '../ui/AdminPage'
-import { Chip } from '../ui/Chip'
-import { DataTable, type DataTableColumn } from '../ui/DataTable'
-import { EmptyState } from '../ui/EmptyState'
-import { ErrorBoundary } from '../ui/ErrorBoundary'
-import { ErrorState } from '../ui/ErrorState'
-import { SelectInput } from '../ui/Field'
-import { StatusPill } from '../ui/StatusPill'
-import { SearchInput, Toolbar, ToolbarGroup } from '../ui/Toolbar'
 import { NewCollectionDialog } from './NewCollectionDialog'
 
 const browserCollectionsClient = createBrowserCollectionsAdminClient()
@@ -41,95 +31,8 @@ function humanError(error: unknown): string {
   return error instanceof Error ? error.message : 'request_failed'
 }
 
-/* ---------------------------------------------------------------------------
-   Filtros na URL
-   --------------------------------------------------------------------------- */
-
-const LIFECYCLE_VALUES = ['all', 'draft', 'published', 'archived'] as const
-const DRAFT_STATE_VALUES = ['all', 'clean', 'dirty', 'publishing', 'failed'] as const
-
-type LifecycleFilter = (typeof LIFECYCLE_VALUES)[number]
-type DraftStateFilter = (typeof DRAFT_STATE_VALUES)[number]
-
-interface CollectionFilters {
-  query: string
-  lifecycle: LifecycleFilter
-  draftState: DraftStateFilter
-}
-
-const EMPTY_FILTERS: CollectionFilters = { query: '', lifecycle: 'all', draftState: 'all' }
-
-const LIFECYCLE_OPTIONS = [
-  { label: 'All', value: 'all' },
-  { label: 'Draft', value: 'draft' },
-  { label: 'Published', value: 'published' },
-  { label: 'Archived', value: 'archived' },
-]
-
-const DRAFT_STATE_OPTIONS = [
-  { label: 'All', value: 'all' },
-  { label: 'Clean', value: 'clean' },
-  { label: 'Dirty', value: 'dirty' },
-  { label: 'Publishing', value: 'publishing' },
-  { label: 'Failed', value: 'failed' },
-]
-
-function oneOf<T extends string>(values: readonly T[], candidate: string | null): T | null {
-  return candidate !== null && (values as readonly string[]).includes(candidate) ? candidate as T : null
-}
-
-/** O filtro vive na URL para a lista ser um endereço, não um estado de sessão. */
-function filtersFromLocation(): CollectionFilters {
-  const params = new URLSearchParams(window.location.search)
-  return {
-    query: params.get('q') ?? '',
-    lifecycle: oneOf(LIFECYCLE_VALUES, params.get('lifecycle')) ?? 'all',
-    draftState: oneOf(DRAFT_STATE_VALUES, params.get('draftState')) ?? 'all',
-  }
-}
-
-/**
- * Filtros de lista lidos da query e gravados de volta com `replaceState`.
- *
- * A primeira renderização usa o padrão porque o servidor não conhece a query —
- * ler a URL no inicializador do `useState` divergiria da hidratação. A leitura
- * acontece no efeito de montagem e a gravação só depois dela, para que o
- * primeiro efeito não apague a query que acabou de ser lida.
- */
-function useCollectionFilters() {
-  const [filters, setFilters] = useState<CollectionFilters>(EMPTY_FILTERS)
-  const [hydrated, setHydrated] = useState(false)
-
-  useEffect(() => {
-    // A query string só existe no cliente: lê-la durante o render daria mismatch
-    // de hidratação (o servidor não tem `location`). Este é o caso legítimo de
-    // sincronizar estado com um sistema externo no primeiro efeito, e a regra do
-    // compilador é desativada aqui com esse motivo — em vez de inventar um
-    // `useSyncExternalStore` para um valor que não muda sem navegação.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- window.location só existe depois da montagem
-    setFilters(filtersFromLocation())
-    setHydrated(true)
-  }, [])
-
-  useEffect(() => {
-    if (!hydrated) return
-    const params = new URLSearchParams(window.location.search)
-    const next: Record<string, string> = {
-      q: filters.query.trim(),
-      lifecycle: filters.lifecycle,
-      draftState: filters.draftState,
-    }
-    for (const [key, value] of Object.entries(next)) {
-      if (value === '' || value === 'all') params.delete(key)
-      else params.set(key, value)
-    }
-    const search = params.toString()
-    const target = `${window.location.pathname}${search ? `?${search}` : ''}`
-    const current = `${window.location.pathname}${window.location.search}`
-    if (target !== current) window.history.replaceState(null, '', target)
-  }, [filters, hydrated])
-
-  return [filters, setFilters] as const
+function versionLabel(collection: AdminCollectionRecord) {
+  return collection.currentPublishedVersion ? `Version ${collection.currentPublishedVersion}` : 'Not published'
 }
 
 export function CollectionsWorkspace({
@@ -139,7 +42,9 @@ export function CollectionsWorkspace({
   const [rows, setRows] = useState<AdminCollectionRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filters, setFilters] = useCollectionFilters()
+  const [query, setQuery] = useState('')
+  const [lifecycle, setLifecycle] = useState<'all' | AdminCollectionRecord['lifecycle']>('all')
+  const [draftState, setDraftState] = useState<'all' | AdminCollectionRecord['draftState']>('all')
   const [creating, setCreating] = useState(false)
 
   const reload = useCallback(async () => {
@@ -154,6 +59,9 @@ export function CollectionsWorkspace({
     }
   }, [client])
 
+  // Carga inicial: os setState ficam DENTRO do bloco assíncrono (nunca no corpo
+  // síncrono do efeito, que dispararia renders em cascata). `reload` continua
+  // existindo para os handlers imperativos, onde ligar o loading é intencional.
   useEffect(() => {
     let active = true
     void (async () => {
@@ -172,64 +80,13 @@ export function CollectionsWorkspace({
   }, [client])
 
   const visible = useMemo(() => {
-    const normalizedQuery = filters.query.trim().toLocaleLowerCase()
+    const normalizedQuery = query.trim().toLocaleLowerCase()
     return rows.filter((row) => (
-      (!normalizedQuery || row.title.toLocaleLowerCase().includes(normalizedQuery)) &&
-      (filters.lifecycle === 'all' || row.lifecycle === filters.lifecycle) &&
-      (filters.draftState === 'all' || row.draftState === filters.draftState)
+      (!normalizedQuery || `${row.title} ${row.slug}`.toLocaleLowerCase().includes(normalizedQuery)) &&
+      (lifecycle === 'all' || row.lifecycle === lifecycle) &&
+      (draftState === 'all' || row.draftState === draftState)
     ))
-  }, [rows, filters])
-
-  const columns: Array<DataTableColumn<AdminCollectionRecord>> = useMemo(() => [
-    {
-      key: 'title',
-      header: 'Collection',
-      label: 'Collection',
-      width: 'minmax(12rem, 2fr)',
-      cell: (collection) => (
-        <Link
-          className="ui-table__primary collections-workspace__title"
-          href={`/admin/collections/collections/${collection.id}`}
-        >
-          {collection.title}
-        </Link>
-      ),
-    },
-    {
-      key: 'lifecycle',
-      header: 'Lifecycle',
-      label: 'Lifecycle',
-      cell: (collection) => <StatusPill status={collection.lifecycle} label={collection.lifecycle} />,
-    },
-    {
-      key: 'draft',
-      header: 'Draft',
-      label: 'Draft',
-      cell: (collection) => <StatusPill status={collection.draftState} label={collection.draftState} />,
-    },
-    {
-      key: 'published',
-      header: 'Published',
-      label: 'Published',
-      cell: (collection) => (
-        <span className="ui-table__secondary">
-          {collection.currentPublishedVersion ? `Version ${collection.currentPublishedVersion}` : 'Not published'}
-        </span>
-      ),
-    },
-    {
-      key: 'members',
-      header: 'Members',
-      label: 'Members',
-      align: 'end',
-      cell: (collection) => (
-        <span className="ui-chip-group">
-          <Chip size="sm" tone="accent" title="Curations selected in the draft">{collection.draftSelectedCount.toLocaleString('en-US')} in draft</Chip>
-          <Chip size="sm" title="Curations selected in the published version">{collection.publishedSelectedCount.toLocaleString('en-US')} published</Chip>
-        </span>
-      ),
-    },
-  ], [])
+  }, [rows, query, lifecycle, draftState])
 
   async function createCollection(input: { title: string; slug: string; description: string | null }) {
     const created = await client.create(input)
@@ -239,111 +96,83 @@ export function CollectionsWorkspace({
     return created
   }
 
-  const openNewCollection = (
-    <Button icon="plus" margin={false} onClick={() => setCreating(true)} type="button">
-      New Collection
-    </Button>
-  )
-
   return (
-    <AdminPage
-      className="collections-workspace"
-      eyebrow="Content"
-      title="Collections"
-      description="Build, review, version and publish curated sets without changing the source Curations."
-      width="wide"
-      actions={openNewCollection}
-      sticky
-    >
-      <Toolbar label="Collection filters">
-        <ToolbarGroup>
-          <SearchInput
-            label="Filter Collections"
-            name="collections"
-            onChange={(query) => setFilters((current) => ({ ...current, query }))}
-            placeholder="Search by title"
-            value={filters.query}
-          />
-          <SelectInput
-            id="collections-lifecycle-filter"
-            label="Lifecycle"
-            onChange={(value) => setFilters((current) => ({ ...current, lifecycle: value as LifecycleFilter }))}
-            options={LIFECYCLE_OPTIONS}
-            value={filters.lifecycle}
-          />
-          <SelectInput
-            id="collections-draft-state-filter"
-            label="Draft state"
-            onChange={(value) => setFilters((current) => ({ ...current, draftState: value as DraftStateFilter }))}
-            options={DRAFT_STATE_OPTIONS}
-            value={filters.draftState}
-          />
-        </ToolbarGroup>
-        <ToolbarGroup end>
-          {(filters.query.trim().length > 0 || filters.lifecycle !== 'all' || filters.draftState !== 'all') && (
-            <Button
-              buttonStyle="secondary"
-              margin={false}
-              onClick={() => setFilters(EMPTY_FILTERS)}
-              size="small"
-              type="button"
-            >
-              Clear filters
-            </Button>
-          )}
-        </ToolbarGroup>
-      </Toolbar>
+    <main className="collections-workspace">
+      <header className="collections-workspace__header">
+        <div>
+          <p className="collection-views__eyebrow">Content</p>
+          <h1>Collections</h1>
+          <p>Build, review, version and publish curated sets without changing the source Curations.</p>
+        </div>
+        <button type="button" onClick={() => setCreating(true)}>New Collection</button>
+      </header>
 
-      <ErrorBoundary title="The Collections list could not be displayed">
-        {error ? (
-          <ErrorState
-            title="Collections could not load"
-            description={error}
-            onRetry={() => void reload()}
-            retryLabel="Try again"
-          />
-        ) : (
-          <DataTable
-            caption="Collections"
-            columns={columns}
-            density="comfortable"
-            empty={(
-              <EmptyState
-                title={rows.length === 0 ? 'No Collections yet' : 'No Collections match'}
-                description={rows.length === 0
-                  ? 'Create the first Collection to start packaging curated knowledge.'
-                  : 'Change the current filters to broaden the result set.'}
-                action={rows.length === 0
-                  ? (
-                    <Button icon="plus" margin={false} onClick={() => setCreating(true)} type="button">
-                      Create Collection
-                    </Button>
-                  )
-                  : (
-                    <Button
-                      buttonStyle="secondary"
-                      margin={false}
-                      onClick={() => setFilters(EMPTY_FILTERS)}
-                      size="small"
-                      type="button"
-                    >
-                      Clear filters
-                    </Button>
-                  )}
-              />
-            )}
-            footer={(
-              <span>
-                {visible.length.toLocaleString('en-US')} of {rows.length.toLocaleString('en-US')} Collections
-              </span>
-            )}
-            loading={loading}
-            rowKey={(collection) => collection.id}
-            rows={visible}
-            skeletonRows={6}
-          />
-        )}
-      </ErrorBoundary>
+      <section className="collections-workspace__filters" aria-label="Collection filters">
+        <label>
+          Filter Collections
+          <input value={query} onChange={(event) => setQuery(event.target.value)} type="search" />
+        </label>
+        <label>
+          Lifecycle
+          <select value={lifecycle} onChange={(event) => setLifecycle(event.target.value as typeof lifecycle)}>
+            <option value="all">All</option>
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+            <option value="archived">Archived</option>
+          </select>
+        </label>
+        <label>
+          Draft state
+          <select value={draftState} onChange={(event) => setDraftState(event.target.value as typeof draftState)}>
+            <option value="all">All</option>
+            <option value="clean">Clean</option>
+            <option value="dirty">Dirty</option>
+            <option value="publishing">Publishing</option>
+            <option value="failed">Failed</option>
+          </select>
+        </label>
+      </section>
+
+      {error && (
+        <div className="collections-workspace__error" role="alert">
+          <p>{error}</p>
+          <button type="button" onClick={() => void reload()}>Try again</button>
+        </div>
+      )}
+
+      {loading ? (
+        <p role="status">Loading Collections…</p>
+      ) : visible.length === 0 ? (
+        <p>No Collections match the current filters.</p>
+      ) : (
+        <div className="collections-workspace__table-wrap">
+          <table className="collections-workspace__table">
+            <thead>
+              <tr>
+                <th scope="col">Collection</th>
+                <th scope="col">Lifecycle</th>
+                <th scope="col">Draft</th>
+                <th scope="col">Published</th>
+                <th scope="col">Selected</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((collection) => (
+                <tr key={collection.id}>
+                  <td>
+                    <Link href={`/admin/collections/collections/${collection.id}`}>{collection.title}</Link>
+                    <span className="collections-workspace__slug">/{collection.slug}</span>
+                  </td>
+                  <td><span>{collection.lifecycle}</span></td>
+                  <td><span>{collection.draftState}</span></td>
+                  <td>{versionLabel(collection)}</td>
+                  <td>{collection.draftSelectedCount.toLocaleString('en-US')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {creating && (
         <NewCollectionDialog
@@ -351,6 +180,6 @@ export function CollectionsWorkspace({
           onCreate={createCollection}
         />
       )}
-    </AdminPage>
+    </main>
   )
 }

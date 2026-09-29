@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { CollectionDistributionView } from '../../../src/components/collections/CollectionDistributionView'
 import type { CollectionDistributionClient } from '../../../src/collections/distribution-client'
@@ -20,7 +20,7 @@ test('shows consumer applications that currently allow the Collection', async ()
   expect(await screen.findByRole('heading', { name: 'Guide API' })).toBeVisible()
   expect(screen.getByText('Guide Team · active · 60/min')).toBeVisible()
   expect(screen.getByText('Published version 3 is the externally addressable Collection version.')).toBeVisible()
-  expect(screen.getByRole('link', { name: 'Manage Applications' })).toHaveAttribute('href', '/admin/applications')
+  expect(screen.getByRole('link', { name: 'Manage consumer applications' })).toHaveAttribute('href', '/admin/applications')
 })
 
 test('explains archive as a reversible distribution kill switch', async () => {
@@ -43,38 +43,4 @@ test('does not imply distribution before the first publish', async () => {
     client={client([])}
   />)
   expect(screen.getByText('This Collection has not been published yet.')).toBeVisible()
-})
-
-test('o Retry volta a mostrar carregamento em vez de manter o erro antigo', async () => {
-  // A recarga é um contador; se o carregamento fosse derivado só do id da
-  // Collection (`loadedId === collectionId`), ele continuaria "carregado" depois
-  // do Retry e a mensagem de erro antiga ficaria na tela durante toda a nova
-  // requisição — sem esqueleto, sem sinal de que algo está acontecendo.
-  let liberar: ((items: never[]) => void) | undefined
-  const applicationsForCollection = vi
-    .fn()
-    .mockRejectedValueOnce(new Error('applications unavailable'))
-    .mockImplementationOnce(
-      () =>
-        new Promise<never[]>((resolve) => {
-          liberar = resolve
-        }),
-    )
-
-  render(<CollectionDistributionView
-    collectionId="col-1"
-    lifecycle="published"
-    currentPublishedVersion={3}
-    client={{ applicationsForCollection }}
-  />)
-
-  expect(await screen.findByText('Distribution administration is unavailable')).toBeVisible()
-
-  fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
-
-  await waitFor(() =>
-    expect(screen.queryByText('Distribution administration is unavailable')).not.toBeInTheDocument(),
-  )
-  expect(applicationsForCollection).toHaveBeenCalledTimes(2)
-  liberar?.([])
 })

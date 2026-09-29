@@ -108,26 +108,9 @@ integrationSuite('selection manifest materialization', () => {
     expect(((rows[0] as { expiresAt: Date }).expiresAt).getTime()).toBe(ready.expiresAt.getTime())
 
     const manifestIndexes = await manifests.collection.indexes()
+    expect(manifestIndexes).toContainEqual(expect.objectContaining({ name: 'selection_manifest_ttl', expireAfterSeconds: 0 }))
     const itemIndexes = await items.collection.indexes()
-    // The blanket 24h TTL was replaced by a retention-aware pair: an unused
-    // selection expires on `expiresAt`, while a retained one is kept by
-    // `retainedUntil` so the audit trail cannot be deleted out from under it.
-    expect(manifestIndexes).toContainEqual(expect.objectContaining({
-      name: 'selection_manifest_unused_ttl',
-      expireAfterSeconds: 0,
-      partialFilterExpression: { retainedUntil: null },
-    }))
-    expect(itemIndexes).toContainEqual(expect.objectContaining({
-      name: 'selection_item_unused_ttl',
-      expireAfterSeconds: 0,
-      partialFilterExpression: { retainedUntil: null },
-    }))
-    const manifestNames = manifestIndexes.map((index) => index.name)
-    const itemNames = itemIndexes.map((index) => index.name)
-    expect(manifestNames).toContain('selection_manifest_retained_ttl')
-    expect(itemNames).toContain('selection_item_retained_ttl')
-    expect(manifestNames).not.toContain('selection_manifest_ttl')
-    expect(itemNames).not.toContain('selection_item_ttl')
+    expect(itemIndexes).toContainEqual(expect.objectContaining({ name: 'selection_item_ttl', expireAfterSeconds: 0 }))
   })
 
   test('request idempotente reutiliza o mesmo manifest sem reiniciar o scan', async () => {
@@ -137,13 +120,7 @@ integrationSuite('selection manifest materialization', () => {
     const retried = await createAllMatchingSelection(input)
     expect(retried.id).toBe(first.id)
     expect(fastApi.startScan).toHaveBeenCalledTimes(1)
-    // O scan e reiniciado exatamente uma vez, com os mesmos filtros e o mesmo
-    // ator. A aridade nao entra na assercao: a visao sem Collections passou a
-    // mandar tambem os ids excluidos, e o que importa aqui e que o retry nao
-    // dispara um segundo scan nem troca os filtros.
-    const [[scanFilters, scanActor]] = fastApi.startScan.mock.calls
-    expect(scanFilters).toEqual({ q: 'sushi' })
-    expect(scanActor).toBe('admin-1')
+    expect(fastApi.startScan).toHaveBeenCalledWith({ q: 'sushi' }, 'admin-1')
     expect((await loadSelection(first.id)).status).toBe('queued')
   })
 
