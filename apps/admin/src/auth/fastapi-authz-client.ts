@@ -33,8 +33,12 @@ export class FastApiAuthzClient {
     })
   }
 
-  async introspectSubject(subject: string): Promise<CmsIdentity> {
-    return this.post<CmsIdentity>('/api/v3/auth/cms/introspect', { subject })
+  async introspectSubject(subject: string, requestId?: string): Promise<CmsIdentity> {
+    return this.post<CmsIdentity>(
+      '/api/v3/auth/cms/introspect',
+      { subject },
+      requestId ? { 'X-Request-Id': requestId } : {},
+    )
   }
 
   async introspectCollectorBearer(authorization: string, requestId: string): Promise<CmsIdentity> {
