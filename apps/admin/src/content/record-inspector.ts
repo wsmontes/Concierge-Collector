@@ -81,10 +81,11 @@ function buildNode(
     depth,
     descriptor,
     owner: descriptor?.owner ?? kind,
-    // The plan's promise: a field the UI was never written for is still
-    // editable through the structured editor. `system` always wins as
-    // read-only, and a known field opts out with an explicit `editable: false`.
-    editable: !system && descriptor?.editable !== false && isFieldEditable(type),
+    // Universal access is a READ guarantee, not a write wildcard. Unknown
+    // fields remain visible for audit/debugging but are read-only until the
+    // registry explicitly classifies them as editable. This keeps the UI's
+    // write surface aligned with the API allowlist.
+    editable: descriptor !== null && !system && descriptor.editable === true && isFieldEditable(type),
     system,
     children: childrenOf(value, segments, depth + 1, kind, patterns),
   }
