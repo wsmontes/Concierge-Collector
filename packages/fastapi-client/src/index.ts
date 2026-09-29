@@ -84,6 +84,8 @@ type CatalogScanPageResponse = paths["/api/v3/catalog/curations/scan/page"]["pos
 export interface FastApiAdminClientOptions {
   baseUrl: string;
   serviceKey: string;
+  /** Correlation id of the browser/Admin request that triggered this boundary call. */
+  requestId?: string;
   fetch?: typeof globalThis.fetch;
 }
 
@@ -101,14 +103,16 @@ export class FastApiClientError extends Error {
 export class FastApiAdminClient {
   private readonly baseUrl: string;
   private readonly serviceKey: string;
+  private readonly requestId?: string;
   private readonly fetch: typeof globalThis.fetch;
 
-  constructor({ baseUrl, serviceKey, fetch = globalThis.fetch }: FastApiAdminClientOptions) {
+  constructor({ baseUrl, serviceKey, requestId, fetch = globalThis.fetch }: FastApiAdminClientOptions) {
     if (!fetch) {
       throw new Error("FastApiAdminClient requires a fetch implementation");
     }
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.serviceKey = serviceKey;
+    this.requestId = requestId?.trim() || undefined;
     this.fetch = fetch;
   }
 
@@ -263,6 +267,7 @@ export class FastApiAdminClient {
       headers: {
         "content-type": "application/json",
         "x-cms-service-key": this.serviceKey,
+        ...(this.requestId ? { "x-request-id": this.requestId } : {}),
         "x-cms-actor-id": actorId,
         "x-cms-actor-role": actorRole,
         "if-match": String(payload.expectedVersion),
@@ -279,6 +284,7 @@ export class FastApiAdminClient {
       headers: {
         "content-type": "application/json",
         "x-cms-service-key": this.serviceKey,
+        ...(this.requestId ? { "x-request-id": this.requestId } : {}),
         ...extraHeaders,
       },
       body: JSON.stringify(payload),
@@ -295,6 +301,7 @@ export class FastApiAdminClient {
     const response = await this.fetch(`${this.baseUrl}${path}`, {
       headers: {
         "x-cms-service-key": this.serviceKey,
+        ...(this.requestId ? { "x-request-id": this.requestId } : {}),
         ...extraHeaders,
       },
     });
