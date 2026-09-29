@@ -481,76 +481,35 @@ function cleanupBrowserData() {
     console.log('Performing browser data cleanup...');
 
     try {
-        // Define keys to preserve in localStorage
-        const preserveKeys = [
-            'openai_api_key',
-            'current_curator_id',
-            'last_sync_time',
-            'filter_by_curator',
-            'debug_mode',
-            'concierge_access_granted',  // CRITICAL: Preserve password access
-            'auth_token',  // CRITICAL: Preserve API authentication token
-            'oauth_access_token',  // CRITICAL: Preserve OAuth access token
-            'oauth_refresh_token',  // CRITICAL: Preserve OAuth refresh token
-            'oauth_token_expiry',  // CRITICAL: Preserve OAuth token expiry
-            'oauth_user_profile',  // perfil do usuário offline-first (curatorProfile)
-            'concierge_db_recovery_needed',  // CRITICAL: lido por ensureHealthyIndexedDB DEPOIS do cleanup
-            'needsInitialSync',  // CRITICAL: sync inicial pós-import (importManager.js)
-            'api_key',  // credencial do app de capture (mesma origin via /capture)
-            'capture_token',  // JWT do app de capture (dev-login local / UI)
-            'concierge_db_backup',  // backup do IndexedDB (databaseManager)
-            'concierge_db_schema_version',  // versão do schema local
-            'dbSchemaVersion',  // versão legada do schema
-            'migration_v3_complete',  // flag de migração V2→V3 (importManager)
-            // Estado do app que não passa por `AppConfig.storage.keys`:
-            // `collector.filters.v1` (filtros/aba/saved views do uiManager) e
-            // `concierge-state` (rascunhos de formulário do StateStore) eram
-            // apagados a cada reload por não constarem aqui.
-            'collector.filters.v1',
-            'concierge-state',
-            // O registro canônico (config.js, carregado antes deste arquivo)
-            // declara as chaves que o app grava — `setApiKey`/preferências
-            // escrevem por ele. Preservar o registro inteiro evita que uma
-            // chave nova nasça condenada a sumir no próximo boot.
-            ...Object.values(window.AppConfig?.storage?.keys || {})
+        // Startup cleanup is migration-driven, never a denylist. New feature
+        // keys must survive automatically; deleting every unknown key has
+        // repeatedly erased valid state (onboarding, filters and drafts).
+        const obsoleteLocalStorageKeys = [
+            // Swipe actions were removed from cards; the hint has no reader.
+            'swipe_hint_seen'
         ];
 
-        // Prefixo one-time (ago/2026): o onboarding de primeira entrada
-        // (concierge_onboarded_v1[_curator]) morava em keys fora da lista
-        // e era APAGADO a cada boot — a feature reaparecia em TODO reload.
-        // O prefixo sobrevive à limpeza. (A dica de swipe — swipe_hint_seen
-        // — morreu junto com os swipe actions dos cards: a key legada cai
-        // na limpeza normal deste bloco.)
-        const preservePrefixes = [
-            'concierge_onboarded_'
-        ];
-
-        // Clean localStorage (preserve only essential keys)
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (!preserveKeys.includes(key) && !preservePrefixes.some((p) => key.startsWith(p))) {
-                keysToRemove.push(key);
+        for (const key of obsoleteLocalStorageKeys) {
+            if (localStorage.getItem(key) !== null) {
+                localStorage.removeItem(key);
+                console.log(`Removed obsolete localStorage item: ${key}`);
             }
         }
 
-        // Remove the identified keys
-        keysToRemove.forEach(key => {
-            localStorage.removeItem(key);
-            console.log(`Removed localStorage item: ${key}`);
-        });
-
-        // Clear sessionStorage completely
+        // Session-scoped state is intentionally ephemeral between full app
+        // boots. Authentication tokens that must survive reload live in
+        // localStorage/HttpOnly cookies, not here.
         sessionStorage.clear();
         console.log('SessionStorage cleared');
 
-        // Clear non-essential cookies
+        // Clear non-essential script-visible cookies. HttpOnly cookies are not
+        // exposed through document.cookie and therefore cannot be removed here.
         const cookies = document.cookie.split(';');
-        const preserveCookies = ['session_id']; // Add any essential cookies here
+        const preserveCookies = ['session_id'];
 
         cookies.forEach(cookie => {
             const cookieName = cookie.split('=')[0].trim();
-            if (!preserveCookies.includes(cookieName)) {
+            if (cookieName && !preserveCookies.includes(cookieName)) {
                 document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
                 console.log(`Removed cookie: ${cookieName}`);
             }
