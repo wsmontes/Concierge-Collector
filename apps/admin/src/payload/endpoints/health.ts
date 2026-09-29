@@ -48,7 +48,7 @@ function guard(handler: (request: AdminHealthRequest, actor: CmsIdentity) => Pro
  * boundary's answer; this route adds only the CMS-side membership ledger.
  */
 export function healthEndpoints(
-  adapterForRequest: (request: AdminHealthRequest) => Pick<RecordsAdapter, 'contentHealth'> = () => new RecordsAdapter(),
+  adapterForRequest: (request: AdminHealthRequest) => Pick<RecordsAdapter, 'contentHealth'> = (request) => new RecordsAdapter(request.requestId),
 ): Endpoint[] {
   return [
     {
