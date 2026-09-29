@@ -2,8 +2,9 @@ import type { CmsIdentity } from '../auth/fastapi-authz-client'
 import { requireCurrentAdmin } from '../auth/require-current-admin'
 import { assertUnsafeCmsSessionOrigin } from '../auth/cms-session-request-policy'
 import { AdminHttpError, adminErrorResponse } from './errors'
+import { ensureRequestId } from './request-id'
 
-export type AdminRequest = Request & { actor: CmsIdentity }
+export type AdminRequest = Request & { actor: CmsIdentity; requestId: string }
 
 export type AdminHandler = (request: AdminRequest, actor: CmsIdentity) => Response | Promise<Response>
 
@@ -62,9 +63,13 @@ export function withAdmin(
 
   return async (request: Request): Promise<Response> => {
     try {
-      resolvedDependencies.assertUnsafeCmsSessionOrigin(request.method, request.headers)
-      const actor = await resolvedDependencies.requireCurrentAdmin(request.headers)
-      const adminRequest = Object.assign(request, { actor }) as AdminRequest
+      // Normalize once so auth introspection, downstream FastAPI calls and
+      // audit/jobs can share one correlation id even when the browser omitted it.
+      const normalizedHeaders = new Headers(request.headers)
+      const requestId = ensureRequestId(normalizedHeaders)
+      resolvedDependencies.assertUnsafeCmsSessionOrigin(request.method, normalizedHeaders)
+      const actor = await resolvedDependencies.requireCurrentAdmin(normalizedHeaders)
+      const adminRequest = Object.assign(request, { actor, requestId }) as AdminRequest
       return noStore(await handler(adminRequest, actor), true)
     } catch (error) {
       // A resposta nunca carrega detalhe interno (é o contrato de
