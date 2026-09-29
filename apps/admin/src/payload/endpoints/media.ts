@@ -79,6 +79,8 @@ export interface MediaAdapter {
 export class FastApiEntityImageBytes implements Pick<MediaAdapter, 'image'> {
   private readonly env = readEnv()
 
+  constructor(private readonly requestId?: string) {}
+
   async image(entityIdValue: string, rank: number, actorId: string): Promise<Response> {
     const query = rank === 0 ? '' : `?rank=${rank}`
     const path = `/api/v3/catalog/entities/${encodeURIComponent(entityIdValue)}/image${query}`
@@ -90,6 +92,7 @@ export class FastApiEntityImageBytes implements Pick<MediaAdapter, 'image'> {
         headers: {
           'X-CMS-Actor-Id': actorId,
           'X-CMS-Service-Key': this.env.cmsServiceKey,
+          ...(this.requestId ? { 'X-Request-Id': this.requestId } : {}),
         },
       })
     } catch {
@@ -105,9 +108,9 @@ export class FastApiEntityImageBytes implements Pick<MediaAdapter, 'image'> {
  * for the JSON gallery, the streaming proxy for the bytes. Injected so a test
  * exercises the routes without standing up either.
  */
-export function mediaAdapter(): MediaAdapter {
-  const records = new RecordsAdapter()
-  const bytes = new FastApiEntityImageBytes()
+export function mediaAdapter(requestId?: string): MediaAdapter {
+  const records = new RecordsAdapter(requestId)
+  const bytes = new FastApiEntityImageBytes(requestId)
   return {
     images: (entityIdValue, actorId) => records.entityImages(entityIdValue, actorId),
     image: (entityIdValue, rank, actorId) => bytes.image(entityIdValue, rank, actorId),
@@ -127,7 +130,7 @@ function guard(handler: (request: MediaRequest, actorId: string) => Promise<Resp
  * service credential is read at call time instead of frozen at boot.
  */
 export function mediaEndpoints(
-  adapterForRequest: (request: MediaRequest) => MediaAdapter = () => mediaAdapter(),
+  adapterForRequest: (request: MediaRequest) => MediaAdapter = (request) => mediaAdapter(request.requestId),
 ): Endpoint[] {
   return [
     {
