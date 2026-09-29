@@ -48,6 +48,31 @@ describe("FastApiAdminClient", () => {
     );
   });
 
+  it("propagates a correlation id on server-to-server calls", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ eligible_ids: ["c1"], rejected: [] }), { status: 200 }),
+    );
+    const client = new FastApiAdminClient({
+      baseUrl: "https://api.example.test",
+      serviceKey: "service-key",
+      requestId: "req-123",
+      fetch,
+    });
+
+    await client.resolveCurations({ curation_ids: ["c1"] }, "admin-1");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.example.test/api/v3/catalog/curations/resolve",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-cms-service-key": "service-key",
+          "x-cms-actor-id": "admin-1",
+          "x-request-id": "req-123",
+        }),
+      }),
+    );
+  });
+
   it("resolves bounded selections with the authoritative CMS actor", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
       new Response(JSON.stringify({ eligible_ids: ["c1"], rejected: [] }), { status: 200 }),
