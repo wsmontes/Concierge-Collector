@@ -31,12 +31,12 @@
                 return;
             }
 
-            if (attempt >= 300) {
-                this.log.warn('Ownership guard could not attach to the editor');
-                return;
+            if (attempt === 300) {
+                this.log.warn('Ownership guard is still waiting for the editor; retrying slowly');
             }
+            const retryMs = attempt < 300 ? 100 : 5000;
             clearTimeout(this._timer);
-            this._timer = setTimeout(() => this._pollInstall(attempt + 1), 100);
+            this._timer = setTimeout(() => this._pollInstall(attempt + 1), retryMs);
         }
 
         currentCuratorId(uiManager = global.uiManager) {
