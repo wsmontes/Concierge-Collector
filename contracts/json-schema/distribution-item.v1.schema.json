@@ -130,6 +130,9 @@
           "default": null,
           "title": "Created At"
         },
+        "curator": {
+          "$ref": "#/$defs/PublicCurator"
+        },
         "description": {
           "anyOf": [
             {
@@ -182,6 +185,35 @@
       "title": "PublicCuration",
       "type": "object"
     },
+    "PublicCurator": {
+      "additionalProperties": false,
+      "description": "Who curated it, as a consumer may show it: display name and nature, never the e-mail/id.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "type": {
+          "default": "human",
+          "enum": [
+            "human",
+            "synthetic"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "PublicCurator",
+      "type": "object"
+    },
     "PublicEntity": {
       "additionalProperties": false,
       "properties": {
@@ -205,6 +237,18 @@
           ],
           "default": null,
           "title": "Created At"
+        },
+        "google_place_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Google Place Id"
         },
         "id": {
           "title": "Id",
