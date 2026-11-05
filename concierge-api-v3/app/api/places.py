@@ -946,7 +946,7 @@ async def call_nearby_search(request: PlacesOrchestrationRequest) -> Dict[str, A
         "X-Goog-Api-Key": settings.google_places_api_key,
         "X-Goog-FieldMask": (
             "places.id,places.displayName,places.formattedAddress,"
-            "places.location,places.rating,places.types,places.priceLevel"
+            "places.location,places.rating,places.userRatingCount,places.businessStatus,places.types,places.priceLevel"
         ),
     }
 
@@ -991,7 +991,7 @@ async def call_text_search(request: PlacesOrchestrationRequest) -> Dict[str, Any
         "X-Goog-Api-Key": settings.google_places_api_key,
         "X-Goog-FieldMask": (
             "places.id,places.displayName,places.formattedAddress,"
-            "places.location,places.rating,places.types,places.priceLevel"
+            "places.location,places.rating,places.userRatingCount,places.businessStatus,places.types,places.priceLevel"
         ),
     }
 
