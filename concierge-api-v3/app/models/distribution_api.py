@@ -55,6 +55,7 @@ class PublicEntity(_PublicModel):
 class PublicCuration(_PublicModel):
     id: str
     entity_id: str
+    name: str | None = None
     description: str | None = None
     curator: PublicCurator = Field(default_factory=PublicCurator)
     categories: dict[str, list[str]] = Field(default_factory=dict)
@@ -176,6 +177,7 @@ class PublicCurationItemV1(_PublicModel):
             curation=PublicCuration(
                 id=str(curation["curation_id"]),
                 entity_id=str(curation["entity_id"]),
+                name=_text(curation.get("restaurant_name")),
                 description=_text(notes.get("public")),
                 curator=PublicCurator(
                     name=_text(curator.get("name")),

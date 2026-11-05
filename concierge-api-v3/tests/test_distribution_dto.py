@@ -117,6 +117,7 @@ def test_public_dto_names_the_curator_but_never_exposes_the_identity():
 
     assert item.curation.curator.name == "Anwar Nassar" and item.curation.curator.type == "human"
     assert "anwar@example.com" not in serialized
+    assert item.curation.name == "Test Place"
 
     synthetic = PublicCurationItemV1.from_documents(
         active_curation(

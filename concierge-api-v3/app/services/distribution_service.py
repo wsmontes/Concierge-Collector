@@ -176,6 +176,7 @@ def hydrate_public_batch(db: Database, curation_ids: list[str]) -> HydrationBatc
                     "entity_id": 1,
                     "status": 1,
                     "notes.public": 1,
+                    "restaurant_name": 1,
                     "curator.name": 1,
                     "curator_type": 1,
                     "categories": 1,
