@@ -66,6 +66,20 @@ async function assertFence(
   if (!fresh) throw new AdminHttpError(409, 'conflict')
 }
 
+// Staging touches the database a few times per curation; on a remote cluster a
+// hundred curations take longer than one lease. The worker that still owns the
+// fence extends it as it goes, so a long but healthy staging is not mistaken for
+// a lost worker (which made the operation retry forever and never commit).
+const RENEW_EVERY_ITEMS = 10
+
+async function renewLease(operations: DocumentModel, operation: DraftOperationRecord, lease: OperationLease): Promise<void> {
+  const renewed = await operations.updateOne(
+    { ...ownedFence(operation, lease), status: { $nin: TERMINAL } },
+    { $set: { leaseExpiresAt: new Date(Date.now() + LEASE_MS), updatedAt: new Date() } },
+  )
+  if (renewed.matchedCount !== 1) throw new AdminHttpError(409, 'conflict')
+}
+
 async function claim(payload: Payload, operationId: string, owner: string): Promise<{ operation: DraftOperationRecord; lease: OperationLease } | null> {
   const operations = modelFor(payload, 'collection-operations')
   const requested = await operations.findById(operationId).lean()
@@ -157,6 +171,7 @@ async function stageSelectionPage(
   collection: Record<string, unknown>,
   targetDraftRevision: number,
   curationIds: string[],
+  lease?: OperationLease,
 ): Promise<void> {
   const { items, changes, memberships } = models
   const existingRows = await items.find({ operationId: operation.id, curationId: { $in: curationIds } }).lean() as Array<Record<string, unknown>>
@@ -176,8 +191,10 @@ async function stageSelectionPage(
       },
     })), { ordered: false })
   }
+  let staged = 0
   for (const curationId of curationIds) {
     if (['applied', 'skipped', 'failed'].includes(String(existingStatus.get(curationId)))) continue
+    if (lease && ++staged % RENEW_EVERY_ITEMS === 0) await renewLease(models.operations, operation, lease)
     const membership = await memberships.findOne({ collectionId: operation.collectionId, curationId, removedInVersion: null }).lean()
     const existing = await changes.findOne({
       collectionId: operation.collectionId,
@@ -248,7 +265,7 @@ async function applySelectionManifest(
   let page: string[] = []
   const flushPage = async () => {
     if (!page.length) return
-    await stageSelectionPage(models, operation, collection, targetDraftRevision, page)
+    await stageSelectionPage(models, operation, collection, targetDraftRevision, page, lease)
     page = []
     await resolver.introspectAdmin(operation.actorId)
     await assertFence(operations, operation, lease)
@@ -421,6 +438,7 @@ export async function applyDraftOperation(
 
     const candidateItems = await items.find({ operationId, status: { $in: ['pending', 'applied'] } }).lean()
     const resolved = await resolver.resolveCurations(candidateItems.map((item) => String(item.curationId)), operation.actorId)
+    await renewLease(operations, operation, lease)
     const rejected = new Map(resolved.rejected.map((item) => [item.curationId, item.reason]))
     for (const item of candidateItems) {
       const reason = rejected.get(String(item.curationId))
@@ -453,7 +471,9 @@ export async function applyDraftOperation(
       { $set: { status: 'staging', checkpoint: 'staging', targetDraftRevision, updatedAt: new Date() } },
     )
     if (staging.modifiedCount !== 1) throw new AdminHttpError(409, 'conflict')
+    let stagedCount = 0
     for (const curationId of eligible) {
+      if (++stagedCount % RENEW_EVERY_ITEMS === 0) await renewLease(operations, operation, lease)
       const membership = await memberships.findOne({ collectionId: operation.collectionId, curationId, removedInVersion: null }).lean()
       const existing = await changes.findOne({
         collectionId: operation.collectionId,
