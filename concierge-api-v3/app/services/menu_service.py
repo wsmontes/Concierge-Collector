@@ -687,14 +687,16 @@ def read_menu(db, entity: dict, *, max_age_days: float = 30) -> dict:
     return {**public_view(menu), "fresh": fresh, "refreshing": refreshing}
 
 
-# Raw text for the chat: the dining-room menu first; a shop or another unit last.
+# Raw text for the chat: the dining-room menu first, then the other useful pages (booking, hours, the
+# house: "not_a_menu" in the brief's menu roles, but the triage kept them as useful); another unit never.
 _ROLE_ORDER = {
     "dining_room": 0,
     "drinks": 1,
     "delivery": 2,
     "event": 3,
     "other": 4,
-    "orders_or_shop": 5,
+    "not_a_menu": 5,
+    "orders_or_shop": 6,
 }
 _STOPWORDS = {
     "que", "tem", "com", "sem", "para", "por", "uma", "uns", "das", "dos", "nas", "nos", "qual", "quais",

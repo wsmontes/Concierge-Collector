@@ -55,10 +55,13 @@ def brief_for(
     from the booking page one fact with its real excerpt and one it made up."""
     roles = []
     for d in documents:
-        role = "orders_or_shop" if "natal" in d["url"] else "drinks" if "vinhos" in d["url"] else "dining_room"
+        role = (
+            "orders_or_shop" if "natal" in d["url"] else "drinks" if "vinhos" in d["url"]
+            else "not_a_menu" if "reservas" in d["url"] else "dining_room"
+        )  # fmt: skip
         roles.append({"index": d["index"], "role": role, "note": None})
     dining = next(
-        (d["index"] for d in documents if "natal" not in d["url"] and "vinhos" not in d["url"]),
+        (d["index"] for d in documents if not any(w in d["url"] for w in ("natal", "vinhos", "reservas"))),
         None,
     )
     per_person = {"lunch": None, "dinner": None}

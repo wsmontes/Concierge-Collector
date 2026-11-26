@@ -120,13 +120,16 @@ def summarize(
         "entity_id": entity_id,
         "status": body.get("status"),
         "website": body.get("website"),
+        "pages": len(body.get("pages") or []),
         "documents": [
             f"{d.get('kind')}:{roles.get(d.get('index'), '?')}"
             for d in body.get("documents") or []
         ],
+        "facts": len(brief.get("facts") or []),
+        "fact_topics": sorted({f.get("topic") for f in brief.get("facts") or []}),
         "per_person_dinner": per_person.get("dinner"),
         "per_person_lunch": per_person.get("lunch"),
-        "fixed_price": per_person.get("fixed_price"),
+        "fixed_price": brief.get("per_person_fixed"),
         "formats": brief.get("formats"),
         "confidence": brief.get("confidence"),
         "issues": [
