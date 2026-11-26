@@ -25,6 +25,7 @@ from app.api import (
     system,
     places,
     travel,
+    menus,
     ai,
     concepts,
     auth,
@@ -175,6 +176,7 @@ app.include_router(curations.router, prefix="/api/v3", dependencies=_live_viewer
 # o rate limit protege o custo) — gate no mount quebrava o proxy inteiro.
 app.include_router(places.router, prefix="/api/v3")
 app.include_router(travel.router, prefix="/api/v3")
+app.include_router(menus.router, prefix="/api/v3")
 app.include_router(ai.router, prefix="/api/v3")
 app.include_router(concepts.router, prefix="/api/v3")
 app.include_router(llm_gateway.router, prefix="/api/v3")

@@ -89,6 +89,10 @@ class Entity(EntityBase):
     createdBy: Optional[str] = None
     updatedBy: Optional[str] = None
     version: int = Field(default=1, description="Optimistic locking version")
+    menu_summary: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Read-only: price per person and other menu facts (app/services/menu_service.py).",
+    )
 
     @field_validator("id", mode="before")
     @classmethod

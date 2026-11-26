@@ -79,6 +79,10 @@ INDEX_SPECS = [
         },
     ),
     ("curations", [("catalog_sequence", 1), ("curation_id", 1)], {"name": "catalog_sequence_curation_scan"}),
+    # ── entity_menus ──────────────────────────────────────────────────────
+    # O cardápio inteiro de uma entidade (_id = _id da entity; app/services/menu_service.py).
+    # O script de pré-preenchimento/atualização percorre por status e idade do refresh.
+    ("entity_menus", [("status", 1), ("refreshed_at", 1)], {"name": "entity_menus_status_refreshed"}),
     # ── capture_sessions ───────────────────────────────────────────────────
     # TTL 48h (auto-delete de sessões de captura) — criado pelo lifespan.py
     ("capture_sessions", "createdAt", {"expireAfterSeconds": 172800}),

@@ -104,6 +104,7 @@ def test_index_specs_come_from_the_shared_module():
         "cms_auth_codes",
         "consumer_rate_limit_windows",
         "consumer_credential_usage",
+        "entity_menus",
     }
     assert sum(1 for s in INDEX_SPECS if s[0] == "capture_sessions") == 1
     assert ("auth_sessions", "jti", {"unique": True}) in INDEX_SPECS

@@ -3,7 +3,8 @@ Seed script for openai_configs collection.
 Populates MongoDB with OpenAI service configurations and prompts.
 
 Usage:
-    python scripts/seed_openai_configs.py
+    python scripts/seed_openai_configs.py                              # every service
+    python scripts/seed_openai_configs.py --only menu_extraction_text  # just one (the safe way in production)
 """
 
 import asyncio
@@ -186,12 +187,56 @@ Analise esta imagem e identifique conceitos visuais relevantes que descrevem o e
         "updated_at": datetime.utcnow().isoformat(),
         "updated_by": "system_seed",
         "notes": "Dedicated GPT service for restaurant name extraction from text"
+    },
+    {
+        # app/services/menu_extraction.py — o schema da resposta (json_schema estrito) fica no código;
+        # aqui só modelo, parâmetros e o prompt. Placeholders: {restaurant}, {address}, {text}.
+        "service": "menu_extraction_text",
+        "model": "gpt-5.6-terra",
+        "config": {
+            "max_completion_tokens": 16000,
+            "extra_body": {"reasoning_effort": "low"}
+        },
+        "prompt_template": """You read restaurant menus for a concierge service in São Paulo.
+
+Restaurant: {restaurant}
+Address: {address}
+
+Below is the text of ONE document found on this restaurant's website (a PDF or a page). It may be a
+part of a longer document. Text from two-column PDFs can interleave lines: pair each dish with its own
+price by reading the layout carefully.
+
+1. Decide is_menu_of_this_place: true only if this text is a menu (food, drinks, wine list, lunch or
+   tasting menu) of THIS restaurant. False for hotel room rates, event packages, blog posts or news,
+   reservation widgets, menus of another restaurant, or text with no dishes. Say why in reason.
+2. When true, list EVERY item, in order, without inventing anything:
+   - section: starter | main | dessert | side | drink | tasting (tasting/degustação menus) |
+     executive (executive/set lunch) | couvert (only the couvert charge itself; bread or butter sold
+     apart is a side) | corkage (rolha) | other.
+   - subsection: the heading it is under, as written (e.g. "Massas", "Tintos — Itália").
+   - name and description as written (Portuguese is fine; keep the original language).
+   - price_brl: the price in reais as a number (1.249,00 -> 1249.0). Null when there is none.
+     When an item has more than one price (taça/garrafa, meia/inteira, individual/para dois), leave
+     price_brl null and list each one in prices with its label.
+   - tags (only when evident): vegetarian, vegan, seafood, meat, pasta, light, gluten_free, cocktail,
+     spicy, kids.
+   - meal: lunch or dinner when the document says the item is only served then; otherwise all.
+   - wine: for wines only (producer, vintage, region, grapes when stated); null otherwise.
+3. menu_date: the month/year the document declares (e.g. "2026-09"), or null.
+
+Text:
+{text}""",
+        "enabled": True,
+        "version": 1,
+        "updated_at": datetime.utcnow().isoformat(),
+        "updated_by": "system_seed",
+        "notes": "v1 (2026-11-26): cardápio inteiro da entidade (docs/superpowers/specs/2026-11-26-entity-menu-design.md)"
     }
 ]
 
 
-async def seed_openai_configs():
-    """Seed openai_configs collection"""
+async def seed_openai_configs(only=None):
+    """Seed openai_configs collection (``only``: just these services — never the whole seed in production)."""
     # Connect to MongoDB
     mongo_url = os.getenv("MONGODB_URL")
     if not mongo_url:
@@ -207,6 +252,8 @@ async def seed_openai_configs():
     # Insert or update configs
     for config_data in OPENAI_CONFIGS:
         service = config_data["service"]
+        if only and service not in only:
+            continue
         
         # Check if already exists
         existing = await db.openai_configs.find_one({"service": service})
@@ -245,4 +292,8 @@ async def seed_openai_configs():
 
 
 if __name__ == "__main__":
-    asyncio.run(seed_openai_configs())
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--only", nargs="+", help="seed only these services (e.g. --only menu_extraction_text)")
+    asyncio.run(seed_openai_configs(only=set(parser.parse_args().only or [])))

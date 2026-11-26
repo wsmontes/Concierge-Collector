@@ -58,6 +58,8 @@ os.environ["METRICS_KEY"] = "test-metrics-key"
 # (rede) numa task solta do loop — nos unit tests ele fica desligado. Quem
 # precisa exercitá-lo liga a flag no próprio teste.
 os.environ["DISPLAY_MEDIA_ENRICH_ENABLED"] = "False"
+# Cardápio: idem — a atualização em segundo plano baixaria sites de verdade.
+os.environ["MENU_ENRICH_ENABLED"] = "False"
 
 from main import app  # noqa: E402  (import DEPOIS do setup de env acima)
 from app.core.config import settings  # noqa: E402
