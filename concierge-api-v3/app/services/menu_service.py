@@ -15,7 +15,8 @@ Storage:
   triage verdict, without text), `documents` (the useful pages' text and topics), `brief` (the verified
   brief), `synthesis` (model, input hash, what could not be verified), the status
   (auto | reviewed | needs_review | not_found) and the curator's review.
-- `entities.menu_summary`: a compact copy for cards, search and the chat, written with a field `$set`
+- `entities.menu_summary`: what may be said from the site (see `_summary`), served by the distribution;
+  written with a field `$set`
   (like `display_media`): the entity's `version` never moves, so the offline Collector sees no conflict.
 
 What a refresh keeps: the triage runs only on pages whose text is new, the brief only when the useful
@@ -303,26 +304,93 @@ def _dining_urls(menu: dict) -> set:
     return {d.get("url") for d in menu.get("documents") or [] if roles.get(d.get("index")) == "dining_room"}
 
 
+SAYABLE_STATUSES = ("auto", "reviewed", "needs_review")
+_MEAL_FIELDS = ("per_person_brl", "per_person_fixed", "per_person_notes")
+_PRICE_FIELDS = ("executive_lunch_brl", "couvert_brl", "corkage_brl")
+
+
+def _withheld(menu: dict) -> List[str]:
+    """What a curator still has to confirm: the brief fields whose check failed (none once reviewed)."""
+    if menu.get("status") != "needs_review":
+        return []
+    paths = []
+    for issue in (menu.get("synthesis") or {}).get("issues") or []:
+        if issue.get("problem") not in BLOCKING:
+            continue
+        field = str(issue.get("field") or "")
+        path = "per_person" if field == "confidence" else field  # unsure: no price per person at all
+        if path and path not in paths:
+            paths.append(path)
+    return paths
+
+
+def _without(brief: dict, paths: List[str]) -> dict:
+    out = copy.deepcopy(brief)
+    for path in paths:
+        head, _, meal = path.partition(".")
+        if head == "per_person":
+            for field in _MEAL_FIELDS:
+                values = out.get(field) or {}
+                for key in [meal] if meal else list(values):
+                    values.pop(key, None)
+        elif head == "wine" and meal and isinstance(out.get("wine"), dict):
+            out["wine"].pop(meal, None)
+        elif head == "tasting_menus":
+            out["tasting_menus"] = []
+        else:
+            out.pop(head, None)
+    return out
+
+
+def _present(value) -> bool:
+    return value not in (None, "", [], {})
+
+
 def _summary(menu: dict) -> dict:
-    brief = _apply_overrides(menu.get("brief") or {}, (menu.get("review") or {}).get("overrides") or {})
-    tasting = [t.get("price_brl") for t in brief.get("tasting_menus") or [] if t.get("price_brl")]
-    return {
-        "status": menu.get("status"),
-        "as_of": menu.get("refreshed_at"),
-        "per_person_brl": brief.get("per_person_brl"),
-        "per_person_fixed": brief.get("per_person_fixed") or {},
-        "formats": brief.get("formats") or [],
-        "confidence": brief.get("confidence"),
-        "executive_lunch_brl": brief.get("executive_lunch_brl"),
-        "tasting_min_brl": min(tasting) if tasting else None,
-        "couvert_brl": brief.get("couvert_brl"),
-        "corkage_brl": brief.get("corkage_brl"),
-        "dietary": brief.get("dietary") or [],
-        "summary": brief.get("summary"),
+    """What may be said about the restaurant from its site: the brief with the review applied, without what
+    still waits for a curator, and without how it was checked (excerpts, page indexes, document roles).
+
+    This is `entities.menu_summary`, and the Collection distribution serves it as the entity's `house`.
+    The menu summary text states prices, so it goes when any price is withheld.
+    """
+    out = {"status": menu.get("status"), "as_of": menu.get("refreshed_at")}
+    if menu.get("status") not in SAYABLE_STATUSES or not menu.get("brief"):
+        return out
+    withheld = _withheld(menu)
+    brief = _without(_apply_overrides(menu["brief"], (menu.get("review") or {}).get("overrides") or {}), withheld)
+    per_meal = {
+        field: {meal: v for meal, v in (brief.get(field) or {}).items() if v not in (None, "")}
+        for field in _MEAL_FIELDS
+    }
+    if not any(per_meal["per_person_fixed"].values()):
+        per_meal["per_person_fixed"] = {}  # à la carte only: nothing to say
+    wine = {k: v for k, v in (brief.get("wine") or {}).items() if v is not None} or None
+    fields = {
+        "website": menu.get("website"),
+        **per_meal,
+        **{field: brief.get(field) for field in _PRICE_FIELDS},
+        "tasting_menus": [
+            {k: t[k] for k in ("name", "price_brl", "courses") if t.get(k) is not None}
+            for t in brief.get("tasting_menus") or []
+        ],
+        "wine": wine,
+        "formats": brief.get("formats"),
+        "dietary": brief.get("dietary"),
+        "highlights": brief.get("highlights"),
+        "caveats": brief.get("caveats"),
+        "summary": None if withheld else brief.get("summary"),
         "menu_date": brief.get("menu_date"),
         "house_summary": brief.get("house_summary"),
-        "fact_topics": sorted({f.get("topic") for f in brief.get("facts") or [] if f.get("topic")}),
+        "facts": [{"topic": f.get("topic"), "fact": f.get("fact")} for f in brief.get("facts") or [] if f.get("fact")],
+        "concepts": [
+            {"category": c.get("category"), "value": c.get("value")}
+            for c in brief.get("concepts") or []
+            if c.get("value")
+        ],
+        "withheld": withheld,
     }
+    out.update({k: v for k, v in fields.items() if _present(v)})
+    return out
 
 
 # Fields of the v1 document (items extracted one by one, numbers derived by heuristics): removed on save.

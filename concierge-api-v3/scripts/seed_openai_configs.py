@@ -251,6 +251,14 @@ policies). Besides the menu brief above:
     menu fields. Ignore pages of other units.
 12. house_summary: 3 to 5 sentences in Brazilian Portuguese about the house for the concierge (concept,
     ambience, what it is good for, what to know before booking). Only facts from the documents.
+13. concepts: what a guest could search for that the site states about THIS unit, as short catalog tags in
+    English lowercase (e.g. menu: "executive menu", "tasting menu", "omakase", "kids menu", "brunch";
+    food_style: "rodizio", "wood fire"; drinks: "wine by the glass", "natural wines", "cocktails";
+    setting: "terrace", "garden", "private room", "counter seating"; special_features: "pet friendly",
+    "valet parking", "wheelchair accessible", "live music", "corkage allowed"; suitable_for: "business
+    lunch", "groups", "kids"). Only what the place HAS or OFFERS, as the site states it: a restriction
+    ("não aceitamos pets", "proibida a entrada de menores") is a fact, never a concept. Never the mood or the
+    kind of crowd, never a price tier. Each with a VERBATIM evidence excerpt (5 to 25 words) and its page, checked like the facts.
 
 Documents:
 {documents}""",
@@ -258,7 +266,7 @@ Documents:
         "version": 1,
         "updated_at": datetime.utcnow().isoformat(),
         "updated_by": "system_seed",
-        "notes": "v2 (2026-11-26): ficha do cardápio + fatos da casa a partir das páginas úteis do site (docs/superpowers/specs/2026-11-26-entity-menu-design.md)"
+        "notes": "v3 (2026-11-26): ficha do cardápio + fatos da casa + conceitos do site, a partir das páginas úteis (docs/superpowers/specs/2026-11-26-entity-menu-design.md)"
     },
     {
         # app/services/menu_synthesis.py (SiteTriager) — schema no código. Placeholders: {restaurant},
@@ -320,11 +328,12 @@ async def seed_openai_configs(only=None):
         existing = await db.openai_configs.find_one({"service": service})
         
         if existing:
-            # Update existing
+            # Update existing (the version only moves through $inc: $set and $inc on one field is an error)
+            fields = {k: v for k, v in config_data.items() if k != "version"}
             result = await db.openai_configs.update_one(
                 {"service": service},
                 {
-                    "$set": config_data,
+                    "$set": fields,
                     "$inc": {"version": 1}
                 }
             )

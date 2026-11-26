@@ -53,6 +53,7 @@ def answer(**overrides):
         "confidence": "high",
         "facts": [],
         "house_summary": "",
+        "concepts": [],
     }
     base.update(overrides)
     return base
@@ -306,3 +307,27 @@ async def test_the_triage_returns_a_verdict_per_known_page():
 
     assert verdicts == {0: {"useful": True, "topics": ["menu"], "reason": "cardápio"}}
     assert "[1] html | https://casa.example/natal" in calls[0]["messages"][0]["content"]
+
+
+def test_a_site_concept_stays_only_when_its_excerpt_is_in_a_page():
+    raw = answer(
+        concepts=[
+            {"category": "menu", "value": " Tasting Menu ", "evidence": "Polvo 1.249,00", "page": 0},
+            {"category": "special_features", "value": "pet friendly", "evidence": "aceitamos pets", "page": 0},
+            {"category": "menu", "value": "tasting menu", "evidence": "Polvo 1.249,00", "page": 0},
+        ]
+    )
+
+    brief, issues = synthesis.verify(raw, DOCS)
+
+    assert brief["concepts"] == [{"category": "menu", "value": "tasting menu", "evidence": "Polvo 1.249,00", "page": 0}]
+    (dropped,) = [i for i in issues if i["problem"] == "concept_without_evidence"]
+    assert dropped["value"] == "pet friendly" and "concept_without_evidence" not in synthesis.BLOCKING
+
+
+def test_site_concepts_use_only_factual_categories():
+    schema = synthesis.RESPONSE_FORMAT["json_schema"]["schema"]["properties"]["concepts"]
+    categories = schema["items"]["properties"]["category"]["enum"]
+
+    assert "mood" not in categories and "crowd" not in categories and "price_range" not in categories
+    assert {"menu", "special_features", "suitable_for"} <= set(categories)

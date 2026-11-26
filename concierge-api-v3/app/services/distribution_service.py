@@ -226,6 +226,7 @@ def hydrate_public_batch(db: Database, curation_ids: list[str]) -> HydrationBatc
                     "data.contacts.phone": 1,
                     "data.contacts.website": 1,
                     "data.media.photos": 1,
+                    "menu_summary": 1,
                     "version": 1,
                     "createdAt": 1,
                     "created_at": 1,

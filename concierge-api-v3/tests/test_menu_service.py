@@ -239,7 +239,7 @@ async def test_a_shop_page_is_kept_raw_but_never_prices_the_meal(world):
     assert menu["documents"][0]["url"] == SITE + "natal"
     assert menu["brief"]["documents"][0]["role"] == "orders_or_shop"
     assert menu["status"] == "not_found" and menu["last_error"] == "nothing_useful"
-    assert entity(db)["menu_summary"]["per_person_brl"] is None
+    assert entity(db)["menu_summary"].get("per_person_brl") is None
 
 
 async def test_a_price_the_model_made_up_sends_the_brief_to_review(world):
@@ -527,7 +527,7 @@ async def test_a_site_with_house_facts_but_no_prices_has_a_brief(world):
 
     assert menu["status"] == "auto" and menu["brief"]["per_person_brl"] is None
     assert [f["topic"] for f in menu["brief"]["facts"]] == ["reservations"]
-    assert entity(db)["menu_summary"]["fact_topics"] == ["reservations"]
+    assert [f["topic"] for f in entity(db)["menu_summary"]["facts"]] == ["reservations"]
 
 
 async def test_raw_excerpts_can_be_narrowed_to_a_topic(world):
@@ -538,3 +538,91 @@ async def test_raw_excerpts_can_be_narrowed_to_a_topic(world):
 
     assert [d["url"] for d in booking["documents"]] == [SITE + "reservas"]
     assert "3065-5560" in booking["excerpts"][0]["text"]
+
+
+# ----------------------------------------------------------- what may be said ----
+def _stored(status, issues=(), **brief):
+    base = {
+        "per_person_brl": {"lunch": 105.0, "dinner": 210.0},
+        "per_person_fixed": {"lunch": False, "dinner": False},
+        "per_person_notes": {"dinner": "Entrada e principal."},
+        "per_person_basis": {"dinner": [{"item": "x", "price_brl": 210.0, "document": 0}]},
+        "executive_lunch_brl": 93.0,
+        "tasting_menus": [{"name": "Degustação", "price_brl": 390.0, "courses": 7}],
+        "couvert_brl": 30.0,
+        "corkage_brl": 80.0,
+        "wine": {"by_the_glass": True, "bottle_min_brl": 150.0, "bottle_max_brl": 4200.0, "note": None},
+        "formats": ["a_la_carte", "executive"],
+        "dietary": ["vegetarian"],
+        "highlights": ["Risoni de polvo"],
+        "caveats": [],
+        "summary": "Jantar em torno de R$ 210 por pessoa.",
+        "menu_date": "2026-03",
+        "confidence": "high",
+        "house_summary": "Casa centenária em Perdizes.",
+        "facts": [{"topic": "pets", "fact": "Não aceita cães.", "evidence": "não aceitamos cães", "page": 1}],
+        "concepts": [{"category": "menu", "value": "executive menu", "evidence": "menu executivo", "page": 0}],
+        "documents": [{"index": 0, "role": "dining_room", "note": None}],
+    }
+    base.update(brief)
+    return {
+        "_id": "e1",
+        "status": status,
+        "refreshed_at": "2026-11-26T10:00:00Z",
+        "website": "https://casa.example",
+        "brief": base,
+        "synthesis": {"issues": list(issues)},
+    }
+
+
+def test_the_summary_is_what_may_be_said_without_how_it_was_checked():
+    summary = service._summary(_stored("auto"))
+
+    assert summary["per_person_brl"] == {"lunch": 105.0, "dinner": 210.0}
+    assert summary["tasting_menus"] == [{"name": "Degustação", "price_brl": 390.0, "courses": 7}]
+    assert summary["facts"] == [{"topic": "pets", "fact": "Não aceita cães."}]
+    assert summary["concepts"] == [{"category": "menu", "value": "executive menu"}]
+    assert summary["house_summary"] and summary["website"] == "https://casa.example"
+    text = str(summary)
+    for internal in ("evidence", "per_person_basis", "documents", "confidence"):
+        assert internal not in text
+
+
+def test_a_brief_waiting_for_review_withholds_only_what_failed_and_the_text_that_states_prices():
+    issues = [
+        {"field": "wine.bottle_max_brl", "price_brl": 4200.0, "problem": "price_not_in_documents"},
+        {"field": "facts", "problem": "fact_without_evidence"},
+    ]
+    summary = service._summary(_stored("needs_review", issues))
+
+    assert summary["wine"] == {"by_the_glass": True, "bottle_min_brl": 150.0}
+    assert summary["per_person_brl"]["dinner"] == 210.0 and summary["corkage_brl"] == 80.0
+    assert "summary" not in summary and summary["withheld"] == ["wine.bottle_max_brl"]
+
+
+def test_a_price_per_person_that_failed_goes_with_its_notes():
+    issues = [{"field": "per_person.dinner", "price_brl": 210.0, "problem": "not_dining_room"}]
+    summary = service._summary(_stored("needs_review", issues))
+
+    assert summary["per_person_brl"] == {"lunch": 105.0}
+    assert "dinner" not in summary.get("per_person_notes", {})
+
+
+def test_low_confidence_withholds_every_price_per_person():
+    summary = service._summary(_stored("needs_review", [{"field": "confidence", "problem": "low_confidence"}]))
+
+    assert "per_person_brl" not in summary and summary["facts"]
+
+
+def test_a_brief_a_person_confirmed_withholds_nothing():
+    issues = [{"field": "wine.bottle_max_brl", "price_brl": 4200.0, "problem": "price_not_in_documents"}]
+    summary = service._summary(_stored("reviewed", issues))
+
+    assert summary["wine"]["bottle_max_brl"] == 4200.0 and summary["summary"]
+
+
+def test_a_site_that_was_not_read_says_only_that():
+    assert service._summary({"status": "not_found", "refreshed_at": "2026-11-26T10:00:00Z", "brief": None}) == {
+        "status": "not_found",
+        "as_of": "2026-11-26T10:00:00Z",
+    }

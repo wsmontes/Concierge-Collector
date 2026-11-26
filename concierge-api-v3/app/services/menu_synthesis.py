@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 SERVICE = "menu_synthesis_text"
 TRIAGE_SERVICE = "site_triage_text"
 # Bump when a prompt or the brief's shape changes: every stored brief is synthesized again on refresh.
-SYNTHESIS_VERSION = 2
+SYNTHESIS_VERSION = 3
 TRIAGE_SNIPPET_CHARS = 1200
 PAGE_TOPICS = (
     "menu",
@@ -71,6 +71,9 @@ FACT_TOPICS = (
     "ambience",
     "other",
 )
+# What a guest could search the catalog for, as the site states it, in the curation's own categories. Only
+# factual ones: how the site describes its mood or crowd is self-description, and the price tier is the curator's.
+SITE_CONCEPT_CATEGORIES = ("menu", "food_style", "drinks", "setting", "special_features", "suitable_for")
 # Issues that send a brief to a curator; a house fact without evidence is only left out.
 BLOCKING = ("price_not_in_document", "price_not_in_documents", "not_dining_room", "fixed_price_needs_one_price",
             "low_confidence")  # fmt: skip
@@ -139,6 +142,7 @@ RESPONSE_FORMAT = {
                 "confidence",
                 "facts",
                 "house_summary",
+                "concepts",
             ],
             "properties": {
                 "documents": {
@@ -220,6 +224,20 @@ RESPONSE_FORMAT = {
                     },
                 },
                 "house_summary": {"type": "string"},
+                "concepts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["category", "value", "evidence", "page"],
+                        "properties": {
+                            "category": {"type": "string", "enum": list(SITE_CONCEPT_CATEGORIES)},
+                            "value": {"type": "string"},
+                            "evidence": {"type": "string"},
+                            "page": {"type": "integer"},
+                        },
+                    },
+                },
             },
         },
     },
@@ -415,6 +433,29 @@ def verify(raw: Dict[str, Any], documents: List[Dict[str, Any]]) -> Tuple[Dict[s
         issues.append({"field": "confidence", "problem": "low_confidence"})  # a price claimed while unsure
 
     page_words = {int(d["index"]): _words(d.get("text") or "") for d in documents}
+
+    def excerpt_page(item: Dict[str, Any]) -> Optional[int]:
+        """The page whose text holds the item's verbatim excerpt (the cited one first), or None."""
+        evidence = str(item.get("evidence") or "")
+        if item.get("page") in page_words and evidence_found(evidence, page_words[item["page"]]):
+            return item["page"]
+        return next((i for i, w in page_words.items() if evidence_found(evidence, w)), None)
+
+    concepts, seen_concepts = [], set()
+    for item in raw.get("concepts") or []:
+        if not isinstance(item, dict) or item.get("category") not in SITE_CONCEPT_CATEGORIES:
+            continue
+        value = " ".join(str(item.get("value") or "").lower().split())[:60]
+        if not value or (item["category"], value) in seen_concepts:
+            continue
+        concept = {"category": item["category"], "value": value, "evidence": str(item.get("evidence") or "")[:400]}
+        page = excerpt_page(item)
+        if page is None:
+            issues.append({"field": "concepts", **concept, "problem": "concept_without_evidence"})
+            continue
+        seen_concepts.add((item["category"], value))
+        concepts.append({**concept, "page": page})
+
     facts = []
     for item in raw.get("facts") or []:
         if not isinstance(item, dict) or item.get("topic") not in FACT_TOPICS or not item.get("fact"):
@@ -454,6 +495,7 @@ def verify(raw: Dict[str, Any], documents: List[Dict[str, Any]]) -> Tuple[Dict[s
         "confidence": confidence,
         "facts": facts[:80],
         "house_summary": str(raw.get("house_summary") or "")[:2000],
+        "concepts": concepts[:40],
     }
     return brief, issues
 

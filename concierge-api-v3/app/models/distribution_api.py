@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -47,6 +47,9 @@ class PublicEntity(_PublicModel):
     coordinates: PublicCoordinates = Field(default_factory=PublicCoordinates)
     contact: PublicContact = Field(default_factory=PublicContact)
     media: PublicMedia = Field(default_factory=PublicMedia)
+    # What may be said from the restaurant's own site (prices per person, menus, corkage, house facts, site
+    # concepts), as the Collector read it and dated: `entities.menu_summary` (app/services/menu_service.py).
+    house: dict[str, Any] | None = None
     version: int | None = None
     created_at: str | None = None
     updated_at: str | None = None
@@ -197,6 +200,7 @@ class PublicCurationItemV1(_PublicModel):
                 coordinates=PublicCoordinates(latitude=place["latitude"], longitude=place["longitude"]),
                 contact=PublicContact(phone=place["phone"], website=place["website"]),
                 media=PublicMedia(photos=safe_photos),
+                house=entity.get("menu_summary") if isinstance(entity.get("menu_summary"), dict) else None,
                 version=entity.get("version") if isinstance(entity.get("version"), int) else None,
                 created_at=_timestamp(entity, "createdAt", "created_at"),
                 updated_at=_timestamp(entity, "updatedAt", "updated_at"),

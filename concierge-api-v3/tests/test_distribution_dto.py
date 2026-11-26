@@ -126,3 +126,20 @@ def test_public_dto_names_the_curator_but_never_exposes_the_identity():
         active_entity(entity_id="e1"),
     )
     assert synthetic.curation.curator.type == "synthetic"
+
+
+def test_the_item_carries_what_the_restaurant_site_says():
+    house = {"status": "auto", "per_person_brl": {"dinner": 220.0}, "facts": [{"topic": "pets", "fact": "Aceita."}]}
+    entity = active_entity(entity_id="e1", menu_summary=house)
+
+    item = PublicCurationItemV1.from_documents(active_curation(curation_id="c1", entity_id="e1"), entity)
+
+    assert item.entity.house == house
+
+
+def test_an_item_without_a_read_site_has_no_house():
+    entity = active_entity(entity_id="e1")
+
+    item = PublicCurationItemV1.from_documents(active_curation(curation_id="c1", entity_id="e1"), entity)
+
+    assert item.entity.house is None
