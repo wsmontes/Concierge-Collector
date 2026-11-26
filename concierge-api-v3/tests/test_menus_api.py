@@ -137,3 +137,19 @@ def test_unknown_entity_and_missing_auth(api):
     assert client.post("/api/v3/entities/entity_nope/menu/refresh", headers=H).status_code == 404
     assert client.get(f"/api/v3/entities/{ENTITY_ID}/menu").status_code == 401
     assert client.post(f"/api/v3/entities/{ENTITY_ID}/menu/refresh").status_code == 401
+
+
+def test_a_missing_menu_is_really_refreshed_in_the_background(api, monkeypatch):
+    client, db, fake = api
+    monkeypatch.setattr(settings, "menu_enrich_enabled", True)
+    monkeypatch.setattr(service, "_dispatched", {})
+    service.set_background_deps(fake.deps)
+
+    first = client.get(f"/api/v3/entities/{ENTITY_ID}/menu", headers=H).json()
+    assert first["refreshing"] is True
+
+    for _ in range(50):  # the background task runs on the app's loop
+        stored = client.get(f"/api/v3/entities/{ENTITY_ID}/menu?items=0", headers=H).json()
+        if stored["status"] != "missing":
+            break
+    assert stored["status"] == "auto" and stored["derived"]["per_person_brl"]["dinner"] == 428

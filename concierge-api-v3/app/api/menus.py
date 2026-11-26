@@ -56,7 +56,7 @@ class MenuReview(BaseModel):
 
 @router.get("/{entity_id}/menu")
 @limiter.limit("60/minute")
-def get_menu(
+async def get_menu(
     request: Request,
     entity_id: str,
     max_age_days: float = Query(30, gt=0, le=365),
@@ -67,6 +67,9 @@ def get_menu(
     """
     The stored menu at once. Missing or older than **max_age_days**: `refreshing: true` and a refresh is
     queued in the background (the next read has it). Never scrapes inside the request.
+
+    Async on purpose: the background refresh is scheduled on the app's event loop, which a sync route
+    (run in the threadpool) does not have — it would silently never refresh. The reads are two find_one.
 
     **Authentication Required:** `Authorization: Bearer <token>` OR `X-API-Key: <key>`
     """
