@@ -222,6 +222,8 @@ class InMemoryCollection:
     @staticmethod
     def _apply_update(document: dict, update: dict) -> None:
         document.update(deepcopy(update.get("$set", {})))
+        for key in update.get("$unset", {}):
+            document.pop(key, None)
         for key, increment in update.get("$inc", {}).items():
             document[key] = document.get(key, 0) + increment
         for key, minimum in update.get("$max", {}).items():

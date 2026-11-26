@@ -1,21 +1,27 @@
 """
 File: menu_service.py
-Purpose: an entity's menu — found on the restaurant's website, read (PDF/HTML), structured by the model,
-    turned into numbers, stored, reviewed by a curator, and refreshed on demand or in the background.
-Dependencies: menu_reading (links, text), menu_extraction (model), menu_derive (numbers),
+Purpose: what a restaurant's website says, in two layers — the RAW text of its useful pages (a broad
+    crawl of the site, sorted by a light model: menu, booking, hours, events, the house, policies) and the
+    BRIEF a strong model writes from them (menu, price per person, house facts with verbatim evidence,
+    all verified by the code) — stored, reviewed by a curator, refreshed on demand or in the background,
+    and searched as raw text when a conversation needs a detail the brief does not have.
+Dependencies: menu_reading (links, text), menu_synthesis (the model + verification),
     openai_service._validate_image_request_hook (the SSRF guard, on every request and redirect),
     display_media_service.extract_image_sources (where an entity keeps its website/place_id), settings.
 Spec: docs/superpowers/specs/2026-11-26-entity-menu-design.md.
 
 Storage:
-- `entity_menus` (one document per entity, `_id` = entity `_id`): every source document, every item,
-  the derived numbers, the status (auto | reviewed | needs_review | not_found) and the review.
-- `entities.menu_summary`: a compact copy for cards, search and sorting, written with a field `$set`
+- `entity_menus` (one document per entity, `_id` = entity `_id`): `pages` (every collected page with the
+  triage verdict, without text), `documents` (the useful pages' text and topics), `brief` (the verified
+  brief), `synthesis` (model, input hash, what could not be verified), the status
+  (auto | reviewed | needs_review | not_found) and the curator's review.
+- `entities.menu_summary`: a compact copy for cards, search and the chat, written with a field `$set`
   (like `display_media`): the entity's `version` never moves, so the offline Collector sees no conflict.
 
-What a refresh keeps: a source whose text hash did not change is not read by the model again; a
-curator's review is never overwritten — a change of 15% or more in the price per person, or a different
-set of sources, marks it `needs_review`; when the site cannot be read, what was there stays and
+What a refresh keeps: the triage runs only on pages whose text is new, the brief only when the useful
+pages changed (or on request); a
+curator's review is never overwritten — a change of 15% or more in the price per person, or different
+dining-room documents, marks it `needs_review`; when the site cannot be read, what was there stays and
 `last_error` says why (short codes, never provider text or URLs in logs).
 
 Background (no queue server-side, as in display_media): reads that find the menu missing or stale ask
@@ -29,8 +35,13 @@ import asyncio
 import copy
 import datetime as dt
 import hashlib
+import heapq
+import itertools
+import json
 import logging
+import re
 import time
+import unicodedata
 import urllib.robotparser
 from collections import deque
 from dataclasses import dataclass
@@ -41,25 +52,32 @@ import httpx
 
 from app.core.config import settings
 from app.services.display_media_service import extract_image_sources
-from app.services.menu_derive import derive
+from app.services.menu_synthesis import BLOCKING, SYNTHESIS_VERSION, verify
 from app.services.menu_reading import (
     classify_kind,
-    count_prices,
-    discover_menu_links,
     discover_named_pages,
     html_to_text,
+    link_priority,
+    page_title,
     pdf_to_pages,
+    same_site,
+    site_links,
+    site_root,
+    sitemap_locations,
 )
 
 logger = logging.getLogger(__name__)
 
 COLLECTION = "entity_menus"
 SUMMARY_FIELD = "menu_summary"
-MAX_SOURCES = 6
-# Downloads per refresh (home excluded): menus are often two clicks away (home -> "Cardápio" page -> PDF
-# or platform), so a menu page without prices is followed one level deeper, within this budget.
-MAX_FETCHES = 14
-MIN_PRICES_IN_A_MENU = 3
+# The crawl: the most promising pages first, within a page count and a time budget (slow sites exist; the
+# nginx in front of the API gives a synchronous refresh 300 s in all).
+MAX_PAGES = 40
+MAX_DEPTH = 2
+PARALLEL_FETCHES = 5
+CRAWL_SECONDS = 90.0
+SITEMAP_MAX = 400
+MAX_DOCUMENT_CHARS = 80_000
 REVIEW_CHANGE = 0.15
 LEASE_SECONDS = 300
 MAX_BYTES = 15 * 1024 * 1024
@@ -86,8 +104,9 @@ class Fetched:
 @dataclass
 class MenuDeps:
     fetch: Callable[[str], Awaitable[Optional[Fetched]]]
-    extractor: Any  # .extract(restaurant, address, texts) -> ExtractionResult
+    synthesizer: Any  # .synthesize(restaurant, address, context, documents) -> (raw brief, model)
     website_for: Callable[[str], Awaitable[Optional[str]]]
+    triager: Any = None  # .triage(restaurant, address, pages) -> {index: verdict}; None keeps every page
 
 
 def _now() -> dt.datetime:
@@ -155,7 +174,11 @@ async def safe_fetch(url: str) -> Optional[Fetched]:
                     if total > MAX_BYTES:
                         return None
                     chunks.append(chunk)
-                return Fetched(str(response.url), response.headers.get("content-type", ""), b"".join(chunks))
+                return Fetched(
+                    str(response.url),
+                    response.headers.get("content-type", ""),
+                    b"".join(chunks),
+                )
         except (ValueError, FetchFailed):
             raise
         except httpx.TimeoutException:
@@ -166,7 +189,11 @@ async def safe_fetch(url: str) -> Optional[Fetched]:
                 "tls_error" if "CERTIFICATE" in str(exc).upper() or "SSL" in str(exc).upper() else "site_unreachable"
             ) from None
         except Exception as exc:  # noqa: BLE001
-            logger.info("[Menu] fetch failed for %s: %s", urlsplit(url).netloc, type(exc).__name__)
+            logger.info(
+                "[Menu] fetch failed for %s: %s",
+                urlsplit(url).netloc,
+                type(exc).__name__,
+            )
             return None
 
 
@@ -188,12 +215,13 @@ async def places_website(place_id: str) -> Optional[str]:
 
 
 def default_deps(openai_service: Any) -> MenuDeps:
-    from app.services.menu_extraction import MenuExtractor
+    from app.services.menu_synthesis import MenuSynthesizer, SiteTriager
 
     return MenuDeps(
         fetch=safe_fetch,
-        extractor=MenuExtractor(openai_service.client, openai_service.config_service),
+        synthesizer=MenuSynthesizer(openai_service.client, openai_service.config_service),
         website_for=places_website,
+        triager=SiteTriager(openai_service.client, openai_service.config_service),
     )
 
 
@@ -206,7 +234,7 @@ def _spend_budget() -> bool:
     today = _now().date()
     if _budget["day"] != today:
         _budget.update(day=today, used=0)
-    if _budget["used"] >= max(0, settings.menu_extraction_daily_limit):
+    if _budget["used"] >= max(0, settings.menu_synthesis_daily_limit):
         return False
     _budget["used"] += 1
     return True
@@ -226,32 +254,33 @@ def _address(entity: dict) -> str:
     return str(data.get("address") or data.get("formatted_address") or location.get("address") or "")
 
 
-def _text_of(fetched: Fetched) -> tuple[str, List[str]]:
+def _context(entity: dict) -> str:
+    """What the catalog already says about the place, so the model can tell this place's menu from others."""
+    data = entity.get("data") or {}
+    location = data.get("location") or {}
+    facts = (
+        ("type", entity.get("type")),
+        ("city", location.get("city") or data.get("city")),
+        ("cuisine", data.get("cuisine")),
+        ("curated price range", data.get("price_range")),
+    )
+    return "; ".join(f"{label}: {value}" for label, value in facts if value)
+
+
+def _text_of(fetched: Fetched) -> tuple[str, str]:
     kind = classify_kind(fetched.url, fetched.content_type)
     if kind == "pdf":
-        return kind, pdf_to_pages(fetched.body)
+        return kind, "\n\n".join(pdf_to_pages(fetched.body))
     if kind == "image":
-        return kind, []  # phase 3: vision model
-    text = html_to_text(fetched.body)
-    return kind, [text] if text else []
+        return (
+            kind,
+            "",
+        )  # phase 3: a photo is transcribed by the vision model into a raw document
+    return kind, html_to_text(fetched.body)
 
 
-def _dining_room(items: List[dict], sources: List[dict]) -> List[dict]:
-    """Items that set the numbers: a delivery menu is kept, but it prices the dining room only when it is all
-    there is (delivery prices and portions often differ)."""
-    delivery = {s["index"] for s in sources if s.get("covers") == "delivery"}
-    if not delivery or len(delivery) == len(sources):
-        return items
-    return [item for item in items if item.get("source") not in delivery]
-
-
-def _per_person(derived: Optional[dict]) -> Optional[float]:
-    value = ((derived or {}).get("per_person_brl") or {}).get("dinner")
-    return float(value) if isinstance(value, (int, float)) else None
-
-
-def _apply_overrides(derived: dict, overrides: Dict[str, Any]) -> dict:
-    effective = copy.deepcopy(derived or {})
+def _apply_overrides(brief: dict, overrides: Dict[str, Any]) -> dict:
+    effective = copy.deepcopy(brief or {})
     for path, value in (overrides or {}).items():
         node = effective
         keys = str(path).split(".")
@@ -263,210 +292,386 @@ def _apply_overrides(derived: dict, overrides: Dict[str, Any]) -> dict:
     return effective
 
 
+def _per_person(brief: Optional[dict]) -> Optional[float]:
+    per_person = (brief or {}).get("per_person_brl") or {}
+    value = per_person.get("dinner") or per_person.get("lunch")
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def _dining_urls(menu: dict) -> set:
+    roles = {d.get("index"): d.get("role") for d in (menu.get("brief") or {}).get("documents") or []}
+    return {d.get("url") for d in menu.get("documents") or [] if roles.get(d.get("index")) == "dining_room"}
+
+
 def _summary(menu: dict) -> dict:
-    derived = _apply_overrides(menu.get("derived") or {}, (menu.get("review") or {}).get("overrides") or {})
-    per_person = derived.get("per_person_brl") or None
-    tasting = [t.get("price_brl") for t in derived.get("tasting_menus") or [] if t.get("price_brl")]
+    brief = _apply_overrides(menu.get("brief") or {}, (menu.get("review") or {}).get("overrides") or {})
+    tasting = [t.get("price_brl") for t in brief.get("tasting_menus") or [] if t.get("price_brl")]
     return {
         "status": menu.get("status"),
         "as_of": menu.get("refreshed_at"),
-        "per_person_brl": {k: per_person.get(k) for k in ("lunch", "dinner", "partial")} if per_person else None,
-        "executive_lunch_brl": derived.get("executive_lunch_brl"),
+        "per_person_brl": brief.get("per_person_brl"),
+        "per_person_fixed": brief.get("per_person_fixed") or {},
+        "formats": brief.get("formats") or [],
+        "confidence": brief.get("confidence"),
+        "executive_lunch_brl": brief.get("executive_lunch_brl"),
         "tasting_min_brl": min(tasting) if tasting else None,
-        "couvert_brl": derived.get("couvert_brl"),
-        "corkage_brl": derived.get("corkage_brl"),
-        "wine_labels": (derived.get("drinks") or {}).get("wine_labels", 0),
-        "tags": derived.get("tags") or [],
-        "sources": [s.get("kind") for s in menu.get("sources") or []],
+        "couvert_brl": brief.get("couvert_brl"),
+        "corkage_brl": brief.get("corkage_brl"),
+        "dietary": brief.get("dietary") or [],
+        "summary": brief.get("summary"),
+        "menu_date": brief.get("menu_date"),
+        "house_summary": brief.get("house_summary"),
+        "fact_topics": sorted({f.get("topic") for f in brief.get("facts") or [] if f.get("topic")}),
     }
 
 
+# Fields of the v1 document (items extracted one by one, numbers derived by heuristics): removed on save.
+_V1_FIELDS = ("sources", "items", "derived")
+
+
 def _save(db, entity: dict, menu: dict) -> dict:
-    db[COLLECTION].update_one({"_id": menu["_id"]}, {"$set": menu}, upsert=True)
+    for field in _V1_FIELDS:
+        menu.pop(field, None)
+    db[COLLECTION].update_one(
+        {"_id": menu["_id"]}, {"$set": menu, "$unset": {field: "" for field in _V1_FIELDS}}, upsert=True
+    )
     try:
         # Field $set only: the entity's version and updatedAt stay as they are (see module docstring).
         db.entities.update_one({"_id": entity["_id"]}, {"$set": {SUMMARY_FIELD: _summary(menu)}})
     except Exception as exc:  # noqa: BLE001 - a derived copy never fails the menu write
-        logger.warning("[Menu] summary not written for %s: %s", entity.get("_id"), type(exc).__name__)
+        logger.warning(
+            "[Menu] summary not written for %s: %s",
+            entity.get("_id"),
+            type(exc).__name__,
+        )
     return menu
 
 
-async def refresh_menu(db, entity: dict, deps: MenuDeps, *, force: bool = False) -> dict:
-    """Find, read, structure and store the entity's whole menu; returns the stored document."""
+def _input_hash(documents: List[dict]) -> str:
+    """What the brief was made from: the documents (by url and text hash) and the synthesis version."""
+    key = json.dumps(
+        [
+            SYNTHESIS_VERSION,
+            sorted((d.get("url") or "", d.get("content_hash") or "") for d in documents),
+        ]
+    )
+    return "sha256:" + hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+async def refresh_menu(db, entity: dict, deps: MenuDeps, *, force: bool = False, resynthesize: bool = False) -> dict:
+    """Collect the raw menu documents and (when they changed) write the brief; returns the stored document.
+
+    force: collect again inside the minimum interval. resynthesize: write the brief again from the stored
+    documents, without the network (to fix a brief or try a new prompt).
+    """
     key = entity["_id"]
     previous = db[COLLECTION].find_one({"_id": key}) or {}
     now = _now()
     allowed = _utc(previous.get("next_allowed_at"))
     lease = _utc(previous.get("lease_until"))
-    if previous and not force and allowed and allowed > now:
+    if previous and not (force or resynthesize) and allowed and allowed > now:
         return previous
     if key in _running or (lease and lease > now):
         return previous or {"_id": key, "status": "refreshing"}
     _running.add(key)
     try:
         db[COLLECTION].update_one(
-            {"_id": key}, {"$set": {"lease_until": now + dt.timedelta(seconds=LEASE_SECONDS)}}, upsert=True
+            {"_id": key},
+            {"$set": {"lease_until": now + dt.timedelta(seconds=LEASE_SECONDS)}},
+            upsert=True,
         )
-        return await _refresh(db, entity, deps, previous, now)
+        return await _refresh(db, entity, deps, previous, now, resynthesize)
     finally:
         _running.discard(key)
 
 
-async def _refresh(db, entity: dict, deps: MenuDeps, previous: dict, now: dt.datetime) -> dict:
+async def _refresh(
+    db,
+    entity: dict,
+    deps: MenuDeps,
+    previous: dict,
+    now: dt.datetime,
+    resynthesize: bool,
+) -> dict:
     menu: dict = {
         "_id": entity["_id"],
         "entity_id": entity.get("entity_id") or entity["_id"],
         "website": previous.get("website"),
-        "sources": previous.get("sources") or [],
-        "items": previous.get("items") or [],
-        "derived": previous.get("derived") or derive(previous.get("items") or []),
+        "pages": previous.get("pages") or [],
+        "documents": previous.get("documents") or [],
+        "brief": previous.get("brief"),
+        "synthesis": previous.get("synthesis"),
         "status": previous.get("status") or "not_found",
         "review": previous.get("review"),
-        "rejected": [],
+        "rejected": [] if not resynthesize else previous.get("rejected") or [],
         "manual_sources": previous.get("manual_sources") or [],
         "last_error": None,
         "attempts": int(previous.get("attempts") or 0) + 1,
-        "refreshed_at": now,
+        "refreshed_at": (now if not resynthesize else previous.get("refreshed_at") or now),
         "next_allowed_at": now + dt.timedelta(hours=settings.menu_refresh_min_hours),
         "lease_until": None,
         "updatedAt": now,
     }
+    if not resynthesize:
+        collected = await _collect(entity, deps, previous, now, menu)
+        if isinstance(collected, str):
+            return _failed(db, entity, menu, collected)
+        kept = await _triage(entity, deps, previous, collected, menu)
+        if isinstance(kept, str):
+            return _failed(db, entity, menu, kept)
+        menu["documents"] = kept
+    if not menu["documents"]:
+        return _failed(db, entity, menu, "nothing_useful")
+    return await _synthesize(db, entity, deps, previous, menu, now, again=resynthesize)
 
-    def failed(code: str) -> dict:
-        menu["last_error"] = code
-        if not previous.get("items"):
-            menu["status"] = "not_found"
-        logger.info("[Menu] %s: %s", entity["_id"], code)
-        return _save(db, entity, menu)
 
+def _failed(db, entity: dict, menu: dict, code: str) -> dict:
+    """What was there stays (documents and brief); the status says not_found only when there never was one."""
+    menu["last_error"] = code
+    if not menu.get("brief"):
+        menu["status"] = "not_found"
+    logger.info("[Menu] %s: %s", entity["_id"], code)
+    return _save(db, entity, menu)
+
+
+_NAME_STOP = {"restaurante", "restaurant", "ristorante", "bar", "the", "de", "da", "do", "e"}
+
+
+async def _collect(entity: dict, deps: MenuDeps, previous: dict, now: dt.datetime, menu: dict):
+    """The raw layer: the site's pages as text, most promising first (its own section and name, menus,
+    booking and house pages), up to MAX_PAGES / CRAWL_SECONDS. A list of pages, or an error code."""
     website, _ = extract_image_sources(entity)
     if not website and (place_id := _place_id(entity)):
         website = await deps.website_for(place_id)
     if not website:
-        return failed("no_website")
+        return "no_website"
     menu["website"] = website
-
     try:
         home = await deps.fetch(website)
     except ValueError:
-        return failed("blocked")
+        return "blocked"
     except FetchFailed as error:
-        return failed(error.code)
+        return error.code
     if home is None:
-        return failed("site_unreachable")
+        return "site_unreachable"
 
-    candidates = [(link.url, link.covers, "website_link") for link in discover_menu_links(home.body, home.url)]
-    home_kind, home_text = _text_of(home)
-    if home_text and count_prices("\n".join(home_text)) >= MIN_PRICES_IN_A_MENU * 3:
-        candidates.append((home.url, "full", "website_home"))
-    if not candidates:
-        # A group's site (one site for many restaurants and units): go to the page of this unit first.
-        named = discover_named_pages(home.body, home.url, entity.get("name") or "", _address(entity))
-        candidates += [(url, "full", "website_link") for url in named[:2]]
-    listed = {url for url, _, _ in candidates}
-    candidates += [(url, "full", "manual") for url in previous.get("manual_sources") or [] if url not in listed]
-    if not candidates:
-        return failed("no_menu_link")
+    root = site_root(home.url)
+    start_path = urlsplit(website).path.rstrip("/")
+    name_words = [w for w in re.findall(r"[a-z0-9]+", _plain(entity.get("name") or "")) if w not in _NAME_STOP]
+    pages: List[dict] = []
+    hashes: set = set()
+    done = {website, home.url}
+    best: Dict[str, int] = {}  # a link seen again with a better reason (this unit's page) moves up the queue
+    heap: list = []
+    order = itertools.count()
 
-    known = {s.get("url"): s for s in previous.get("sources") or []}
-    old_items = previous.get("items") or []
-    sources: List[dict] = []
-    items: List[dict] = []
-    seen_hashes: set = set()
-    manual = [c for c in candidates if c[2] == "manual"]
-    work = [(*c, 1) for c in manual + [c for c in candidates if c[2] != "manual"]]
-    queued = {c[0] for c in work} | {home.url}
-    fetches = 0
-    while work and len(sources) < MAX_SOURCES and fetches < MAX_FETCHES:
-        url, covers, found_via, depth = work.pop(0)
-        try:
-            if url == home.url:
-                fetched = home
-            else:
-                fetches += 1
-                fetched = await deps.fetch(url)
-        except ValueError:
-            menu["rejected"].append({"url": url, "reason": "blocked"})
-            continue
-        except FetchFailed as error:
-            menu["rejected"].append({"url": url, "reason": error.code})
-            continue
-        if fetched is None:
-            continue
-        kind, texts = _text_of(fetched)
-        joined = "\n".join(texts)
-        if count_prices(joined) < MIN_PRICES_IN_A_MENU:
-            if kind in ("html", "platform") and depth == 1:
-                deeper = [link for link in discover_menu_links(fetched.body, fetched.url) if link.url not in queued]
-                queued.update(link.url for link in deeper)
-                work.extend(
-                    (link.url, link.covers if link.covers != "full" else covers, found_via, 2) for link in deeper
-                )
-            continue
-        content_hash = "sha256:" + hashlib.sha256(joined.encode("utf-8")).hexdigest()
-        if content_hash in seen_hashes:
-            continue
-        seen_hashes.add(content_hash)
-        same = known.get(url)
-        if same and same.get("content_hash") == content_hash:
-            reused = [dict(i) for i in old_items if i.get("source") == same.get("index")]
-            source = {**same, "fetched_at": now}
-            source_items, menu_date = reused, same.get("menu_date")
-        else:
-            if not _spend_budget():
-                return failed("budget_exhausted")
-            try:
-                result = await deps.extractor.extract(entity.get("name") or "", _address(entity), texts)
-            except Exception as exc:  # noqa: BLE001 - one document failing does not lose the others
-                logger.warning("[Menu] extraction failed for %s: %s", entity["_id"], type(exc).__name__)
-                menu["rejected"].append({"url": url, "reason": "extraction_failed"})
-                continue
-            if not result.is_menu:
-                menu["rejected"].append({"url": url, "reason": result.reason or "not_a_menu"})
-                continue
-            source_items, menu_date = result.items, result.menu_date
-            source = {
-                "url": fetched.url if url != home.url else url,
+    def push(url: str, label: str, depth: int, found_via: str, bonus: int = 0) -> None:
+        url = url.split("#")[0]
+        score = bonus + link_priority(url, label, start_path=start_path, name_words=name_words)
+        if url in done or best.get(url, -(10**6)) >= score:
+            return
+        best[url] = score
+        heapq.heappush(heap, (-score, depth, next(order), url, found_via))
+
+    def pop_batch() -> list:
+        batch = []
+        while heap and len(batch) < PARALLEL_FETCHES:
+            item = heapq.heappop(heap)
+            if item[3] not in done:
+                done.add(item[3])
+                batch.append(item)
+        return batch
+
+    def add(fetched: Fetched, depth: int, found_via: str) -> None:
+        kind, text = _text_of(fetched)
+        if kind in ("html", "platform") and depth < MAX_DEPTH:  # a page of links only is still followed
+            for url, label in site_links(fetched.body, fetched.url):
+                push(url, label, depth + 1, "website_link")
+        if len(text.strip()) < 40:
+            return
+        content_hash = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if content_hash in hashes:
+            return
+        hashes.add(content_hash)
+        pages.append(
+            {
+                "index": len(pages),
+                "url": fetched.url,
                 "kind": kind,
-                "covers": covers,
+                "title": page_title(fetched.body) if kind != "pdf" else urlsplit(fetched.url).path.rsplit("/", 1)[-1],
                 "found_via": found_via,
                 "fetched_at": now,
                 "content_hash": content_hash,
-                "menu_date": menu_date,
-                "model": result.model,
+                "chars": len(text),
+                "truncated": len(text) > MAX_DOCUMENT_CHARS,
+                "text": text[:MAX_DOCUMENT_CHARS],
             }
-        source["index"] = len(sources)
-        sources.append(source)
-        items.extend({**item, "source": source["index"]} for item in source_items)
-
-    if not sources:
-        return failed("no_menu_found" if not menu["rejected"] else "not_a_menu")
-
-    derived = derive(_dining_room(items, sources))
-    status = "auto"
-    if previous.get("status") in ("reviewed", "needs_review"):
-        before, after = _per_person(previous.get("derived")), _per_person(derived)
-        changed = (before is None) != (after is None) or (
-            before and after and abs(after - before) / before >= REVIEW_CHANGE
         )
-        new_sources = {s["url"] for s in sources} != {s.get("url") for s in previous.get("sources") or []}
-        status = "needs_review" if (changed or new_sources or previous.get("status") == "needs_review") else "reviewed"
-    menu.update(sources=sources, items=items, derived=derived, status=status)
-    logger.info("[Menu] %s: %d sources, %d items, status=%s", entity["_id"], len(sources), len(items), status)
+
+    add(home, 0, "website_home")
+    for url in previous.get("manual_sources") or []:
+        push(url, "", 1, "manual", bonus=20)
+    # A group's site (one site for many restaurants and units): the page of this unit first.
+    for url in discover_named_pages(home.body, home.url, entity.get("name") or "", _address(entity))[:2]:
+        push(url, "", 1, "website_link", bonus=4)
+    for url in await _sitemap(deps, home.url):
+        if same_site(url, root):
+            push(url, "", 1, "sitemap", bonus=-1)
+
+    deadline = time.monotonic() + CRAWL_SECONDS
+    fetches = 0
+    while heap and len(pages) < MAX_PAGES and fetches < MAX_PAGES * 2 and time.monotonic() < deadline:
+        batch = pop_batch()
+        if not batch:
+            break
+        fetches += len(batch)
+        results = await asyncio.gather(*(deps.fetch(item[3]) for item in batch), return_exceptions=True)
+        for (_, depth, _, url, found_via), result in zip(batch, results):
+            if isinstance(result, FetchFailed):
+                menu["rejected"].append({"url": url, "reason": result.code})
+            elif isinstance(result, ValueError):
+                menu["rejected"].append({"url": url, "reason": "blocked"})
+            elif isinstance(result, Fetched) and len(pages) < MAX_PAGES:
+                add(result, depth, found_via)
+    return pages
+
+
+async def _sitemap(deps: MenuDeps, home_url: str) -> List[str]:
+    """The sitemap's pages (what the navigation hides), following up to 4 child sitemaps."""
+    parts = urlsplit(home_url)
+    origin = f"{parts.scheme}://{parts.netloc}"
+    for path in ("/sitemap.xml", "/sitemap_index.xml"):
+        try:
+            got = await deps.fetch(origin + path)
+        except Exception:  # noqa: BLE001 - no sitemap is normal
+            got = None
+        if not got:
+            continue
+        locations = sitemap_locations(got.body)
+        found = [u for u in locations if not u.endswith(".xml")]
+        for child in [u for u in locations if u.endswith(".xml")][:4]:
+            try:
+                sub = await deps.fetch(child)
+            except Exception:  # noqa: BLE001
+                sub = None
+            if sub:
+                found += [u for u in sitemap_locations(sub.body) if not u.endswith(".xml")]
+        return found[:SITEMAP_MAX]
+    return []
+
+
+async def _triage(entity: dict, deps: MenuDeps, previous: dict, pages: List[dict], menu: dict):
+    """Which pages are useful for THIS unit (light model); only those keep their text. A page whose text did
+    not change keeps its previous verdict (no model call). Without a triage model every page is kept."""
+    cached = {p.get("content_hash"): p for p in previous.get("pages") or [] if "useful" in p}
+    unknown = [p for p in pages if p["content_hash"] not in cached]
+    verdicts: Dict[int, dict] = {}
+    if unknown and deps.triager is not None:
+        if not _spend_budget():
+            return "budget_exhausted"
+        try:
+            verdicts = await deps.triager.triage(entity.get("name") or "", _address(entity), unknown)
+        except Exception as exc:  # noqa: BLE001 - nothing kept without a verdict; the next refresh retries
+            logger.warning("[Menu] triage failed for %s: %s", entity["_id"], type(exc).__name__)
+            return "triage_failed"
+    index: List[dict] = []
+    useful: List[dict] = []
+    for page in pages:
+        known = cached.get(page["content_hash"])
+        if deps.triager is None:
+            verdict = {"useful": True, "topics": [], "reason": "no triage model"}
+        elif known is not None:
+            verdict = {k: known.get(k) for k in ("useful", "topics", "reason")}
+        else:
+            verdict = verdicts.get(page["index"]) or {"useful": False, "topics": [], "reason": "no verdict"}
+        if page.get("found_via") == "manual":  # a curator added it: kept whatever the triage says
+            verdict = {**verdict, "useful": True}
+        index.append({**{k: v for k, v in page.items() if k != "text"}, **verdict})
+        if verdict["useful"]:
+            useful.append({**page, "topics": verdict["topics"]})
+    for n, page in enumerate(useful):
+        page["index"] = n
+    menu["pages"] = index
+    return useful
+
+
+async def _synthesize(
+    db,
+    entity: dict,
+    deps: MenuDeps,
+    previous: dict,
+    menu: dict,
+    now: dt.datetime,
+    *,
+    again: bool,
+):
+    """The brief: written by the model from the useful pages, verified here. Unchanged pages: no model call."""
+    documents = menu["documents"]
+    input_hash = _input_hash(documents)
+    old = previous.get("synthesis") or {}
+    if not again and previous.get("brief") is not None and old.get("input_hash") == input_hash:
+        return _save(db, entity, menu)
+    if not _spend_budget():
+        return _failed(db, entity, menu, "budget_exhausted")
+    try:
+        raw, model = await deps.synthesizer.synthesize(
+            entity.get("name") or "", _address(entity), _context(entity), documents
+        )
+    except Exception as exc:  # noqa: BLE001 - the previous brief stays; the next refresh tries again
+        logger.warning("[Menu] synthesis failed for %s: %s", entity["_id"], type(exc).__name__)
+        menu["synthesis"] = {**old, "error": "synthesis_failed"}
+        return _failed(db, entity, menu, "synthesis_failed")
+
+    brief, issues = verify(raw, documents)
+    blocking = [i for i in issues if i["problem"] in BLOCKING]
+    menu["brief"] = brief
+    menu["synthesis"] = {
+        "model": model,
+        "at": now,
+        "version": SYNTHESIS_VERSION,
+        "input_hash": input_hash,
+        "issues": issues,
+        "error": None,
+    }
+    roles = {d["role"] for d in brief["documents"]}
+    has_menu = "dining_room" in roles or brief["per_person_brl"] or brief["tasting_menus"]
+    if not has_menu and not brief["facts"]:
+        menu["status"] = "not_found"
+        menu["last_error"] = "nothing_useful"
+    else:
+        status = "needs_review" if blocking else "auto"
+        if previous.get("status") in ("reviewed", "needs_review"):
+            before, after = _per_person(previous.get("brief")), _per_person(brief)
+            changed = (before is None) != (after is None) or bool(
+                before and after and abs(after - before) / before >= REVIEW_CHANGE
+            )
+            moved = _dining_urls(menu) != _dining_urls(previous)
+            keep = previous.get("status") == "reviewed" and not (changed or moved or blocking)
+            status = "reviewed" if keep else "needs_review"
+        menu["status"] = status
+    logger.info(
+        "[Menu] %s: %d pages, %d useful, %d facts, status=%s, issues=%d",
+        entity["_id"],
+        len(menu.get("pages") or []),
+        len(documents),
+        len(brief["facts"]),
+        menu["status"],
+        len(issues),
+    )
     return _save(db, entity, menu)
 
 
 # -------------------------------------------------------------------------- read / review ----
-def public_view(menu: dict, *, items: Optional[int] = None) -> dict:
+def public_view(menu: dict) -> dict:
+    """The stored menu without its raw text (that is GET .../menu/text) and with the review applied."""
     view = {k: v for k, v in menu.items() if k not in _INTERNAL and k != "_id"}
     view["entity_id"] = menu.get("entity_id") or menu.get("_id")
-    view["derived"] = _apply_overrides(menu.get("derived") or {}, (menu.get("review") or {}).get("overrides") or {})
-    if items is not None:
-        view["items"] = (menu.get("items") or [])[: max(0, items)]
+    view["documents"] = [{k: v for k, v in d.items() if k != "text"} for d in menu.get("documents") or []]
+    view["brief"] = _apply_overrides(menu.get("brief") or {}, (menu.get("review") or {}).get("overrides") or {})
     return view
 
 
-def read_menu(db, entity: dict, *, max_age_days: float = 30, items: Optional[int] = None) -> dict:
+def read_menu(db, entity: dict, *, max_age_days: float = 30) -> dict:
     """What is stored, at once; missing or older than max_age_days asks for a background refresh."""
     menu = db[COLLECTION].find_one({"_id": entity["_id"]})
     if not menu or not menu.get("refreshed_at"):
@@ -479,14 +684,112 @@ def read_menu(db, entity: dict, *, max_age_days: float = 30, items: Optional[int
     refreshed = _utc(menu.get("refreshed_at"))
     fresh = bool(refreshed and _now() - refreshed <= dt.timedelta(days=max_age_days))
     refreshing = False if fresh else schedule_refresh(db, entity)
-    return {**public_view(menu, items=items), "fresh": fresh, "refreshing": refreshing}
+    return {**public_view(menu), "fresh": fresh, "refreshing": refreshing}
+
+
+# Raw text for the chat: the dining-room menu first; a shop or another unit last.
+_ROLE_ORDER = {
+    "dining_room": 0,
+    "drinks": 1,
+    "delivery": 2,
+    "event": 3,
+    "other": 4,
+    "orders_or_shop": 5,
+}
+_STOPWORDS = {
+    "que", "tem", "com", "sem", "para", "por", "uma", "uns", "das", "dos", "nas", "nos", "qual", "quais",
+    "quanto", "custa", "como", "eles", "ela", "ele", "the", "and", "menu", "cardapio", "preco", "valor",
+}  # fmt: skip
+CHUNK_CHARS = 700
+
+
+def _plain(text: str) -> str:
+    return unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode().lower()
+
+
+def _terms(query: str) -> List[str]:
+    words = re.findall(r"[a-z0-9]+", _plain(query))
+    terms = [w[:-1] if len(w) > 4 and w.endswith("s") else w for w in words if len(w) >= 3 and w not in _STOPWORDS]
+    return list(dict.fromkeys(terms))
+
+
+def _chunks(text: str) -> List[str]:
+    chunks, current, size = [], [], 0
+    for line in (text or "").splitlines():
+        if current and size + len(line) > CHUNK_CHARS:
+            chunks.append("\n".join(current))
+            current, size = [], 0
+        current.append(line)
+        size += len(line) + 1
+    if current:
+        chunks.append("\n".join(current))
+    return [c for c in chunks if c.strip()]
+
+
+def menu_text(db, entity: dict, *, q: Optional[str] = None, topic: Optional[str] = None, max_chars: int = 6000) -> dict:
+    """Excerpts of the site's useful pages for a question the brief does not answer (no model, no network).
+
+    With q: the passages that contain its words (accents and case ignored), most words first; without q:
+    the start of the pages. topic: only pages the triage tagged with it (menu, reservations, …). The
+    dining-room menu comes first; pages the brief says are another unit's or not a menu are left out.
+    """
+    menu = db[COLLECTION].find_one({"_id": entity["_id"]}) or {}
+    documents = menu.get("documents") or []
+    answer = {
+        "entity_id": entity.get("entity_id") or entity["_id"],
+        "status": menu.get("status") or "missing",
+        "as_of": menu.get("refreshed_at"),
+        "documents": [],
+        "excerpts": [],
+        "matched": None,
+        "truncated": False,
+    }
+    if not documents:
+        answer["refreshing"] = schedule_refresh(db, entity)
+        return answer
+    roles = {d.get("index"): d.get("role") for d in (menu.get("brief") or {}).get("documents") or []}
+    usable = sorted(
+        (
+            d
+            for d in documents
+            if roles.get(d["index"], "other") in _ROLE_ORDER and (not topic or topic in (d.get("topics") or []))
+        ),
+        key=lambda d: (_ROLE_ORDER[roles.get(d["index"], "other")], d["index"]),
+    )
+    answer["documents"] = [
+        {
+            "index": d["index"],
+            "url": d.get("url"),
+            "kind": d.get("kind"),
+            "role": roles.get(d["index"], "other"),
+            "topics": d.get("topics") or [],
+        }
+        for d in usable
+    ]
+    passages = [
+        (rank, n, d["index"], chunk) for rank, d in enumerate(usable) for n, chunk in enumerate(_chunks(d["text"]))
+    ]
+    terms = _terms(q or "")
+    if terms:
+        scored = [(sum(t in _plain(p[3]) for t in terms), p) for p in passages]
+        passages = [p for score, p in sorted(scored, key=lambda s: (-s[0], s[1][0], s[1][1])) if score > 0]
+        answer["matched"] = bool(passages)
+    chosen, used = [], 0
+    for passage in passages:
+        if used + len(passage[3]) > max_chars:
+            answer["truncated"] = True
+            continue
+        chosen.append(passage)
+        used += len(passage[3])
+    answer["excerpts"] = [{"document": index, "text": text} for _, _, index, text in sorted(chosen)]
+    return answer
 
 
 REVIEW_STATUSES = ("reviewed", "needs_review", "not_found")
 
 
 def review_menu(db, entity_id: str, payload: dict, reviewer: str) -> Optional[dict]:
-    """A curator confirms, corrects (overrides on derived numbers) or rejects the menu; never overwritten."""
+    """A curator confirms, corrects (overrides on the brief by path) or rejects the menu; never overwritten."""
     menu = db[COLLECTION].find_one({"_id": entity_id})
     entity = db.entities.find_one({"_id": entity_id})
     if not menu or not entity:

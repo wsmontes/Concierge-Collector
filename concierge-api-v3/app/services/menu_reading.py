@@ -1,6 +1,7 @@
 """
 File: menu_reading.py
-Purpose: find a restaurant's menu documents on its website and read them as plain text.
+Purpose: read a restaurant's website as plain text — its links (with how promising each one is for a
+    concierge), its sitemap, page titles, PDFs — and find its menu documents.
 Dependencies: pypdf (PDF text), stdlib html/re. Network-agnostic: the caller downloads (through the
     SSRF-safe boundary in og_image_service) and hands bytes here.
 
@@ -63,6 +64,91 @@ _CODE = re.compile(r"<(script|style|noscript|svg)\b.*?</\1>", re.I | re.S)
 _BREAKS = re.compile(r"<\s*(br|/p|/div|/li|/tr|/h[1-6]|/section|/article)\b[^>]*>", re.I)
 # "260,00", "1249,00", "1.249,00", "R$ 36", "R$36,50" — not phone numbers, years or times.
 _PRICE = re.compile(r"R\$\s?\d{1,5}(?:[.,]\d{2})?|(?<![\d(-])(?:\d{1,3}(?:\.\d{3})+|\d{1,5}),\d{2}(?!\d)")
+
+
+_TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
+_LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
+_ASSET = re.compile(r"\.(jpe?g|png|gif|webp|svg|ico|css|js|zip|mp4|mp3|woff2?|ttf|xml|json|txt|docx?|xlsx?)$", re.I)
+_SKIP_PATH = re.compile(
+    r"/(wp-json|wp-admin|wp-login|feed|tag|author|cart|carrinho|checkout|account|minha-conta|login|search|busca)\b"
+    r"|replytocom|add-to-cart|/page/\d+",
+    re.I,
+)
+# What a concierge looks for on a restaurant's site (menu, booking, hours, events, the house, policies).
+_USEFUL_WORDS = re.compile(
+    r"card[aá]pio|menu|carta|vinho|wine|drink|bebida|reserv|sobre|about|quem-somos|hist[oó]ria|chef|"
+    r"evento|event|privativ|private|sal[aã]o|contato|contact|hor[aá]rio|hours|faq|d[uú]vida|pol[ií]tica|"
+    r"unidade|localiza|endere|almo[cç]o|jantar|degusta|brunch|kids|crian",
+    re.I,
+)
+_NOISE_PATH = re.compile(r"/(blog|noticias|news|imprensa|press|\d{4}/\d{2})/", re.I)
+_OFFSITE_NOT_USEFUL = re.compile(r"instagram|facebook|wa\.me|whatsapp|tiktok|youtube|ifood|google|twitter|x\.com", re.I)
+
+
+def site_root(url: str) -> str:
+    """The host without "www." — pages under it (and its subdomains) are the same site."""
+    host = urlsplit(url).netloc.lower().split(":")[0]
+    return host[4:] if host.startswith("www.") else host
+
+
+def same_site(url: str, root: str) -> bool:
+    host = site_root(url)
+    return host == root or host.endswith("." + root)
+
+
+def site_links(raw: bytes, base_url: str) -> List[tuple]:
+    """(absolute url, link text) of every followable link on the page: the site's own pages, and menu
+    platforms elsewhere (meemo, getin, goomer...). Assets, account/cart pages and social networks are not."""
+    page = raw.decode("utf-8", "ignore")
+    root = site_root(base_url)
+    found: dict = {}
+    for href, inner in _ANCHOR.findall(page):
+        href = html_lib.unescape(href.strip())
+        if href.lower().startswith(("mailto:", "tel:", "javascript:", "whatsapp:")):
+            continue
+        url = urljoin(base_url, href).split("#")[0]
+        parts = urlsplit(url)
+        if parts.scheme not in ("http", "https") or "." not in parts.netloc:
+            continue
+        if re.search(r"https?[:/]", parts.netloc + parts.path[:12]):
+            continue  # broken links seen on real sites, e.g. "https://mhttps://menu.example/..."
+        if (_ASSET.search(parts.path) and not parts.path.lower().endswith(".pdf")) or _SKIP_PATH.search(url):
+            continue
+        label = re.sub(r"\s+", " ", html_lib.unescape(_TAG.sub(" ", inner))).strip()
+        if not same_site(url, root):
+            if _OFFSITE_NOT_USEFUL.search(url) or not _MENU_WORDS.search(f"{label} {url}"):
+                continue
+        found.setdefault(url, label)
+    return list(found.items())
+
+
+def link_priority(url: str, label: str, *, start_path: str = "", name_words: List[str] = ()) -> int:
+    """How promising a link is for a concierge: the restaurant's own section and name, menus (PDFs above
+    all) and booking/house pages first; blog posts and news last. Only orders the crawl, never filters it."""
+    path = urlsplit(url).path
+    text = f"{label} {path}"
+    score = 0
+    if start_path and path.startswith(start_path):
+        score += 3
+    if name_words and all(w in _words(text) for w in name_words):
+        score += 3
+    if _USEFUL_WORDS.search(text):
+        score += 2
+    if path.lower().endswith(".pdf"):
+        score += 2
+    if _NOISE_PATH.search(path):
+        score -= 3
+    return score
+
+
+def sitemap_locations(raw: bytes) -> List[str]:
+    """Every <loc> of a sitemap (child sitemaps included, ending in .xml)."""
+    return _LOC.findall(raw.decode("utf-8", "ignore"))
+
+
+def page_title(raw: bytes) -> str:
+    match = _TITLE.search(raw[:200_000].decode("utf-8", "ignore"))
+    return re.sub(r"\s+", " ", html_lib.unescape(_TAG.sub(" ", match.group(1)))).strip()[:200] if match else ""
 
 
 @dataclass(frozen=True)

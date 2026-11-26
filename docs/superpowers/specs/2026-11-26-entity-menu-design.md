@@ -1,6 +1,8 @@
 # Cardápio da entidade (scraping sob demanda + pré-preenchimento) — Design
 
-**Status:** fase 1 implementada em 2026-11-26 (branch `feat/entity-menus`), ainda não publicada.
+**Status:** v1 publicada em 2026-11-26 (extração item a item + heurísticas); **v2 (coleta ampla do site +
+triagem + ficha por LLM)** implementada na branch `feat/entity-menus`, testada localmente em 77 casas,
+ainda não publicada.
 **Repos:** Collector (`concierge-api-v3`) é o dono; o bot (`lotier-concierge-engine-agent`) consome.
 
 ## Objetivo
@@ -28,164 +30,151 @@ pipeline separado.
 
 ## Decisões
 
-1. **O cardápio inteiro é uma coleção própria, `entity_menus`; a entidade recebe só um resumo,
-   `menu_summary`, por `$set` do campo** — o mesmo padrão do `display_media`. Gravar pela escrita normal
-   (`entity_service.upsert_entity`) subiria `version` e geraria conflito `If-Match` no Collector offline a
-   cada coleta; o `$set` do campo não toca `version` nem `updatedAt`. O resumo aparece em
-   `GET /entities/{id}` (campo só de leitura no modelo `Entity`).
-2. **Tempo real = serve o que tem e atualiza por trás.** Extrair leva segundos (download + modelo);
-   o bot espera no máximo ~2 s por fatos ao vivo. Nenhum consumidor espera a raspagem, exceto o
-   `refresh` explícito.
-3. **Números derivados saem do código**, a partir dos itens classificados. O modelo só lê e classifica.
-4. **O valor revisado por um curador nunca é sobrescrito.** Uma mudança no site marca para revisão.
-5. **"Por pessoa" = entrada + principal + sobremesa, sem bebida e sem os 13% de serviço** (decidido em
-   2026-11-26). É a medida comparável entre casas; o bot diz isso quando cita o valor ("sem bebida").
-6. **Uma única fronteira de rede:** o download reaproveita a de `og_image_service` (hook
-   `_validate_image_request_hook` contra SSRF em cada redirect, teto de bytes, retry), com teto próprio
-   para PDF.
+1. **Três passos: coleta ampla, triagem e ficha.** O código **coleta** o site inteiro com teto (sitemap +
+   links internos + plataformas de cardápio, até 40 páginas, 2 níveis, 90 s), na ordem do mais promissor;
+   um **modelo leve** lê url, título e começo de cada página e diz o que é útil para o concierge desta
+   unidade (e de que assunto); só as páginas úteis guardam o texto; um **modelo forte** lê as úteis e
+   escreve a **ficha**: cardápio e preço por pessoa **e fatos da casa** (reserva, horário, eventos, chef,
+   rolha, crianças, pets, estacionamento…), cada fato com o trecho literal que o sustenta. Revisão de
+   2026-11-26 (v2): a v1 extraía item a item e derivava números por heurística (medianas, regex de taça,
+   filtro de delivery, couvert) — frágil e errada nos casos que importam (Charlô: loja de Natal lida como
+   cardápio, R$ 3.562; Fogo de Chão: rodízio tratado como à la carte). Limpar por heurística não escala;
+   quem lê o cardápio decide.
+2. **O código só verifica a ficha, não interpreta.** Os pratos que o LLM cita como base do preço por
+   pessoa precisam ter o preço citado no texto bruto do documento citado; a soma é refeita no código.
+   Preço não encontrado no texto, ou preço afirmado com confiança baixa → `needs_review`. Um fato da casa
+   cujo trecho não está na página (palavras em ordem numa janela curta, porque colunas de PDF se
+   intercalam) é deixado de fora e registrado, sem bloquear a ficha. Site sem preço publicado mas com
+   fatos tem ficha normal (`auto`).
+3. **Sem lista estruturada de itens.** Ficha + texto bruto cobrem o chat; a lista custava caro e era
+   frágil. Volta só se surgir busca no catálogo inteiro por prato/preço.
+4. **No chat: ficha pronta + bruto sob consulta.** A ficha (~300 tokens) vai no cartão do restaurante.
+   Pergunta específica ("tem ostra?", "quanto é o Barolo?") → `GET /entities/{id}/menu/text?q=` devolve
+   trechos do bruto (busca por palavra, sem LLM; ~6 mil caracteres) para o próprio modelo do bot ler.
+   **Nunca** se raspa site durante a conversa.
+5. **A entidade recebe só um resumo, `menu_summary`, por `$set` do campo** (padrão `display_media`): não
+   sobe `version`, não gera conflito `If-Match` no Collector offline.
+6. **O valor revisado por um curador nunca é sobrescrito.** Mudança relevante marca para revisão.
+7. **"Por pessoa" = entrada + principal + sobremesa, sem bebida e sem os 13% de serviço.** Rodízio e
+   preço fixo usam o próprio preço por pessoa.
+8. **Uma única fronteira de rede** (hook SSRF em cada redirect, teto de bytes, robots.txt, sem disfarce
+   de User-Agent, TLS verificado).
 
-## Modelo de dados — `entity_menus`
-
-Um documento por entidade (`_id = entity_id`):
+## Modelo de dados — `entity_menus` (um documento por entidade, `_id` = `_id` da entity)
 
 ```jsonc
 {
-  "_id": "entity_ChIJ...",
-  "website": "https://restaurantepicchi.com.br",
-  "sources": [                           // o cardápio inteiro: comida, bebidas, carta de vinhos, almoço…
-    {
-      "url": "https://restaurantepicchi.com.br/.../CARDAPIO_SETEMBRO_2026.pdf",
-      "kind": "pdf | html | platform | image",
-      "covers": "food | drinks | wine | lunch | dessert | full",
-      "found_via": "website_link | website_home | web_search | manual",
-      "fetched_at": "2026-11-26T12:00:00Z",
-      "content_hash": "sha256:…",      // do texto extraído; igual = não chama o modelo para esta fonte
-      "menu_date": "2026-09"             // se o próprio documento declara (ex.: "SETEMBRO 2026")
-    }
+  "website": "https://fogodechao.com.br/location/jardins/",
+  "pages": [                         // tudo que foi coletado, com o veredito da triagem, SEM texto
+    {"index": 0, "url": "…", "kind": "html|pdf|platform", "title": "…", "found_via": "website_home|
+     website_link|sitemap|manual", "content_hash": "sha256:…", "chars": 4120, "useful": true,
+     "topics": ["reservations", "hours_location"], "reason": "página da unidade com endereço e reserva"}
   ],
-  "items": [                             // TODOS os itens de todas as fontes; sem teto; sem texto bruto
-    {"source": 0, "section": "main", "subsection": "Massas", "name": "Fettuccine ao ragu de pato",
-     "description": "...", "price_brl": 260.0, "tags": ["pasta", "meat"], "meal": "dinner|lunch|all"},
-    {"source": 1, "section": "drink", "subsection": "Tintos — Itália", "name": "Barolo …",
-     "prices": [{"label": "taça", "brl": 89.0}, {"label": "garrafa", "brl": 690.0}],
-     "wine": {"producer": "…", "vintage": 2019, "region": "Piemonte", "grapes": ["nebbiolo"]}}
+  "documents": [                     // só as páginas úteis, com texto (teto 80 mil caracteres cada)
+    {"index": 0, "url": "…", "kind": "…", "title": "…", "topics": ["menu"], "found_via": "…",
+     "fetched_at": "…", "content_hash": "…", "chars": 18234, "truncated": false, "text": "…"}
   ],
-  "derived": {
-    "per_person_brl": {"lunch": 310, "dinner": 380, "basis": "starter+main+dessert", "partial": false},
-    "main_brl": {"p25": 196, "median": 247, "p75": 260},
-    "starter_brl": {...}, "dessert_brl": {...},
-    "executive_lunch_brl": null,
-    "tasting_menus": [{"name": "Tradizione", "price_brl": 699}],
-    "couvert_brl": 36, "corkage_brl": 230,
-    "drinks": {"wine_by_glass_brl": {"median": 75}, "wine_bottle_brl": {"min": 190, "median": 420},
-               "cocktail_brl": {"median": 58}, "wine_labels": 240},
-    "tags": ["vegetarian_options", "seafood", "light_options"]
+  "brief": {                         // decidida pelo modelo forte, verificada pelo código
+    "documents": [{"index": 0, "role": "dining_room|delivery|orders_or_shop|drinks|event|other_unit|
+                   not_a_menu|other", "note": "…"}],
+    "formats": ["a_la_carte", "rodizio", "tasting", "executive", "buffet", "prix_fixe"],
+    "per_person_brl": {"lunch": 190, "dinner": 354}, "per_person_fixed": {"lunch": true, "dinner": false},
+    "per_person_basis": {"dinner": [{"item": "Burrata", "price_brl": 110, "document": 0}, …]},
+    "executive_lunch_brl": 190, "tasting_menus": [{"name": "…", "price_brl": 699, "courses": 6}],
+    "couvert_brl": 55, "corkage_brl": 230, "wine": {"by_the_glass": true, "bottle_min_brl": 152, …},
+    "dietary": ["vegetarian"], "highlights": ["…"], "caveats": ["…"], "summary": "cardápio, em pt-BR",
+    "menu_date": "2026-09", "confidence": "high|medium|low",
+    "facts": [{"topic": "corkage|reservations|hours|kids|pets|parking|…", "fact": "em pt-BR",
+               "evidence": "trecho literal do site", "page": 3}],
+    "house_summary": "3 a 5 frases sobre a casa, em pt-BR"
   },
-  "status": "auto | reviewed | needs_review | rejected | not_found",
-  "review": {"by": "anwar@lotier.com", "at": "...", "overrides": {"per_person_brl.dinner": 420}, "note": ""},
-  "extraction": {"model": "...", "config": "menu_extraction_text", "is_menu_of_this_place": true,
-                 "confidence": 0.9, "rejected_reason": null},
-  "refresh": {"lease_until": null, "last_error": null, "attempts": 0, "next_allowed_at": "..."},
-  "updatedAt": "..."
+  "synthesis": {"model": "…", "at": "…", "version": 2, "input_hash": "…", "issues": [ … ], "error": null},
+  "status": "auto | reviewed | needs_review | not_found",
+  "review": {"by": "…", "at": "…", "overrides": {"per_person_brl.dinner": 420}, "note": ""},
+  "rejected": [{"url": "…", "reason": "site_refused"}], "manual_sources": ["…"], "last_error": null,
+  "refreshed_at": "…", "next_allowed_at": "…", "lease_until": null, "updatedAt": "…"
 }
 ```
 
-- `section` ∈ `starter | main | dessert | side | drink | tasting | executive | couvert | corkage | other`.
-- **Coleta o cardápio inteiro**, inclusive bebidas e carta de vinhos: "sem bebida" vale só para o
-  `per_person_brl`; os demais itens servem a pratos, opções leves/vegetarianas, vinho em taça, rolha etc.
-  Um item com mais de um preço (taça/garrafa, meia/inteira, por pessoa/para dois) usa `prices`; com um
-  só, `price_brl`. Item sem preço também entra (`price_brl: null`).
-- Tamanho esperado: ~10–50 KB por restaurante; uma carta de vinhos grande (~1.000 rótulos) chega a
-  ~250 KB, longe do limite de 16 MB por documento. Para ~150 casas, poucos MB. O Atlas está no plano de
-  512 MB (incidente 2026-08-12): coletar **só** entidades curadas, com curadoria em coleção, ou pedidas
-  explicitamente — nunca as ~21,6 mil em massa.
-- Índices: `_id` basta para leitura; `status` + `updatedAt` para o script de refresh. Entra em
-  `index_specs.py` (o teste `test_db_rebuild` conta specs — atualizar junto).
+- Espaço: ~100–300 KB por casa (só as páginas úteis guardam texto); ~150 casas curadas cabem com folga no
+  Atlas de 512 MB. Nunca coletar as ~21,6 mil em massa.
+- `entities.menu_summary` (por `$set` do campo): preço por pessoa, formatos, executivo, degustação mínima,
+  couvert, rolha, dietas, resumo do cardápio, `house_summary` e `fact_topics`.
+- Campos da v1 (`sources`, `items`, `derived`) são removidos na próxima gravação de cada documento.
 
 ## Pipeline do `refresh`
 
-1. **Site.** `entity.data` (website/contacts) se existir; senão `websiteUri` do Places Details
-   (place_id do `entity_id`).
-2. **Achar o cardápio — todas as partes.** Home do site → links cujo texto/href casa
-   `cardápio|menu|carta|vinhos|drinks|bebidas|almoço|executivo|sobremesas` e PDFs → segue um nível.
-   Guarda **todas** as fontes que forem cardápio (comida, bebidas, vinhos, almoço), não só a melhor;
-   duplicatas (mesmo hash) entram uma vez.
-   Respeita `robots.txt`; ritmo por domínio; User-Agent do Collector. Sem achado → `not_found`
-   (fase 2: busca na web "cardápio <nome> <bairro>").
-3. **Ler.** PDF → texto (dependência nova: `pdfminer.six` ou `pypdf`, Python puro, sem binário de sistema
-   no Docker; hoje não há lib de PDF em `requirements.txt`). PDFs em duas colunas (caso do Picchi)
-   misturam linhas no texto — o modelo reconstrói os pares prato/preço; HTML → texto sem
-   script/estilo; plataforma → parser específico quando for JSON público; imagem → fase 2 (visão).
-4. **Hash.** Por fonte: se `content_hash` igual ao gravado, atualiza só `fetched_at` dela e não a reextrai.
-5. **Extrair** cada fonte que mudou, em partes (por página ou bloco de seção) para caber na saída do
-   modelo; as partes são unidas e deduplicadas por (seção, nome, preço). Modelo OpenAI via registro `openai_configs` (serviço novo `menu_extraction_text`,
-   gravado sozinho — nunca rodar o seed inteiro em produção). Saída estruturada (JSON schema) com
-   `is_menu_of_this_place` (nome/endereço batem? é cardápio de comida e não quarto, blog, reserva?),
-   itens e seções. `false` → `rejected` com motivo.
-6. **Derivar** no código: medianas/percentis por seção, `per_person_brl` = mediana(entrada) +
-   mediana(principal) + mediana(sobremesa) por refeição; `partial: true` quando falta seção.
-   Menus degustação e executivo ficam à parte, nunca na média.
-7. **Gravar.** `status = reviewed` preservado; mudança relevante (≥ 15% no `per_person` ou troca de
-   fonte) → `needs_review`. Caso contrário `auto`.
+1. **Site:** `entity.data` ou `websiteUri` do Places.
+2. **Coletar:** home → fila por prioridade (seção e nome da unidade, PDFs, cardápio/reserva/eventos/sobre
+   primeiro; blog e notícias por último; um link revisto com motivo melhor sobe na fila) + página da
+   unidade em sites de grupo + `sitemap.xml` + fontes manuais do curador. Até 40 páginas, 2 níveis, 5
+   downloads em paralelo, 90 s. Página só de links é seguida mesmo sem texto. Bloqueios não são
+   contornados (`site_refused`, `tls_error`).
+3. **Triar** (serviço `site_triage_text`, modelo leve): só páginas cujo texto é novo; as demais mantêm o
+   veredito anterior. Fonte manual do curador é sempre útil.
+4. **Sintetizar** (serviço `menu_synthesis_text`, modelo forte): só quando as páginas úteis mudaram (ou
+   `resynthesize`). Teto total de ~150 mil caracteres, dividido de forma justa entre as páginas.
+5. **Verificar:** soma refeita; preços conferidos no texto (inclusive o "5858" de PDFs que repetem cada
+   número); trecho de cada fato conferido na página.
+6. **Gravar:** sem cardápio e sem fatos → `not_found` (`nothing_useful`); preço com pendência →
+   `needs_review`; revisão do curador preservada salvo mudança ≥ 15% ou outros documentos de salão.
 
 ## API (Collector, `/api/v3`)
 
 | Método | Rota | Quem | O que faz |
 |---|---|---|---|
-| `GET` | `/entities/{id}/menu?max_age_days=30&items=0..300` | `viewer` (inclui X-API-Key do bot) | Resposta imediata do gravado + `fresh: bool`. Faltando ou velho, agenda refresh em segundo plano e responde `refreshing: true` (com o que houver). |
-| `POST` | `/entities/{id}/menu/refresh` | `curator` | Síncrono (~5–30 s). `force=true` ignora hash e intervalo mínimo. Usado pelo script e pelo Admin. |
-| `PATCH` | `/entities/{id}/menu` | `curator` | Revisão: confirma (`status=reviewed`), corrige derivados (`review.overrides`) ou rejeita a fonte; aceita fontes manuais (`sources[].url`, ex.: o PDF da carta de vinhos que o site não linka). |
+| `GET` | `/entities/{id}/menu` | `viewer` (inclui X-API-Key do bot) | Ficha + status, imediato. Faltando ou velho: agenda refresh em segundo plano (`refreshing: true`). Sem texto bruto. |
+| `GET` | `/entities/{id}/menu/text?q=&topic=&max_chars=6000` | `viewer` | Trechos das páginas úteis que casam com `q` (sem acento/caixa), cardápio do salão primeiro; `topic` (menu, reservations, hours_location, events_private_dining, amenities_policies…) restringe às páginas com esse assunto. Para o chat consultar detalhe. |
+| `POST` | `/entities/{id}/menu/refresh?force=&resynthesize=` | `curator` | Coleta + triagem + ficha, síncrono (mediana ~45 s, até ~3 min em site lento). `resynthesize=true` refaz só a ficha sobre as páginas gravadas (sem rede). |
+| `PATCH` | `/entities/{id}/menu` | `curator` | Revisão: status, overrides na ficha por caminho, nota, fontes manuais. |
 
-- **Segundo plano sem fila:** tarefa asyncio no processo, com lease em Mongo (`refresh.lease_until`)
-  para não duplicar entre workers, semáforo global (ex.: 3 simultâneos) e intervalo mínimo por entidade
-  (ex.: 6 h, exceto `force`). Teto diário de chamadas ao modelo em config. Sem Celery/Redis (o projeto
-  não tem fila server-side).
-- **Erros:** nunca devolvem texto do site ou do provedor; códigos curtos (`site_unreachable`,
-  `no_menu_link`, `not_a_menu`, `extraction_failed`, `budget_exhausted`).
-- **Rate limit:** `slowapi` como as outras rotas (`refresh` mais restrito que `GET`).
-- **Resumo nas leituras de entidade:** `GET /entities/{id}` ganha `menu_summary` (derivados + status +
-  `as_of`), anexado na leitura — a entidade não muda nem sobe versão.
+Segundo plano: fila em memória limitada, um consumidor, deduplicada; lease no Mongo; intervalo mínimo
+por entidade; teto diário de sínteses. Erros com códigos curtos, nunca texto do site ou do provedor.
 
 ## Pré-preenchimento
 
-Script local em `scripts/python-tools/` (padrão do pipeline): percorre as entidades das coleções
-curadas, chama `POST …/menu/refresh` com concorrência baixa, escreve relatório (achados por tipo,
-rejeitados com motivo, `per_person` por casa) para a revisão do Anwar. Depois, mensal: o mesmo script
-com `max_age_days=30` (o hash evita custo quando nada mudou).
+`scripts/python-tools/prefill_menus.py`: `POST …/refresh` com concorrência baixa e relatório JSONL
+(status, papéis dos documentos, por pessoa, confiança, pendências de verificação). `--resynthesize`
+refaz só as fichas (rápido, para iterar o prompt ou corrigir valores).
 
-## Consumo no bot
+## Consumo no bot (fase 2)
 
-- `live_places.get_menu_facts(entity_id)` chama o `GET` com o mesmo cliente, timeout e cota por minuto
-  dos fatos ao vivo; corre em paralelo ao prefetch existente (`ToolExecutor.prefetch`), sem espera nova.
-- `get_restaurant_details` passa a trazer `menu`: `per_person_brl`, executivo, degustações, couvert,
-  rolha, `as_of`, `source` (`curator | menu | google`), `status`, e até ~20 pratos com preço e tags.
-  Sem cardápio, cai no `priceRange` do Google como piso, dito como tal.
-- A busca ganha ordenação por `per_person_brl` quando o hóspede pede "mais em conta"/"mais caro", via
-  o catálogo sincronizado — não por regra no loop.
-- Prompt: dizer de onde veio e de quando ("uns R$ 400 no jantar, pelo cardápio de setembro"); nunca
-  inventar preço.
+- A ficha (`summary`, `house_summary`, fatos, por pessoa, formatos, executivo, degustação, couvert,
+  rolha, dietas, `as_of`, status) entra no cartão do restaurante. Horário: o do Google vale em conflito
+  com o do site (o site costuma estar desatualizado); a divergência pode ser dita. Sem ficha, o `priceRange` do Google como piso, dito como tal.
+- Ferramenta `menu_lookup(restaurant, question)` → `GET …/menu/text?q=` para perguntas de detalhe.
+- O bot diz de onde veio e de quando ("uns R$ 400 no jantar, sem bebida, pelo cardápio de setembro");
+  `needs_review` não é citado como valor firme.
 
 ## Fases
 
-1. **Collector:** `entity_menus`, `refresh` para PDF e HTML, `GET` com atualização em segundo plano,
-   `PATCH` de revisão, resumo na leitura da entidade, testes. Script de pré-preenchimento rodado no
-   catálogo + relatório para o Anwar.
-2. **Bot:** fatos do cardápio na ficha e preço na busca. Revisão do Anwar no Admin (Payload).
-3. **Cobertura:** imagens/Instagram pelo modelo de visão, plataformas com parser, busca na web quando o
-   site não linka o cardápio; atualização mensal agendada (job do Payload) com aviso de mudança.
+1. **Collector (v2):** bruto + ficha + verificação, `GET`/`text`/`refresh`/`PATCH`, prefill no catálogo.
+2. **Bot:** ficha no cartão e `menu_lookup`.
+3. **Cobertura:** foto do cardápio pelo app (transcrição vira documento bruto), plataformas (Getin,
+   Goomer, menu.app), JSON-LD `hasMenu`, busca na web; atualização mensal agendada.
 
 ## Testes e aceite
 
-- Unitários com rede e modelo falsos: classificação de link, PDF/HTML → texto, hash curto-circuita,
-  `is_menu_of_this_place=false` rejeita, derivados determinísticos (medianas, `partial`), revisado não
-  é sobrescrito, lease impede refresh duplo, erros sem texto do provedor, SSRF bloqueado (IP privado,
-  redirect para metadata).
-- Fixtures de cardápio **sintéticas** no formato dos reais (duas colunas de PDF, preço "1249,00",
-  "R$ 45"), não cópia de cardápio de terceiros.
-- Aceite da fase 1: rodada no catálogo com ≥ 40% das casas curadas com `per_person_brl` não parcial;
-  10 casas conferidas à mão contra o cardápio, erro ≤ 15%; nenhum `rejected` indevido nas 10.
+- Unitários com rede e modelo falsos: coleta guarda o bruto; hash igual não chama o modelo; verificação
+  marca preço inventado e confiança baixa; soma refeita; rodízio usa preço fixo; revisado não é
+  sobrescrito; trechos do bruto por palavra sem acento; lease; erros sem texto do provedor.
+- Aceite: Charlô sem o valor da loja de Natal, Fogo de Chão como rodízio; ≥ 10 casas conferidas à mão
+  com erro ≤ 15%.
 
-## Aprendizados da implementação (fase 1, rodadas reais em 22 casas do catálogo)
+## Teste da coleta ampla (2026-11-26, 77 casas, local, nada gravado)
+
+- 72/77 com ficha; **34 com preço por pessoa** (a coleta só de cardápio tinha 16 nessas casas); 981 fatos
+  com trecho conferido, mediana de 14 por casa, 1% descartados sem evidência.
+- Casas com fato por assunto: chef/conceito 64, horário 61, reserva 59, acesso 59, ambiente 52, pratos
+  assinatura 46, dietas 41, eventos 39, prêmios 32, pagamento/serviço 21, rolha 17, crianças 12; traje,
+  acessibilidade e pets aparecem pouco (os sites raramente dizem).
+- A triagem separa outras unidades bem (Gero: 32 de 34 páginas eram de outras casas do grupo Fasano).
+- Tempo por casa: mediana 40 s; site lento (Sal) passava de 3 min só na coleta → teto de 90 s na coleta.
+- Tokens: triagem ~3,5k entrada / 0,75k saída por casa; ficha ~8k / 1,9k (medianas).
+- Variação a acompanhar: o "preço típico" do Fogo de Chão saiu R$ 259 (rodízio completo, num PDF da
+  unidade) numa rodada e R$ 139 (um corte) em outra, conforme o PDF entrou ou não na coleta.
+
+## Aprendizados da v1 (rodadas reais no catálogo)
 
 - **O cardápio costuma estar a dois cliques** (home → página "Cardápio" → PDF ou plataforma): uma página
   de cardápio sem preços é seguida mais um nível, com teto de 14 downloads por refresh.
@@ -200,10 +189,9 @@ com `max_age_days=30` (o hash evita custo quando nada mudou).
   verificação de TLS; nesses casos o curador adiciona a fonte (`add_sources`) ou fica para a fase 3.
 - **Google aponta às vezes para outra coisa:** o "site" da Casa do Porco é o widget de reserva da Tagme;
   o do Rubaiyat é um app JS sem links. Fase 3 (ou fonte manual).
-- **Cardápio de delivery** entra como fonte (`covers: delivery`) mas não define o preço por pessoa quando
-  há outro cardápio.
-- **Couvert** é a mediana das linhas de couvert (uma linha "Pães R$ 36" não o define); **taça** só como
-  palavra inteira ("Atacama" e "Jacopo" enganavam), incluindo "bicchiere" e doses em ml.
+- **Heurísticas de interpretação falharam e saíram na v2:** filtro de delivery, couvert por mediana, taça
+  por regex ("Atacama", "Jacopo"), medianas por seção. O prefill v1 (106 casas, 22 com cardápio) gravou o
+  Charlô a R$ 3.562 (loja de Natal) e o Fogo de Chão como à la carte parcial (é rodízio).
 - **Tempo:** cardápios grandes (Fasano 735 itens, Ristorantino 433) levam 100–175 s; o nginx dá 300 s
   em `/api/v3`. O GET nunca espera isso.
 - **Resultados (por pessoa, sem bebida):** Fasano SP R$ 514, Picchi 395, Ristorantino 390, Gero 379,

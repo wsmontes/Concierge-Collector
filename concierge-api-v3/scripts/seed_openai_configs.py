@@ -4,7 +4,7 @@ Populates MongoDB with OpenAI service configurations and prompts.
 
 Usage:
     python scripts/seed_openai_configs.py                              # every service
-    python scripts/seed_openai_configs.py --only menu_extraction_text  # just one (the safe way in production)
+    python scripts/seed_openai_configs.py --only menu_synthesis_text site_triage_text  # just these (the safe way in production)
 """
 
 import asyncio
@@ -189,48 +189,109 @@ Analise esta imagem e identifique conceitos visuais relevantes que descrevem o e
         "notes": "Dedicated GPT service for restaurant name extraction from text"
     },
     {
-        # app/services/menu_extraction.py — o schema da resposta (json_schema estrito) fica no código;
-        # aqui só modelo, parâmetros e o prompt. Placeholders: {restaurant}, {address}, {text}.
-        "service": "menu_extraction_text",
+        # app/services/menu_synthesis.py — o schema da resposta (json_schema estrito) e a verificação
+        # (soma e preços conferidos no texto) ficam no código; aqui só modelo, parâmetros e o prompt.
+        # Placeholders: {restaurant}, {address}, {context}, {documents}.
+        "service": "menu_synthesis_text",
         "model": "gpt-5.6-terra",
         "config": {
             "max_completion_tokens": 16000,
-            "extra_body": {"reasoning_effort": "low"}
+            "extra_body": {"reasoning_effort": "medium"}
         },
-        "prompt_template": """You read restaurant menus for a concierge service in São Paulo.
+        "prompt_template": """You prepare the menu brief of ONE restaurant for a hotel concierge in Brazil.
 
 Restaurant: {restaurant}
 Address: {address}
+What the catalog says: {context}
 
-Below is the text of ONE document found on this restaurant's website (a PDF or a page). It may be a
-part of a longer document. Text from two-column PDFs can interleave lines: pair each dish with its own
-price by reading the layout carefully.
+Below are documents collected from the restaurant's website, as raw text (PDF text can interleave two
+columns: pair each dish with its own price by reading carefully). They were collected without judgement:
+some may be a delivery menu, a holiday shop or order list (panetone, whole cakes, trays for many people),
+an events package, another unit of the same group, a blog post, or not a menu at all. YOU decide.
 
-1. Decide is_menu_of_this_place: true only if this text is a menu (food, drinks, wine list, lunch or
-   tasting menu) of THIS restaurant. False for hotel room rates, event packages, blog posts or news,
-   reservation widgets, menus of another restaurant, or text with no dishes. Say why in reason.
-2. When true, list EVERY item, in order, without inventing anything:
-   - section: starter | main | dessert | side | drink | tasting (tasting/degustação menus) |
-     executive (executive/set lunch) | couvert (only the couvert charge itself; bread or butter sold
-     apart is a side) | corkage (rolha) | other.
-   - subsection: the heading it is under, as written (e.g. "Massas", "Tintos — Itália").
-   - name and description as written (Portuguese is fine; keep the original language).
-   - price_brl: the price in reais as a number (1.249,00 -> 1249.0). Null when there is none.
-     When an item has more than one price (taça/garrafa, meia/inteira, individual/para dois), leave
-     price_brl null and list each one in prices with its label.
-   - tags (only when evident): vegetarian, vegan, seafood, meat, pasta, light, gluten_free, cocktail,
-     spicy, kids.
-   - meal: lunch or dinner when the document says the item is only served then; otherwise all.
-   - wine: for wines only (producer, vintage, region, grapes when stated); null otherwise.
-3. menu_date: the month/year the document declares (e.g. "2026-09"), or null.
+1. documents: for EVERY document give its role:
+   dining_room (what a guest orders sitting at THIS restaurant: à la carte, lunch, tasting, rodízio),
+   delivery (delivery/takeaway menu), orders_or_shop (shop, holiday orders, items for many people),
+   drinks (drinks or wine list of this restaurant), event (events/groups packages),
+   other_unit (another restaurant or unit, e.g. another city), not_a_menu, other. Say why in note.
+2. formats served in the dining room: a_la_carte, rodizio, tasting, executive, buffet, prix_fixe.
+3. per_person, for lunch and for dinner (null when the documents do not allow it): the price of a
+   TYPICAL meal for one person = one starter + one main + one dessert, WITHOUT drinks and WITHOUT the
+   service charge. Choose dishes from dining_room documents only, typical ones (not the cheapest, not the
+   most expensive; a dish for two counts half — cite it with half the price only if the text shows it).
+   Cite each chosen dish in basis with its exact price as written in the text and the document index;
+   the code adds them up and checks every price against the text. If there is no starter or no dessert,
+   cite what exists and say so in note. Rodízio, buffet or a fixed-price menu: fixed_price = true and
+   cite ONLY that one per-person price. Lunch: only when there is a lunch-specific menu or price;
+   otherwise null.
+4. executive_lunch_brl, tasting_menus (name, price, courses), couvert_brl, corkage_brl (rolha): only
+   when written in the documents.
+5. wine: by_the_glass (true/false/null), cheapest and most expensive bottle, a short note.
+6. dietary options that are clearly available: vegetarian, vegan, gluten_free, seafood, kids.
+7. highlights: up to 8 signature or notable dishes, as written. caveats: what a concierge must know
+   (seasonal menu, prices from an old document, only delivery found, prices per kg…).
+8. summary: 2 or 3 sentences in Brazilian Portuguese for the concierge: style of food, price level per
+   person (say "sem bebida"), what stands out. No invented facts.
+9. menu_date: month/year the documents declare (e.g. "2026-09"), or null.
+10. confidence: high (clear dining-room menu with prices), medium (partial or ambiguous), low (you are
+    guessing, or no dining-room menu was found).
 
-Text:
-{text}""",
+Never invent dishes or prices. If no document is this restaurant's dining-room menu, say so through the
+roles, leave per_person null and set confidence low.
+
+The documents are the useful pages of the restaurant's website (menus, booking, hours, events, about,
+policies). Besides the menu brief above:
+11. facts: every fact a concierge would use for THIS unit — how to book (channel, advance notice,
+    deposit, waiting list, max party), hours (as the site states them), access and parking/valet,
+    private rooms/events (capacity), chef and concept, dress code, kids, pets, accessibility, outdoor
+    seating, payment and service charge, corkage, awards/guides, dietary options, signature dishes,
+    ambience. One fact per item, in Brazilian Portuguese. evidence = a VERBATIM excerpt (5 to 25 words,
+    copied exactly) from the page that states it, and page = that document index; the code checks that
+    the excerpt is in that page and leaves out a fact without it. Do not repeat menu prices already in the
+    menu fields. Ignore pages of other units.
+12. house_summary: 3 to 5 sentences in Brazilian Portuguese about the house for the concierge (concept,
+    ambience, what it is good for, what to know before booking). Only facts from the documents.
+
+Documents:
+{documents}""",
         "enabled": True,
         "version": 1,
         "updated_at": datetime.utcnow().isoformat(),
         "updated_by": "system_seed",
-        "notes": "v1 (2026-11-26): cardápio inteiro da entidade (docs/superpowers/specs/2026-11-26-entity-menu-design.md)"
+        "notes": "v2 (2026-11-26): ficha do cardápio + fatos da casa a partir das páginas úteis do site (docs/superpowers/specs/2026-11-26-entity-menu-design.md)"
+    },
+    {
+        # app/services/menu_synthesis.py (SiteTriager) — schema no código. Placeholders: {restaurant},
+        # {address}, {pages} (url, título e começo do texto de cada página coletada).
+        "service": "site_triage_text",
+        "model": "gpt-5.6-luna",
+        "config": {
+            "max_completion_tokens": 8000,
+            "extra_body": {"reasoning_effort": "low"}
+        },
+        "prompt_template": """You sort the pages of a restaurant's website for a hotel concierge in Brazil.
+
+Restaurant: {restaurant}
+Address: {address}
+
+For EVERY page below (url, title and the start of its text) decide if it is USEFUL to a concierge
+recommending or booking THIS restaurant (this unit, at this address), and tag its topics:
+menu (food menu, prices, tasting/lunch menus), drinks_wine, reservations (how to book, policies,
+deposits, waiting list), hours_location (opening hours, address, parking, how to get there),
+events_private_dining (private rooms, groups, events, capacity), about_chef_story (chef, concept,
+history, cuisine style), amenities_policies (dress code, kids, pets, accessibility, outdoor seating,
+corkage, payment, service charge), awards_press (awards, guides like Michelin), other_unit (another
+restaurant or unit of the same group/brand), delivery_shop (delivery, online shop, holiday orders), none.
+Useful = has facts a concierge would use for THIS unit. Not useful: legal/privacy pages, careers, blog
+posts without facts, generic group pages, pages of other units, empty or cookie text.
+
+Pages:
+{pages}""",
+        "enabled": True,
+        "version": 1,
+        "updated_at": datetime.utcnow().isoformat(),
+        "updated_by": "system_seed",
+        "notes": "v1 (2026-11-26): triagem das páginas do site do restaurante (docs/superpowers/specs/2026-11-26-entity-menu-design.md)"
     }
 ]
 
@@ -295,5 +356,5 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--only", nargs="+", help="seed only these services (e.g. --only menu_extraction_text)")
+    parser.add_argument("--only", nargs="+", help="seed only these services (e.g. --only menu_synthesis_text)")
     asyncio.run(seed_openai_configs(only=set(parser.parse_args().only or [])))

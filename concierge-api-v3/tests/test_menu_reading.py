@@ -156,3 +156,34 @@ def test_a_delivery_menu_is_marked_as_such():
     links = reading.discover_menu_links(b'<a href="/cardapio-delivery">Card\xc3\xa1pio delivery</a>', "https://x.com/")
 
     assert links[0].covers == "delivery"
+
+
+def test_site_links_follow_the_site_and_menu_platforms_but_not_assets_or_social_networks():
+    page = (
+        b'<a href="/reservas">Reservas</a><a href="https://www.casa.example/eventos">Eventos</a>'
+        b'<a href="/logo.png">x</a><a href="/carrinho/">Carrinho</a><a href="https://instagram.com/casa">IG</a>'
+        b'<a href="https://meemo.menu/casa">Card\xc3\xa1pio</a><a href="https://outro.example/blog">Blog</a>'
+    )
+
+    links = dict(reading.site_links(page, "https://casa.example/"))
+
+    assert set(links) == {
+        "https://casa.example/reservas",
+        "https://www.casa.example/eventos",
+        "https://meemo.menu/casa",
+    }
+
+
+def test_link_priority_puts_this_unit_and_menus_before_news():
+    unit = reading.link_priority("https://g.example/gero/cardapio.pdf", "", start_path="/gero", name_words=["gero"])
+    booking = reading.link_priority("https://g.example/reservas", "Reservas")
+    news = reading.link_priority("https://g.example/blog/2026/05/inauguracao", "Inauguração")
+
+    assert unit > booking > news
+
+
+def test_sitemap_locations_and_page_title():
+    assert reading.sitemap_locations(b"<urlset><url><loc> https://c.example/a </loc></url></urlset>") == [
+        "https://c.example/a"
+    ]
+    assert reading.page_title(b"<html><title>Casa &amp; Cia\n | Card\xc3\xa1pio</title>") == "Casa & Cia | Cardápio"

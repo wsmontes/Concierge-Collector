@@ -73,10 +73,10 @@ class Settings(BaseSettings):
     # testes fica desligado (sem rede e sem tarefa solta no loop).
     display_media_enrich_enabled: bool = True
     # Cardápio da entidade (app/services/menu_service.py): atualização em segundo plano a partir das
-    # leituras, intervalo mínimo entre refreshes da mesma entidade e teto diário de leituras pelo modelo.
+    # leituras, intervalo mínimo entre refreshes da mesma entidade e teto diário de sínteses (fichas) pelo modelo.
     menu_enrich_enabled: bool = True
     menu_refresh_min_hours: float = 6.0
-    menu_extraction_daily_limit: int = 300
+    menu_synthesis_daily_limit: int = 300
 
     # OpenAI API
     openai_api_key: str = ""

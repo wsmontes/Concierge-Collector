@@ -1,7 +1,8 @@
 """
 File: menus.py
-Purpose: an entity's menu over HTTP — read at once (asking for a background refresh when missing or
-    stale), refresh now (synchronous, for the prefill script and the Admin) and curator review.
+Purpose: an entity's menu over HTTP — the brief at once (asking for a background refresh when missing or
+    stale), excerpts of the raw menu for a question the brief does not answer, refresh now (synchronous,
+    for the prefill script and the Admin) and curator review.
 Dependencies: app.services.menu_service (all the work), app.api.entities.find_entity (entity lookup),
     app.core.security (verify_auth / require_role), app.core.rate_limit.
 Spec: docs/superpowers/specs/2026-11-26-entity-menu-design.md.
@@ -19,6 +20,7 @@ from app.core.database import get_database
 from app.core.rate_limit import limiter
 from app.core.security import require_role, verify_auth
 from app.services import menu_service as service
+from app.services.menu_synthesis import PAGE_TOPICS
 
 router = APIRouter(prefix="/entities", tags=["menus"])
 
@@ -46,11 +48,14 @@ def _entity(db: Database, entity_id: str) -> dict:
 class MenuReview(BaseModel):
     status: Optional[Literal["reviewed", "needs_review", "not_found"]] = None
     overrides: Optional[Dict[str, Union[int, float, None]]] = Field(
-        default=None, description='Corrections on derived numbers by path, e.g. {"per_person_brl.dinner": 450}.'
+        default=None,
+        description='Corrections on derived numbers by path, e.g. {"per_person_brl.dinner": 450}.',
     )
     note: Optional[str] = Field(default=None, max_length=1000)
     add_sources: Optional[List[HttpUrl]] = Field(
-        default=None, max_length=10, description="Menu documents the site does not link (read in the next refresh)."
+        default=None,
+        max_length=10,
+        description="Menu documents the site does not link (read in the next refresh).",
     )
 
 
@@ -60,13 +65,13 @@ async def get_menu(
     request: Request,
     entity_id: str,
     max_age_days: float = Query(30, gt=0, le=365),
-    items: Optional[int] = Query(None, ge=0, le=5000, description="How many items to return (all when absent)."),
     db: Database = Depends(get_database),
     auth: dict = Depends(verify_auth),
 ):
     """
-    The stored menu at once. Missing or older than **max_age_days**: `refreshing: true` and a refresh is
-    queued in the background (the next read has it). Never scrapes inside the request.
+    The menu brief at once (no raw text: see /menu/text). Missing or older than **max_age_days**:
+    `refreshing: true` and a refresh is queued in the background (the next read has it). Never scrapes
+    inside the request.
 
     Async on purpose: the background refresh is scheduled on the app's event loop, which a sync route
     (run in the threadpool) does not have — it would silently never refresh. The reads are two find_one.
@@ -78,7 +83,38 @@ async def get_menu(
         get_menu_deps(request)  # makes the background able to refresh
     except HTTPException:
         pass
-    return service.read_menu(db, entity, max_age_days=max_age_days, items=items)
+    return service.read_menu(db, entity, max_age_days=max_age_days)
+
+
+@router.get("/{entity_id}/menu/text")
+@limiter.limit("60/minute")
+async def get_menu_text(
+    request: Request,
+    entity_id: str,
+    q: Optional[str] = Query(
+        None,
+        max_length=200,
+        description="Words to look for (accents and case ignored).",
+    ),
+    topic: Optional[Literal[PAGE_TOPICS]] = Query(None, description="Only pages tagged with this topic."),
+    max_chars: int = Query(6000, ge=500, le=30000),
+    db: Database = Depends(get_database),
+    auth: dict = Depends(verify_auth),
+):
+    """
+    Excerpts of the site's useful pages, for a question the brief does not answer ("tem ostra?", "quanto é
+    o Barolo?", "aceita cachorro?"). Dining-room menu first; `topic` narrows to pages tagged with it. No
+    model and no network inside the request: when nothing is stored yet, a background refresh is asked for
+    (`refreshing: true`).
+
+    **Authentication Required:** `Authorization: Bearer <token>` OR `X-API-Key: <key>`
+    """
+    entity = _entity(db, entity_id)
+    try:
+        get_menu_deps(request)
+    except HTTPException:
+        pass
+    return service.menu_text(db, entity, q=q, topic=topic, max_chars=max_chars)
 
 
 @router.post("/{entity_id}/menu/refresh", dependencies=[Depends(require_role("curator"))])
@@ -86,13 +122,17 @@ async def get_menu(
 async def refresh_menu(
     request: Request,
     entity_id: str,
-    force: bool = Query(False, description="Ignore the minimum interval and re-read unchanged documents."),
+    force: bool = Query(False, description="Collect again inside the minimum interval."),
+    resynthesize: bool = Query(
+        False,
+        description="Write the brief again from the stored documents (no network).",
+    ),
     db: Database = Depends(get_database),
     deps: service.MenuDeps = Depends(get_menu_deps),
 ):
-    """Find, read and structure the whole menu now (seconds). For the prefill script and the Admin."""
+    """Collect the menu documents and write the brief now (seconds to ~2 min). For the prefill and the Admin."""
     entity = _entity(db, entity_id)
-    menu = await service.refresh_menu(db, entity, deps, force=force)
+    menu = await service.refresh_menu(db, entity, deps, force=force, resynthesize=resynthesize)
     return service.public_view(menu)
 
 
@@ -105,7 +145,7 @@ def review_menu(
     db: Database = Depends(get_database),
     auth: dict = Depends(require_role("curator")),
 ):
-    """Curator review: confirm, correct derived numbers, add a source the site does not link."""
+    """Curator review: confirm, correct the brief, add a source the site does not link."""
     entity = _entity(db, entity_id)
     payload = body.model_dump(exclude_none=True)
     if "add_sources" in payload:

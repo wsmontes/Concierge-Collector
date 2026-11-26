@@ -1,7 +1,8 @@
 """
 File: test_menus_api.py
-Purpose: the menu routes — GET (immediate, asks for a background refresh when missing/stale), POST refresh
-    (synchronous, curator), PATCH review (curator) — and the summary on the entity read.
+Purpose: the menu routes — GET brief (immediate, asks for a background refresh when missing/stale), GET
+    raw excerpts for the chat, POST refresh (synchronous, curator), PATCH review (curator) — and the
+    summary on the entity read.
 Dependencies: app.api.menus over the in-memory database; the refresh deps are faked (no network, no model).
 """
 
@@ -10,7 +11,6 @@ import pytest
 import app.api.menus as menus_api
 from app.core.config import settings
 from app.services import menu_service as service
-from app.services.menu_extraction import ExtractionResult
 
 API_KEY = "test-menus-key"
 SITE = "https://casa.example/"
@@ -25,28 +25,36 @@ class _Deps:
             self.fetched.append(url)
             pages = {
                 SITE: ("text/html", b'<a href="/cardapio">Card\xc3\xa1pio</a>'),
-                SITE + "cardapio": ("text/html", b"<p>Burrata 110,00</p><p>Fettuccine 260,00</p><p>Tiramisu 58,00</p>"),
+                SITE
+                + "cardapio": (
+                    "text/html",
+                    b"<p>Burrata 110,00</p><p>Fettuccine 260,00</p><p>Tiramisu 58,00</p>",
+                ),
             }
             if url not in pages:
                 return None
             return service.Fetched(url, *pages[url])
 
-        class Extractor:
-            async def extract(self, restaurant, address, texts):
-                return ExtractionResult(
-                    True,
-                    [
-                        {"section": "starter", "name": "Burrata", "price_brl": 110.0, "prices": [], "tags": []},
-                        {"section": "main", "name": "Fettuccine", "price_brl": 260.0, "prices": [], "tags": []},
-                        {"section": "dessert", "name": "Tiramisu", "price_brl": 58.0, "prices": [], "tags": []},
-                    ],
-                    model="m",
-                )
+        class Synthesizer:
+            async def synthesize(self, restaurant, address, context, documents):
+                basis = [
+                    {"item": "Burrata", "price_brl": 110, "document": 0},
+                    {"item": "Fettuccine", "price_brl": 260, "document": 0},
+                    {"item": "Tiramisu", "price_brl": 58, "document": 0},
+                ]
+                return {
+                    "documents": [{"index": 0, "role": "dining_room", "note": None}],
+                    "formats": ["a_la_carte"],
+                    "per_person": {"lunch": None, "dinner": {"basis": basis, "fixed_price": False, "note": None}},
+                    "executive_lunch_brl": None, "tasting_menus": [], "couvert_brl": None, "corkage_brl": None,
+                    "wine": None, "dietary": [], "highlights": [], "caveats": [], "summary": "Casa italiana.",
+                    "menu_date": None, "confidence": "high",
+                }, "m"  # fmt: skip
 
         async def website_for(place_id):
             return None
 
-        self.deps = service.MenuDeps(fetch, Extractor(), website_for)
+        self.deps = service.MenuDeps(fetch, Synthesizer(), website_for)
 
 
 @pytest.fixture
@@ -68,6 +76,7 @@ def api(client, in_memory_db, monkeypatch):
     fake = _Deps()
     client.app.dependency_overrides[menus_api.get_menu_deps] = lambda: fake.deps
     service._running.clear()
+    monkeypatch.setattr(service, "_budget", {"day": None, "used": 0})
     yield client, in_memory_db, fake
     client.app.dependency_overrides.pop(menus_api.get_menu_deps, None)
 
@@ -82,8 +91,9 @@ def test_refresh_reads_the_menu_and_the_entity_shows_its_summary(api):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["derived"]["per_person_brl"]["dinner"] == 428 and body["status"] == "auto"
+    assert body["brief"]["per_person_brl"]["dinner"] == 428 and body["status"] == "auto"
     assert "lease_until" not in body and "next_allowed_at" not in body
+    assert body["documents"] and all("text" not in d for d in body["documents"])
     entity = client.get(f"/api/v3/entities/{ENTITY_ID}", headers=H).json()
     assert entity["menu_summary"]["per_person_brl"]["dinner"] == 428 and entity["version"] == 3
 
@@ -91,15 +101,40 @@ def test_refresh_reads_the_menu_and_the_entity_shows_its_summary(api):
 def test_get_answers_at_once_and_says_when_it_is_missing(api, monkeypatch):
     client, _, fake = api
     asked = []
-    monkeypatch.setattr(service, "schedule_refresh", lambda db, entity: asked.append(entity["_id"]) or True)
+    monkeypatch.setattr(
+        service,
+        "schedule_refresh",
+        lambda db, entity: asked.append(entity["_id"]) or True,
+    )
 
     missing = client.get(f"/api/v3/entities/{ENTITY_ID}/menu", headers=H).json()
     assert missing["status"] == "missing" and missing["refreshing"] is True and asked == [ENTITY_ID]
     assert fake.fetched == []  # the GET never scrapes itself
 
     client.post(f"/api/v3/entities/{ENTITY_ID}/menu/refresh", headers=H)
-    stored = client.get(f"/api/v3/entities/{ENTITY_ID}/menu?items=1", headers=H).json()
-    assert stored["fresh"] is True and len(stored["items"]) == 1
+    stored = client.get(f"/api/v3/entities/{ENTITY_ID}/menu", headers=H).json()
+    assert stored["fresh"] is True and stored["brief"]["summary"] == "Casa italiana."
+
+
+def test_text_returns_raw_excerpts_for_a_question(api):
+    client, _, _ = api
+    client.post(f"/api/v3/entities/{ENTITY_ID}/menu/refresh", headers=H)
+
+    body = client.get(f"/api/v3/entities/{ENTITY_ID}/menu/text", params={"q": "tiramisù"}, headers=H).json()
+
+    assert body["matched"] is True and "Tiramisu 58,00" in body["excerpts"][0]["text"]
+    assert client.get(f"/api/v3/entities/{ENTITY_ID}/menu/text").status_code == 401
+    assert client.get(f"/api/v3/entities/{ENTITY_ID}/menu/text?max_chars=10", headers=H).status_code == 422
+
+
+def test_resynthesize_rewrites_the_brief_without_the_network(api):
+    client, _, fake = api
+    client.post(f"/api/v3/entities/{ENTITY_ID}/menu/refresh", headers=H)
+    fake.fetched.clear()
+
+    response = client.post(f"/api/v3/entities/{ENTITY_ID}/menu/refresh?resynthesize=true", headers=H)
+
+    assert response.status_code == 200 and fake.fetched == []
 
 
 def test_review_confirms_and_corrects_the_numbers(api):
@@ -109,18 +144,26 @@ def test_review_confirms_and_corrects_the_numbers(api):
     response = client.patch(
         f"/api/v3/entities/{ENTITY_ID}/menu",
         headers=H,
-        json={"status": "reviewed", "overrides": {"per_person_brl.dinner": 450}, "note": "conferido no local"},
+        json={
+            "status": "reviewed",
+            "overrides": {"per_person_brl.dinner": 450},
+            "note": "conferido no local",
+        },
     )
 
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == "reviewed" and body["derived"]["per_person_brl"]["dinner"] == 450
+    assert body["status"] == "reviewed" and body["brief"]["per_person_brl"]["dinner"] == 450
     assert body["review"]["note"] == "conferido no local"
 
 
 @pytest.mark.parametrize(
     "payload",
-    [{"status": "auto"}, {"overrides": {"per_person_brl.dinner": "caro"}}, {"add_sources": ["ftp://x"]}],
+    [
+        {"status": "auto"},
+        {"overrides": {"per_person_brl.dinner": "caro"}},
+        {"add_sources": ["ftp://x"]},
+    ],
     ids=["status-not-a-review", "override-not-a-number", "source-not-http"],
 )
 def test_invalid_reviews_are_refused(api, payload):
@@ -149,7 +192,15 @@ def test_a_missing_menu_is_really_refreshed_in_the_background(api, monkeypatch):
     assert first["refreshing"] is True
 
     for _ in range(50):  # the background task runs on the app's loop
-        stored = client.get(f"/api/v3/entities/{ENTITY_ID}/menu?items=0", headers=H).json()
+        stored = client.get(f"/api/v3/entities/{ENTITY_ID}/menu", headers=H).json()
         if stored["status"] != "missing":
             break
-    assert stored["status"] == "auto" and stored["derived"]["per_person_brl"]["dinner"] == 428
+    assert stored["status"] == "auto" and stored["brief"]["per_person_brl"]["dinner"] == 428
+
+
+def test_text_refuses_an_unknown_topic(api):
+    client, _, _ = api
+
+    response = client.get(f"/api/v3/entities/{ENTITY_ID}/menu/text?topic=gossip", headers=H)
+
+    assert response.status_code == 422
