@@ -25,6 +25,7 @@ from __future__ import annotations
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi.concurrency import run_in_threadpool
 from pymongo.database import Database
 
 from app.api.entities import find_entity
@@ -94,8 +95,8 @@ async def read_entity_images(
     error: the Admin needs the honest "no image" state, not a failure it would
     have to guess about.
     """
-    require_current_cms_admin(db, _actor(actor_id))
-    website, place_id = _image_sources(db, entity_id)
+    await run_in_threadpool(require_current_cms_admin, db, _actor(actor_id))
+    website, place_id = await run_in_threadpool(_image_sources, db, entity_id)
 
     try:
         images = await get_restaurant_images(page_url=website, place_id=place_id, limit=ENTITY_IMAGES_MAX_ITEMS)
@@ -136,10 +137,10 @@ async def read_entity_image(
     Ranks 1..7 keep the ranked collector path: the gallery is on demand and the
     pipeline already caches its catalog in memory.
     """
-    require_current_cms_admin(db, _actor(actor_id))
+    await run_in_threadpool(require_current_cms_admin, db, _actor(actor_id))
 
     if rank == 0:
-        entity = find_entity(db, entity_id)
+        entity = await run_in_threadpool(find_entity, db, entity_id)
         if entity is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Entity {entity_id} not found")
         read = await read_hero_media(db.entities, entity)
@@ -153,7 +154,7 @@ async def read_entity_image(
         detail, headers = media_404(read)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail, headers=headers)
 
-    website, place_id = _image_sources(db, entity_id)
+    website, place_id = await run_in_threadpool(_image_sources, db, entity_id)
 
     try:
         image = await get_restaurant_image_bytes(page_url=website, place_id=place_id, rank=rank)

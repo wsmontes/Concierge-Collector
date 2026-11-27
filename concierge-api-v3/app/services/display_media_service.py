@@ -369,7 +369,8 @@ async def resolve_display_media(entities_collection, entity: dict) -> dict:
     attempts = (stored["attempts"] if stored else 0) + 1
 
     if not website and not place_id:
-        value = _write_state(
+        value = await asyncio.to_thread(
+            _write_state,
             entities_collection,
             entity,
             state=STATE_NO_SOURCES,
@@ -425,7 +426,8 @@ async def resolve_display_media(entities_collection, entity: dict) -> dict:
     elif last_error is None:
         last_error = "no_image_found"
 
-    value = _write_state(
+    value = await asyncio.to_thread(
+        _write_state,
         entities_collection,
         entity,
         state=state,
@@ -457,7 +459,8 @@ async def read_hero_media(entities_collection, entity: dict) -> HeroMediaRead:
         # leitura responde com cache longo. Sem ele esta Entity voltaria à fila
         # de enriquecimento para sempre.
         if (_stored(entity) or {}).get("state") != STATE_NO_SOURCES:
-            _write_state(
+            await asyncio.to_thread(
+                _write_state,
                 entities_collection,
                 entity,
                 state=STATE_NO_SOURCES,
@@ -494,7 +497,8 @@ async def read_hero_media(entities_collection, entity: dict) -> HeroMediaRead:
         # A referência morreu no provedor (404, site trocou a imagem, decode
         # quebrou): vira o MESMO fato negativo do `failed` — prazo curto — e a
         # próxima descoberta já está enfileirada.
-        _write_state(
+        await asyncio.to_thread(
+            _write_state,
             entities_collection,
             entity,
             state=STATE_FAILED,
@@ -621,7 +625,7 @@ async def _consume_enrichment_queue() -> None:
                 entity = None
                 if entity_id is not None:
                     try:
-                        entity = entities_collection.find_one({"_id": entity_id})
+                        entity = await asyncio.to_thread(entities_collection.find_one, {"_id": entity_id})
                     except Exception:
                         entity = None
                 if not entity:

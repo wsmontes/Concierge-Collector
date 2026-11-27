@@ -6,6 +6,7 @@ import re
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from typing import List, Optional
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -187,7 +188,7 @@ async def get_entity_image(
     Ranks 1..7 continuam exatamente no caminho do collector: a galeria é
     sob demanda e o pipeline já cacheia o catálogo (e os bytes) em memória.
     """
-    result = find_entity(db, entity_id)
+    result = await run_in_threadpool(find_entity, db, entity_id)
     if not result:
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
 
@@ -243,7 +244,7 @@ async def get_entity_images(
     As URLs retornadas apontam apenas para o proxy autenticado desta API; URLs
     originais e credenciais do Google Places nunca fazem parte da resposta.
     """
-    result = find_entity(db, entity_id)
+    result = await run_in_threadpool(find_entity, db, entity_id)
     if not result:
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
 

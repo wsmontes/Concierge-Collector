@@ -1195,3 +1195,70 @@ async def test_backoff_persistido_e_quem_decide_quando_tentar_de_novo(monkeypatc
     # A resposta é a mesma (sem imagem, cache curto); a DIFERENÇA é o trabalho.
     assert primeira.state == display.STATE_FAILED and segunda.state == display.STATE_FAILED
     assert agendados == ["e-vencido"]
+
+
+# ---------------------------------------------------------------------------
+# Mongo síncrono fora do event loop: o servidor é UM processo uvicorn; uma
+# leitura/escrita síncrona no loop para todas as outras requisições atrás dela
+# (o /places/details do bot estourava 3 s assim e o card ia sem foto).
+# ---------------------------------------------------------------------------
+
+
+def _where(seen):
+    try:
+        asyncio.get_running_loop()
+        seen.append("event_loop")
+    except RuntimeError:
+        seen.append("thread")
+
+
+class _WhereCollection(_RecordingCollection):
+    def __init__(self, doc, seen):
+        super().__init__(doc)
+        self.seen = seen
+
+    def find_one(self, query, projection=None):
+        _where(self.seen)
+        return super().find_one(query, projection)
+
+    def update_one(self, query, update, upsert=False):
+        _where(self.seen)
+        return super().update_one(query, update, upsert)
+
+
+@pytest.mark.asyncio
+async def test_a_escrita_do_fato_roda_fora_do_event_loop():
+    seen = []
+    entity = _entity(website=None, place_id=None)
+
+    await display.read_hero_media(_WhereCollection(entity, seen), entity)
+
+    assert seen == ["thread"]
+
+
+@pytest.mark.asyncio
+async def test_as_rotas_de_imagem_leem_o_mongo_fora_do_event_loop(in_memory_db, monkeypatch):
+    from app.api import catalog_media, entities
+
+    seen = []
+    in_memory_db._collections.clear()
+    in_memory_db.entities.insert_one(_entity(website=None))
+    real_find = entities.find_entity
+    monkeypatch.setattr(entities, "find_entity", lambda db, eid: _where(seen) or real_find(db, eid))
+    monkeypatch.setattr(catalog_media, "find_entity", lambda db, eid: _where(seen) or real_find(db, eid))
+    monkeypatch.setattr(catalog_media, "require_current_cms_admin", lambda db, actor: _where(seen))
+
+    async def no_image(*_args, **_kwargs):
+        return display.HeroMediaRead(state=display.STATE_NO_SOURCES)
+
+    monkeypatch.setattr(entities, "read_hero_media", no_image)
+    monkeypatch.setattr(catalog_media, "read_hero_media", no_image)
+
+    for call in (
+        lambda: entities.get_entity_image("e1", rank=0, db=in_memory_db, auth={}),
+        lambda: catalog_media.read_entity_image("e1", rank=0, actor_id=ACTOR_ID, _=None, db=in_memory_db),
+    ):
+        with pytest.raises(Exception):  # 404 no_sources: o que importa é ONDE a leitura rodou
+            await call()
+
+    assert seen == ["thread"] * 3
