@@ -10,7 +10,7 @@ One Routes request per travel mode, in parallel:
   traffic, staticDuration without; the traffic band comes from the delay traffic adds.
 - walk: no routing preference (Google does not accept one for walking).
 - transit: lines, stops, transfers and the minutes walked.
-A failing mode returns {"error": "provider_<status>"} and never the provider's text (it may echo the key).
+A failing mode returns a provider error code and never the provider's text (it may echo the key).
 Billing (Nov 2026, Google pricing list): a request with traffic is a Compute Routes Pro event, the others
 Essentials; each request is one billable event.
 """
@@ -19,6 +19,7 @@ Essentials; each request is one billable event.
 import asyncio
 import datetime as dt
 import logging
+import math
 import re
 from typing import Any, List, Literal, Optional
 
@@ -93,7 +94,10 @@ def _minutes(seconds: int | None) -> int | None:
 
 
 def _km(meters: Any) -> float | None:
-    return round(float(meters) / 1000, 1) if isinstance(meters, int | float) else None
+    # bool is an int, and the JSON parser accepts Infinity/NaN, which the response cannot serialize.
+    if isinstance(meters, bool) or not isinstance(meters, int | float) or not math.isfinite(meters):
+        return None
+    return round(float(meters) / 1000, 1)
 
 
 def _traffic_band(with_traffic: int | None, without: int | None) -> str | None:
@@ -178,8 +182,19 @@ async def _one_mode(client: Any, mode: str, body: TravelTimesRequest, departure:
         # The provider's text is never logged or returned: it may echo the request (and the key).
         logger.warning("[Routes] %s answered HTTP %s", mode, response.status_code)
         return {"error": f"provider_{response.status_code}"}
-    routes = (response.json() or {}).get("routes") or []
-    return _shape(mode, routes[0]) if routes else {"available": False}
+    try:
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("expected a response object")
+        routes = payload.get("routes")
+        if routes is None:
+            return {"available": False}
+        if not isinstance(routes, list):
+            raise ValueError("expected a list of routes")
+        return _shape(mode, routes[0]) if routes else {"available": False}
+    except (ValueError, TypeError, AttributeError, OverflowError):
+        logger.warning("[Routes] %s returned an invalid response", mode)
+        return {"error": "provider_invalid_response"}
 
 
 @router.post("/travel-times", dependencies=[Depends(require_role("viewer"))])

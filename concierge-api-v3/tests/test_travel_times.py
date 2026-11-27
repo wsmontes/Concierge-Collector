@@ -9,6 +9,7 @@ The Google key stays server-side, each travel mode is one Routes request, drivin
 
 import datetime as dt
 
+import httpx
 import pytest
 
 import app.api.travel as travel
@@ -194,6 +195,41 @@ def test_one_failing_mode_does_not_take_the_others_down_or_leak_the_provider(cli
     assert modes["drive"]["minutes"] == 26
     assert modes["transit"] == {"error": "provider_403"}
     assert GOOGLE_KEY not in response.text
+
+
+@pytest.mark.parametrize(
+    "content",
+    [b"not JSON", b'{"routes": "invalid"}', b'{"routes": [{"legs": [null]}]}'],
+    ids=["invalid-json", "invalid-routes", "invalid-transit-leg"],
+)
+def test_invalid_provider_response_only_affects_its_mode(client, google, content):
+    google.answers["TRANSIT"] = httpx.Response(200, content=content)
+
+    response = _post(client, {"origin": ORIGIN, "destination_place_id": PLACE_ID, "modes": ["drive", "transit"]})
+
+    assert response.status_code == 200
+    modes = response.json()["modes"]
+    assert modes["drive"]["minutes"] == 26
+    assert modes["transit"] == {"error": "provider_invalid_response"}
+
+
+@pytest.mark.parametrize(
+    "distance",
+    [b"Infinity", b"NaN", b"true"],
+    ids=["infinity", "nan", "boolean"],
+)
+def test_a_distance_that_is_not_a_finite_number_is_left_out(client, google, distance):
+    google.answers["TRANSIT"] = httpx.Response(
+        200, content=b'{"routes": [{"duration": "600s", "distanceMeters": ' + distance + b"}]}"
+    )
+
+    response = _post(client, {"origin": ORIGIN, "destination_place_id": PLACE_ID, "modes": ["drive", "transit"]})
+
+    assert response.status_code == 200
+    modes = response.json()["modes"]
+    assert modes["drive"]["minutes"] == 26
+    assert modes["transit"]["minutes"] == 10
+    assert modes["transit"]["km"] is None
 
 
 def test_no_route_is_reported_as_unavailable(client, google):
