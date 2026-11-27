@@ -9,9 +9,11 @@ Spec: docs/superpowers/specs/2026-11-26-entity-menu-design.md.
 """
 
 # No `from __future__ import annotations`: behind @limiter.limit, FastAPI would read the body as a query.
+import asyncio
 from typing import Dict, List, Literal, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, HttpUrl
 from pymongo.database import Database
 
@@ -74,16 +76,20 @@ async def get_menu(
     inside the request.
 
     Async on purpose: the background refresh is scheduled on the app's event loop, which a sync route
-    (run in the threadpool) does not have — it would silently never refresh. The reads are two find_one.
+    (run in the threadpool) does not have — it would silently never refresh. The reads themselves (two
+    find_one, the menu document is tens of KB) run in the threadpool: the server is one process, and a
+    synchronous read on the loop stops every other request behind it (the bot's /places/details timed out
+    so, and its cards went without photo).
 
     **Authentication Required:** `Authorization: Bearer <token>` OR `X-API-Key: <key>`
     """
-    entity = _entity(db, entity_id)
     try:
         get_menu_deps(request)  # makes the background able to refresh
     except HTTPException:
         pass
-    return service.read_menu(db, entity, max_age_days=max_age_days)
+    service.bind_loop(asyncio.get_running_loop())
+    entity = await run_in_threadpool(_entity, db, entity_id)
+    return await run_in_threadpool(service.read_menu, db, entity, max_age_days=max_age_days)
 
 
 @router.get("/{entity_id}/menu/text")
@@ -109,12 +115,13 @@ async def get_menu_text(
 
     **Authentication Required:** `Authorization: Bearer <token>` OR `X-API-Key: <key>`
     """
-    entity = _entity(db, entity_id)
     try:
         get_menu_deps(request)
     except HTTPException:
         pass
-    return service.menu_text(db, entity, q=q, topic=topic, max_chars=max_chars)
+    service.bind_loop(asyncio.get_running_loop())  # the reads below run off the loop (see get_menu)
+    entity = await run_in_threadpool(_entity, db, entity_id)
+    return await run_in_threadpool(service.menu_text, db, entity, q=q, topic=topic, max_chars=max_chars)
 
 
 @router.post("/{entity_id}/menu/refresh", dependencies=[Depends(require_role("curator"))])

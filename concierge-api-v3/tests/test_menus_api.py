@@ -204,3 +204,29 @@ def test_text_refuses_an_unknown_topic(api):
     response = client.get(f"/api/v3/entities/{ENTITY_ID}/menu/text?topic=gossip", headers=H)
 
     assert response.status_code == 422
+
+
+def _where_it_ran(seen):
+    import asyncio
+
+    try:
+        asyncio.get_running_loop()
+        seen.append("event_loop")
+    except RuntimeError:
+        seen.append("thread")
+
+
+def test_menu_reads_run_off_the_event_loop(api, monkeypatch):
+    """A synchronous Mongo read inside an async route stops the whole single-process server: every
+    other request (the bot's /places/details) waits behind it. The reads go to the threadpool."""
+    client, _, _ = api
+    seen = []
+    real_find = menus_api.find_entity
+    monkeypatch.setattr(menus_api, "find_entity", lambda db, eid: _where_it_ran(seen) or real_find(db, eid))
+    monkeypatch.setattr(service, "read_menu", lambda db, entity, **kw: _where_it_ran(seen) or {"status": "missing"})
+    monkeypatch.setattr(service, "menu_text", lambda db, entity, **kw: _where_it_ran(seen) or {"status": "missing"})
+
+    assert client.get(f"/api/v3/entities/{ENTITY_ID}/menu", headers=H).status_code == 200
+    assert client.get(f"/api/v3/entities/{ENTITY_ID}/menu/text?q=ostra", headers=H).status_code == 200
+
+    assert seen == ["thread"] * 4

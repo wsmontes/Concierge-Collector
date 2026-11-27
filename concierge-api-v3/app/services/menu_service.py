@@ -41,6 +41,7 @@ import itertools
 import json
 import logging
 import re
+import threading
 import time
 import unicodedata
 import urllib.robotparser
@@ -886,6 +887,8 @@ _queue: "deque[tuple]" = deque()
 _queued: set = set()
 _consumer: "Optional[asyncio.Task[None]]" = None
 _background_deps: Optional[MenuDeps] = None
+_loop: Optional[asyncio.AbstractEventLoop] = None
+_lock = threading.Lock()
 _dispatched: Dict[Any, float] = {}
 COOLDOWN_SECONDS = 600.0
 
@@ -895,28 +898,49 @@ def set_background_deps(deps: Optional[MenuDeps]) -> None:
     _background_deps = deps
 
 
-def schedule_refresh(db, entity: dict) -> bool:
-    """Queue a background refresh (bounded, deduplicated); False when it was not queued."""
+def bind_loop(loop: asyncio.AbstractEventLoop) -> None:
+    """The app's event loop, where the background consumer runs (reads call schedule_refresh from a thread)."""
+    global _loop
+    _loop = loop
+
+
+def _start_consumer() -> None:
+    """On the app's loop: one consumer drains the queue."""
     global _consumer
+    if _queue and (_consumer is None or _consumer.done()):
+        _consumer = asyncio.get_running_loop().create_task(_consume())
+
+
+def schedule_refresh(db, entity: dict) -> bool:
+    """Queue a background refresh (bounded, deduplicated); False when it was not queued.
+
+    Callable on the app's loop or from the threadpool (the read routes run their Mongo reads there): the
+    queue is guarded by a lock and the consumer is always started on the loop.
+    """
     if not settings.menu_enrich_enabled or _background_deps is None:
         return False
-    key = entity["_id"]
-    now = time.monotonic()
-    if key in _queued or now - _dispatched.get(key, -COOLDOWN_SECONDS) < COOLDOWN_SECONDS:
-        return key in _queued
-    if len(_queue) >= QUEUE_MAX:
-        logger.warning("[Menu] background queue full (%d); request dropped", QUEUE_MAX)
+    try:
+        loop = asyncio.get_running_loop()
+        on_loop = True
+    except RuntimeError:
+        loop, on_loop = _loop, False
+    if loop is None or loop.is_closed():
         return False
-    _queue.append((db, key))
-    _queued.add(key)
-    _dispatched[key] = now
-    if _consumer is None or _consumer.done():
-        try:
-            _consumer = asyncio.get_running_loop().create_task(_consume())
-        except RuntimeError:
-            _queue.pop()
-            _queued.discard(key)
+    key = entity["_id"]
+    with _lock:
+        now = time.monotonic()
+        if key in _queued or now - _dispatched.get(key, -COOLDOWN_SECONDS) < COOLDOWN_SECONDS:
+            return key in _queued
+        if len(_queue) >= QUEUE_MAX:
+            logger.warning("[Menu] background queue full (%d); request dropped", QUEUE_MAX)
             return False
+        _queue.append((db, key))
+        _queued.add(key)
+        _dispatched[key] = now
+    if on_loop:
+        _start_consumer()
+    else:
+        loop.call_soon_threadsafe(_start_consumer)
     return True
 
 
@@ -924,7 +948,7 @@ async def _consume() -> None:
     while _queue:
         db, key = _queue.popleft()
         try:
-            entity = db.entities.find_one({"_id": key})
+            entity = await asyncio.to_thread(db.entities.find_one, {"_id": key})
             if entity and _background_deps is not None:
                 await refresh_menu(db, entity, _background_deps)
         except asyncio.CancelledError:
